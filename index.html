@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrenamiento</title>
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#121212">
+</head>
+
+<body>
+
+  <!-- VISTA MENÚ -->
+  <div id="menu">
+    <h1>Entrenamiento</h1>
+    <button onclick="abrirDia('torso_fuerza')">Día 1 – Torso Fuerza</button>
+    <button onclick="abrirDia('pierna_fuerza')">Día 2 – Pierna Fuerza</button>
+    <button onclick="abrirDia('torso_hipertrofia')">Día 3 – Torso Hipertrofia</button>
+    <button onclick="abrirDia('pierna_hipertrofia')">Día 4 – Pierna Hipertrofia</button>
+    <button onclick="abrirDia('potencia')">Día 5 – Potencia</button>
+    <button onclick="abrirHistorial()">Historial</button>  
+</div>
+
+  
+  <!-- VISTA RESULTADO -->
+  <div id="resultado" class="oculto">
+    <h2>Resultado</h2>
+    <div id="resumen"></div>
+    <button onclick="volverMenu()">Volver al menú</button>
+  </div>
+  
+  <!-- VISTA ENTRENAMIENTO -->
+<div id="pantalla-dia" class="oculto">
+  <h2 id="titulo-dia"></h2>
+  <div id="contenido"></div>
+  
+  <!-- TEMPORIZADOR -->
+  <div id="temporizador" class="ejercicio">
+    <h3>Temporizador</h3>
+    <p id="tiempo">0:00</p>
+    <button onclick="configurarTemporizador(4,0)">4:00</button>
+    <button onclick="configurarTemporizador(1,30)">1:30</button>
+    <button onclick="iniciarTemporizador()">Iniciar</button>
+    <button onclick="pausarTemporizador()">Pausar</button>
+    <button onclick="resetTemporizador()">Reset</button>
+  </div>
+
+  <!-- AÑADIR EJERCICIO (AQUÍ) -->
+  <div class="ejercicio">
+    <h3>Añadir ejercicio</h3>
+
+    <select id="dia-ejercicio">
+      <option value="torso_fuerza">Día 1 – Torso Fuerza</option>
+      <option value="pierna_fuerza">Día 2 – Pierna Fuerza</option>
+      <option value="torso_hipertrofia">Día 3 – Torso Hipertrofia</option>
+      <option value="pierna_hipertrofia">Día 4 – Pierna Hipertrofia</option>
+      <option value="potencia">Día 5 – Potencia</option>
+    </select>
+
+    <input id="nuevo-nombre" placeholder="Ejercicio">
+    <input id="nuevo-peso" type="number" placeholder="Peso">
+    <input id="nuevo-series" type="number" placeholder="Series">
+    <input id="nuevo-reps-min" type="number" placeholder="Reps mín">
+    <input id="nuevo-reps-max" type="number" placeholder="Reps máx">
+
+    <button onclick="añadirEjercicio()">Añadir ejercicio</button>
+  </div>
+
+  <button onclick="finalizarDia()">Finalizar sesión</button>
+  <button onclick="volverMenu()">Volver</button>
+</div>  
+  
+  <!-- VISTA HISTORIAL -->
+  <div id="pantalla-historial" class="oculto">
+    <h2>Historial de entrenamientos</h2>
+    <div id="lista-historial"></div>
+    <button onclick="volverMenu()">Volver al menú</button>
+    <button onclick="borrarTodoHistorial()">Borrar todo</button>
+<button onclick="limpiarHistorialDuplicados()">Limpiar duplicados</button>
+  </div>
+
+  <!-- DETALLE SESIÓN -->
+<div id="pantalla-detalle" class="oculto">
+  <h2>Detalle del entrenamiento</h2>
+  <div id="detalle-sesion"></div>
+  <button onclick="volverHistorial()">Volver al historial</button>
+</div>
+  <script src="app.js"></script>
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js");
+  }
+</script>
+</body>
+</html>
