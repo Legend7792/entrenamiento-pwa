@@ -290,7 +290,6 @@ function finalizarDia() {
   const sesion = {
     fecha: new Date().toISOString(), // fecha + hora
     dia: rutina[diaActual].nombre,
-    tiempo: tiempoBase - tiempoRestante,
     ejercicios: ejerciciosDia.map(ej => ({
       nombre: ej.nombre,
       peso: ej.peso,
