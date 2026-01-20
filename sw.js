@@ -1,11 +1,14 @@
-// SW definitivo para Entrenamiento PWA
-const CACHE_VERSION = "v12"; // incrementa cada actualización
+/*************************
+ * SW DEFINITIVO PWA ENTRENAMIENTO
+ *************************/
+
+const CACHE_VERSION = "v13"; // Incrementa cada vez que subas cambios
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
+
+// Archivos estáticos que se cachearán
 const urlsToCache = [
-  '/index.html',
   '/app.js',
   '/style.css',
-  '/manifest.json',
   '/beep.mp3',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
@@ -16,11 +19,11 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(urlsToCache))
-      .then(() => self.skipWaiting()) // fuerza que este SW se active inmediatamente
+      .then(() => self.skipWaiting()) // activa SW inmediatamente
   );
 });
 
-// ACTIVATE: limpiar caches antiguos
+// ACTIVATE: borrar caches antiguos
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
@@ -31,35 +34,43 @@ self.addEventListener('activate', event => {
       )
     )
   );
-  self.clients.claim(); // toma control inmediato de las páginas abiertas
+  self.clients.claim(); // toma control de todas las pestañas
 });
 
-// FETCH: network-first para archivos propios, cache-first para estáticos
+// FETCH: network-only para HTML y manifest, network-first para JS/CSS, cache-first para lo demás
 self.addEventListener('fetch', event => {
   const requestUrl = new URL(event.request.url);
 
-  // network-first: HTML, JS, CSS, manifest
-  if (['.html', '.js', '.css', 'manifest.json'].some(ext => requestUrl.pathname.endsWith(ext))) {
+  // network-only: HTML y manifest siempre de la red
+  if (requestUrl.pathname.endsWith('index.html') || requestUrl.pathname.endsWith('manifest.json')) {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // network-first para JS y CSS
+  if (['.js', '.css'].some(ext => requestUrl.pathname.endsWith(ext))) {
     event.respondWith(
       fetch(event.request)
         .then(resp => {
-          // actualizar cache con la última versión
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, resp.clone()));
           return resp;
         })
-        .catch(() => caches.match(event.request)) // fallback al cache si no hay red
+        .catch(() => caches.match(event.request))
     );
-  } else {
-    // cache-first para mp3, iconos y otras assets estáticas
-    event.respondWith(
-      caches.match(event.request).then(resp => resp || fetch(event.request))
-    );
+    return;
   }
+
+  // cache-first para otros assets (mp3, iconos)
+  event.respondWith(
+    caches.match(event.request).then(resp => resp || fetch(event.request))
+  );
 });
 
 // Mensajes desde la app (botón "Forzar actualización")
 self.addEventListener('message', e => {
   if (e.data && e.data.type === 'SKIP_WAITING') {
-    self.skipWaiting(); // fuerza reemplazo del SW activo
+    self.skipWaiting(); // fuerza que el SW activo se reemplace
   }
 });
