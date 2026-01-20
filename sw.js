@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v11"; // incrementa cada actualización
+const CACHE_VERSION = "v12"; // incrementa en cada actualización
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 const urlsToCache = [
   `/index.html?v=${CACHE_VERSION}`,
@@ -35,7 +35,7 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   const requestUrl = new URL(event.request.url);
 
-  // network-first para app propia
+  // network-first para archivos propios (HTML, JS, CSS, manifest)
   if ([".html", ".js", ".css", "manifest.json"].some(ext => requestUrl.pathname.endsWith(ext))) {
     event.respondWith(
       fetch(`${requestUrl.pathname}?v=${CACHE_VERSION}`)
@@ -53,6 +53,7 @@ self.addEventListener("fetch", event => {
   }
 });
 
+// Mensajes desde la app
 self.addEventListener('message', e => {
   if (e.data && e.data.type === 'SKIP_WAITING') {
     self.skipWaiting(); // fuerza que el SW activo se reemplace
