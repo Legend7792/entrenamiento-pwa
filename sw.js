@@ -1,76 +1,72 @@
-/*************************
- * SW DEFINITIVO PWA ENTRENAMIENTO
- *************************/
+// sw.js definitivo para PWA Entrenamiento
+const CACHE_VERSION = "v14"; // Incrementar con cada actualización
+const CACHE_NAME = `entrenamiento-cache-${CACHE_VERSION}`;
 
-const CACHE_VERSION = "v13"; // Incrementa cada vez que subas cambios
-const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
-
-// Archivos estáticos que se cachearán
+// Archivos que sí queremos cachear offline
 const urlsToCache = [
-  '/app.js',
-  '/style.css',
-  '/beep.mp3',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png'
+  "/app.js?v=14",
+  "/style.css?v=14",
+  "/beep.mp3?v=14",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png"
 ];
 
-// INSTALL: cache inicial
-self.addEventListener('install', event => {
+// Instalación del SW
+self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(urlsToCache))
-      .then(() => self.skipWaiting()) // activa SW inmediatamente
+      .then(() => self.skipWaiting()) // fuerza activar SW nuevo
   );
 });
 
-// ACTIVATE: borrar caches antiguos
-self.addEventListener('activate', event => {
+// Activación del SW
+self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys.map(key => {
-          if (key !== CACHE_NAME) return caches.delete(key);
+          if (key !== CACHE_NAME) {
+            return caches.delete(key); // borrar caches antiguos
+          }
         })
       )
     )
   );
-  self.clients.claim(); // toma control de todas las pestañas
+  self.clients.claim(); // toma control inmediato de todas las ventanas
 });
 
-// FETCH: network-only para HTML y manifest, network-first para JS/CSS, cache-first para lo demás
-self.addEventListener('fetch', event => {
+// Fetch: network-first para HTML y manifest, cache-first para archivos estáticos
+self.addEventListener("fetch", event => {
   const requestUrl = new URL(event.request.url);
 
-  // network-only: HTML y manifest siempre de la red
-  if (requestUrl.pathname.endsWith('index.html') || requestUrl.pathname.endsWith('manifest.json')) {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  // network-first para JS y CSS
-  if (['.js', '.css'].some(ext => requestUrl.pathname.endsWith(ext))) {
+  // network-first para index.html y manifest.json
+  if (requestUrl.pathname.endsWith("index.html") || requestUrl.pathname.endsWith("manifest.json")) {
     event.respondWith(
       fetch(event.request)
-        .then(resp => {
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, resp.clone()));
-          return resp;
+        .then(response => {
+          // actualizar cache opcional
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+          return response;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => caches.match(event.request)) // fallback si no hay red
     );
-    return;
+  } else {
+    // cache-first para todo lo demás
+    event.respondWith(
+      caches.match(event.request)
+        .then(resp => resp || fetch(event.request).then(fetchResp => {
+          // opcional: guardar en cache dinámico
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, fetchResp.clone()));
+          return fetchResp;
+        }))
+    );
   }
-
-  // cache-first para otros assets (mp3, iconos)
-  event.respondWith(
-    caches.match(event.request).then(resp => resp || fetch(event.request))
-  );
 });
 
-// Mensajes desde la app (botón "Forzar actualización")
-self.addEventListener('message', e => {
-  if (e.data && e.data.type === 'SKIP_WAITING') {
-    self.skipWaiting(); // fuerza que el SW activo se reemplace
+// Escucha mensajes desde la app para forzar actualización
+self.addEventListener("message", event => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
   }
 });
