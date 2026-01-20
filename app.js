@@ -221,10 +221,11 @@ function cargarEjerciciosDia() {
       series: ej.series,
       repsMin: ej.repsMin,
       repsMax: ej.repsMax,
-      peso: config.pesos[key] ?? ej.peso,
-      reps: Array(ej.series).fill(""), // <-- vacío en vez de 0
+      peso: config.pesos[key] ?? ej.peso, // respeta el peso guardado
+      reps: Array(ej.series).fill(""),
       incremento: 2,
-      noProgresar: false
+      noProgresar: false,
+      alFallo: ej.alFallo || false
     };
   });
 }
