@@ -1,6 +1,10 @@
 /*************************
  * DATOS DE LA RUTINA (BASE - NO SE MODIFICA)
  *************************/
+const sonidoTimer = new Audio("beep.mp3");
+sonidoTimer.preload = "auto";
+sonidoTimer.loop = true; // para que suene continuo hasta que lo pares
+
 const rutina = {
   torso_fuerza: {
     nombre: "Día 1 – Torso Fuerza",
@@ -61,13 +65,17 @@ function mostrarTiempo() {
 
 function iniciarTemporizador() {
   if (timerID || tiempoRestante <= 0) return;
+
   timerID = setInterval(() => {
     tiempoRestante--;
     mostrarTiempo();
+
     if (tiempoRestante <= 0) {
       clearInterval(timerID);
       timerID = null;
-      alert("Tiempo terminado");
+
+      sonidoTimer.currentTime = 0;
+      sonidoTimer.play();
     }
   }, 1000);
 }
@@ -75,6 +83,9 @@ function iniciarTemporizador() {
 function pausarTemporizador() {
   clearInterval(timerID);
   timerID = null;
+
+  sonidoTimer.pause();
+  sonidoTimer.currentTime = 0;
 }
 
 function resetTemporizador() {
@@ -106,6 +117,8 @@ function volverMenu() {
   document.getElementById("pantalla-dia").classList.add("oculto");
   document.getElementById("pantalla-historial").classList.add("oculto");
   document.getElementById("pantalla-detalle").classList.add("oculto");
+  document.getElementById("pantalla-medidas").classList.add("oculto");
+
   document.getElementById("menu").classList.remove("oculto");
 }
 
@@ -348,9 +361,18 @@ function limpiarHistorialDuplicados() {
  * BOTÓN ATRÁS ANDROID
  *************************/
 window.addEventListener("popstate", () => {
-  if (!document.getElementById("pantalla-detalle").classList.contains("oculto")) volverHistorial();
-  else if (!document.getElementById("pantalla-historial").classList.contains("oculto")) volverMenu();
-  else if (!document.getElementById("pantalla-dia").classList.contains("oculto")) volverMenu();
+  if (!document.getElementById("pantalla-detalle").classList.contains("oculto")) {
+    volverHistorial();
+  }
+  else if (!document.getElementById("pantalla-medidas").classList.contains("oculto")) {
+    volverMenu();
+  }
+  else if (!document.getElementById("pantalla-historial").classList.contains("oculto")) {
+    volverMenu();
+  }
+  else if (!document.getElementById("pantalla-dia").classList.contains("oculto")) {
+    volverMenu();
+  }
 });
 
 /*************************
@@ -360,4 +382,93 @@ function formatearTiempo(segundos) {
   const m = Math.floor(segundos / 60);
   const s = segundos % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function abrirMedidas() {
+  history.pushState({}, "");
+
+  document.getElementById("menu").classList.add("oculto");
+  document.getElementById("pantalla-dia").classList.add("oculto");
+  document.getElementById("pantalla-historial").classList.add("oculto");
+  document.getElementById("pantalla-detalle").classList.add("oculto");
+
+  document.getElementById("pantalla-medidas").classList.remove("oculto");
+
+  cargarMedidas();
+}
+
+function guardarMedidas() {
+  const nuevaMedida = {
+  fecha: new Date().toISOString(),
+
+  peso: valorOpcional("peso"),
+  altura: valorOpcional("altura"),
+  cintura: valorOpcional("cintura"),
+  cadera: valorOpcional("cadera"),
+  pecho: valorOpcional("pecho"),
+  brazo_relajado: valorOpcional("brazo_relajado"),
+  brazo_contraido: valorOpcional("brazo_contraido"),
+  muslo: valorOpcional("muslo")
+};
+
+  const historial = JSON.parse(localStorage.getItem("historialMedidas")) || [];
+  historial.push(nuevaMedida);
+  localStorage.setItem("historialMedidas", JSON.stringify(historial));
+
+  alert("Medidas guardadas correctamente");
+
+  limpiarFormularioMedidas();
+  cargarMedidas();
+
+}
+
+function cargarMedidas() {
+  const cont = document.getElementById("lista-medidas");
+  cont.innerHTML = "";
+
+  const historial = JSON.parse(localStorage.getItem("historialMedidas")) || [];
+
+  historial.slice().reverse().forEach(m => {
+    const fecha = new Date(m.fecha).toLocaleDateString();
+
+    cont.innerHTML += `
+      <div class="medida-item">
+        <strong>${fecha}</strong>
+        ${mostrarMedida("Peso", m.peso, "kg")}
+        ${mostrarMedida("Altura", m.altura, "cm")}
+        ${mostrarMedida("Cintura", m.cintura, "cm")}
+        ${mostrarMedida("Cadera", m.cadera, "cm")}
+        ${mostrarMedida("Pecho", m.pecho, "cm")}
+        ${mostrarMedida("Brazo relajado", m.brazo_relajado, "cm")}
+        ${mostrarMedida("Brazo contraído", m.brazo_contraido, "cm")}
+        ${mostrarMedida("Muslo", m.muslo, "cm")}
+      </div>
+    `;
+  });
+}
+
+function mostrarMedida(nombre, valor, unidad) {
+  if (valor === null) return "";
+  return `<p>${nombre}: ${valor} ${unidad}</p>`;
+}
+
+function valorOpcional(id) {
+  const v = document.getElementById(id).value;
+  return v === "" ? null : Number(v);
+}
+
+
+function borrarTodoHistorialMedidas() {
+  if (!confirm("¿Borrar todo el historial de medidas?")) return;
+  localStorage.removeItem("historialMedidas");
+  document.getElementById("lista-medidas").innerHTML = ""; // limpiar pantalla
+  alert("Historial de medidas eliminado");
+}
+
+function limpiarFormularioMedidas() {
+  const campos = ["peso","altura","cintura","cadera","pecho","brazo_relajado","brazo_contraido","muslo"];
+  campos.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
 }

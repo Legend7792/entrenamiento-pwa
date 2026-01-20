@@ -20,6 +20,7 @@
     <button onclick="abrirDia('pierna_hipertrofia')">Día 4 – Pierna Hipertrofia</button>
     <button onclick="abrirDia('potencia')">Día 5 – Potencia</button>
     <button onclick="abrirHistorial()">Historial</button>  
+    <button onclick="abrirMedidas()">Medidas corporales</button>
 </div>
 
   
@@ -79,6 +80,44 @@
     <button onclick="borrarTodoHistorial()">Borrar todo</button>
 <button onclick="limpiarHistorialDuplicados()">Limpiar duplicados</button>
   </div>
+ 
+  <div id="pantalla-medidas" class="oculto">
+  <h2>Medidas corporales</h2>
+
+  <div class="ejercicio">
+    <label>Peso (kg)</label>
+    <input id="peso" type="number" step="0.1">
+
+    <label>Altura (cm)</label>
+    <input id="altura" type="number">
+
+    <label>Cintura (cm)</label>
+    <input id="cintura" type="number">
+
+    <label>Cadera (cm)</label>
+    <input id="cadera" type="number">
+
+    <label>Pecho (cm)</label>
+    <input id="pecho" type="number">
+
+    <label>Brazo relajado (cm)</label>
+    <input id="brazo_relajado" type="number">
+
+    <label>Brazo contraído (cm)</label>
+    <input id="brazo_contraido" type="number">
+
+    <label>Muslo (cm)</label>
+    <input id="muslo" type="number">
+
+    <button onclick="guardarMedidas()">Guardar medidas</button>
+  </div>
+
+  <h3>Historial</h3>
+  <div id="lista-medidas"></div>
+
+  <button onclick="borrarTodoHistorialMedidas()">Borrar historial de medidas</button>
+  <button onclick="volverMenu()">Volver al menú</button>
+</div>
 
   <!-- DETALLE SESIÓN -->
 <div id="pantalla-detalle" class="oculto">
