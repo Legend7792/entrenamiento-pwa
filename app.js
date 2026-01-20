@@ -214,6 +214,7 @@ function cargarEjerciciosDia() {
   const base = rutina[diaActual].ejercicios || [];
   const extra = config.ejerciciosExtra[diaActual] || [];
 
+  // Combinar base + extra en un solo array
   ejerciciosDia = [...base, ...extra].map(ej => {
     const key = `${diaActual}_${ej.nombre}`;
     return {
@@ -563,39 +564,3 @@ function limpiarFormularioMedidas() {
   });
 }
 
-function cargarEjerciciosDia() {
-  const base = rutina[diaActual].ejercicios || [];
-  const extra = config.ejerciciosExtra[diaActual] || [];
-
-  ejerciciosDia = base.map(ej => {
-    const key = `${diaActual}_${ej.nombre}`;
-
-    return {
-      nombre: ej.nombre,
-      series: ej.series,
-      repsMin: ej.repsMin,
-      repsMax: ej.repsMax,
-      peso: config.pesos[key] ?? ej.peso,  // <--- respeta el peso guardado
-      reps: Array(ej.series).fill(""),
-      incremento: 2,
-      noProgresar: false,
-      alFallo: ej.alFallo || false
-    };
-  });
-
-  // Agregar los extra al final
-  ejerciciosDia.push(...extra.map(ej => {
-    const key = `${diaActual}_${ej.nombre}`;
-    return {
-      nombre: ej.nombre,
-      series: ej.series,
-      repsMin: ej.repsMin,
-      repsMax: ej.repsMax,
-      peso: config.pesos[key] ?? ej.peso,
-      reps: Array(ej.series).fill(""),
-      incremento: 2,
-      noProgresar: false,
-      alFallo: ej.alFallo || false
-    };
-  }));
-}
