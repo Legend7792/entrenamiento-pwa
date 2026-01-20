@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Entrenamiento</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=9">
+<script src="app.js?v=9" defer></script>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#121212">
 </head>
@@ -138,5 +139,16 @@
     navigator.serviceWorker.register("sw.js");
   }
 </script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('sw.js?v=9')
+      .then(reg => console.log('Service Worker registrado en:', reg.scope))
+      .catch(err => console.log('Error al registrar SW:', err));
+  });
+}
+</script>
+
 </body>
 </html>
