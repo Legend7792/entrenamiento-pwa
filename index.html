@@ -37,15 +37,22 @@
   <div id="contenido"></div>
   
   <!-- TEMPORIZADOR -->
-  <div id="temporizador" class="ejercicio">
-    <h3>Temporizador</h3>
-    <p id="tiempo">0:00</p>
-    <button onclick="configurarTemporizador(4,0)">4:00</button>
-    <button onclick="configurarTemporizador(1,30)">1:30</button>
-    <button onclick="iniciarTemporizador()">Iniciar</button>
-    <button onclick="pausarTemporizador()">Pausar</button>
-    <button onclick="resetTemporizador()">Reset</button>
-  </div>
+<div id="temporizador" class="ejercicio">
+  <h3>Temporizadores</h3>
+
+  <!-- Lista de timers personalizados -->
+  <div id="lista-timers"></div>
+
+  <!-- Botón para añadir un temporizador nuevo -->
+  <button onclick="añadirTimer()">Añadir temporizador</button>
+
+  <!-- Temporizador grande -->
+  <h1 id="tiempo">0:00</h1>
+
+  <!-- Controles -->
+  <button onclick="pausarTemporizador()">Pausar</button>
+  <button onclick="resetTemporizador()">Reset</button>
+</div>
 
   <!-- AÑADIR EJERCICIO (AQUÍ) -->
   <div class="ejercicio">

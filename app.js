@@ -44,55 +44,102 @@ let diaActual = null;
 let ejerciciosDia = []; // array de objetos con estado de inputs
 
 /*************************
- * TEMPORIZADOR
+ * TEMPORIZADOR AVANZADO
  *************************/
-let tiempoBase = 0; // segundos
-let tiempoRestante = 0;
 let timerID = null;
+let tiempoRestante = 0;
+let tiempoFinal = null;
 
-function configurarTemporizador(min, seg) {
-  tiempoBase = min * 60 + seg;
-  tiempoRestante = tiempoBase;
-  mostrarTiempo();
+// Lista de timers guardados
+let timers = JSON.parse(localStorage.getItem("timers")) || [
+  { nombre: "Descanso corto", minutos: 1, segundos: 30 },
+  { nombre: "Descanso largo", minutos: 4, segundos: 0 }
+];
+
+function guardarTimers() {
+  localStorage.setItem("timers", JSON.stringify(timers));
 }
 
+// Renderizar lista de timers
+function renderTimers() {
+  const cont = document.getElementById("lista-timers");
+  cont.innerHTML = "";
+  timers.forEach((t, i) => {
+    cont.innerHTML += `
+      <div class="timer-item">
+        <p>${t.nombre} — ${t.minutos}m ${t.segundos}s</p>
+        <button onclick="borrarTimer(${i})">Borrar</button>
+        <button onclick="iniciarTemporizador(${t.minutos}, ${t.segundos})">Iniciar</button>
+      </div>
+    `;
+  });
+}
+
+// Añadir timer
+function añadirTimer() {
+  const nombre = prompt("Nombre del temporizador:");
+  const minutos = Number(prompt("Minutos:"));
+  const segundos = Number(prompt("Segundos:"));
+  if (!nombre || isNaN(minutos) || isNaN(segundos)) return alert("Datos inválidos");
+  timers.push({ nombre, minutos, segundos });
+  guardarTimers();
+  renderTimers();
+}
+
+// Borrar timer
+function borrarTimer(index) {
+  timers.splice(index, 1);
+  guardarTimers();
+  renderTimers();
+}
+
+// Mostrar tiempo en pantalla
 function mostrarTiempo() {
   const m = Math.floor(tiempoRestante / 60);
   const s = tiempoRestante % 60;
-  document.getElementById("tiempo").innerText =
-    `${m}:${s.toString().padStart(2, "0")}`;
+  document.getElementById("tiempo").innerText = `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function iniciarTemporizador() {
-  if (timerID || tiempoRestante <= 0) return;
+// Iniciar temporizador (segundo plano)
+function iniciarTemporizador(min = 0, seg = 0) {
+  if (timerID) return;
+
+  tiempoRestante = min * 60 + seg;
+  tiempoFinal = Date.now() + tiempoRestante * 1000;
 
   timerID = setInterval(() => {
-    tiempoRestante--;
+    const ahora = Date.now();
+    tiempoRestante = Math.max(0, Math.round((tiempoFinal - ahora) / 1000));
     mostrarTiempo();
 
     if (tiempoRestante <= 0) {
       clearInterval(timerID);
       timerID = null;
-
       sonidoTimer.currentTime = 0;
       sonidoTimer.play();
     }
-  }, 1000);
+  }, 200); // actualiza cada 0.2s
 }
 
+// Pausar temporizador
 function pausarTemporizador() {
   clearInterval(timerID);
   timerID = null;
-
   sonidoTimer.pause();
   sonidoTimer.currentTime = 0;
 }
 
+// Resetear temporizador
 function resetTemporizador() {
   pausarTemporizador();
-  tiempoRestante = tiempoBase;
+  tiempoRestante = 0;
   mostrarTiempo();
 }
+
+// Inicializar la lista de timers al cargar la app
+document.addEventListener("DOMContentLoaded", () => {
+  renderTimers();
+});
 
 /*************************
  * NAVEGACIÓN
