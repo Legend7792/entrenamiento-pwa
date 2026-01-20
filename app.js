@@ -563,3 +563,13 @@ function limpiarFormularioMedidas() {
   });
 }
 
+function forzarActualizacion() {
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
+    alert("Actualización forzada. La app se recargará automáticamente.");
+    // Recarga la página para aplicar la nueva versión
+    setTimeout(() => location.reload(), 1000);
+  } else {
+    alert("Service Worker no activo. Por favor recarga la app manualmente.");
+  }
+}

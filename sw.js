@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v10"; // incrementa cada actualización
+const CACHE_VERSION = "v11"; // incrementa cada actualización
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 const urlsToCache = [
   `/index.html?v=${CACHE_VERSION}`,
@@ -50,5 +50,11 @@ self.addEventListener("fetch", event => {
     event.respondWith(
       caches.match(event.request).then(resp => resp || fetch(event.request))
     );
+  }
+});
+
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') {
+    self.skipWaiting(); // fuerza que el SW activo se reemplace
   }
 });
