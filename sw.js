@@ -1,12 +1,5 @@
-/*************************
- * SERVICE WORKER PWA DEFINITIVO
- *************************/
-
-// Cambia esta versión cada vez que actualices app.js o index.html
-const CACHE_VERSION = "v9"; 
+const CACHE_VERSION = "v10"; // incrementa cada actualización
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
-
-// Archivos a cachear
 const urlsToCache = [
   `/index.html?v=${CACHE_VERSION}`,
   `/app.js?v=${CACHE_VERSION}`,
@@ -15,60 +8,45 @@ const urlsToCache = [
   `/beep.mp3?v=${CACHE_VERSION}`
 ];
 
-/*************************
- * INSTALL
- *************************/
+// INSTALL
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(urlsToCache))
-      .then(() => self.skipWaiting()) // activa SW inmediatamente
+      .then(() => self.skipWaiting())
   );
 });
 
-/*************************
- * ACTIVATE
- *************************/
+// ACTIVATE
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys.map(key => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key); // elimina cache viejo
-          }
+          if (key !== CACHE_NAME) return caches.delete(key);
         })
       )
     )
   );
-  self.clients.claim(); // fuerza que todas las pestañas usen la nueva versión
+  self.clients.claim();
 });
 
-/*************************
- * FETCH (Network-first con cache fallback)
- *************************/
+// FETCH
 self.addEventListener("fetch", event => {
   const requestUrl = new URL(event.request.url);
 
-  // Forzar cache busting solo para archivos propios de la app
-  if (requestUrl.pathname.endsWith(".js") ||
-      requestUrl.pathname.endsWith(".css") ||
-      requestUrl.pathname.endsWith(".html") ||
-      requestUrl.pathname.endsWith("manifest.json")) {
-
+  // network-first para app propia
+  if ([".html", ".js", ".css", "manifest.json"].some(ext => requestUrl.pathname.endsWith(ext))) {
     event.respondWith(
       fetch(`${requestUrl.pathname}?v=${CACHE_VERSION}`)
         .then(resp => {
-          // guardar la nueva versión en cache
-          const respClone = resp.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, respClone));
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, resp.clone()));
           return resp;
         })
-        .catch(() => caches.match(event.request)) // fallback offline
+        .catch(() => caches.match(event.request))
     );
-
   } else {
-    // otros archivos: cache first
+    // cache-first para archivos estáticos (mp3, imágenes)
     event.respondWith(
       caches.match(event.request).then(resp => resp || fetch(event.request))
     );

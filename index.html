@@ -134,21 +134,15 @@
   <button onclick="volverHistorial()">Volver al historial</button>
 </div>
   <script src="app.js"></script>
-<script>
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js");
-  }
-</script>
 
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('sw.js?v=9')
+    navigator.serviceWorker.register('sw.js')
       .then(reg => console.log('Service Worker registrado en:', reg.scope))
       .catch(err => console.log('Error al registrar SW:', err));
   });
 }
 </script>
-
 </body>
 </html>
