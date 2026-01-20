@@ -11,18 +11,56 @@ const rutina = {
     ejercicios: [
       { nombre: "Press banca", peso: 80, series: 4, repsMin: 3, repsMax: 5 },
       { nombre: "Press militar", peso: 50, series: 4, repsMin: 3, repsMax: 5 },
-      { nombre: "Remo con barra", peso: 70, series: 4, repsMin: 3, repsMax: 5 }
+      { nombre: "Remo con barra", peso: 70, series: 4, repsMin: 3, repsMax: 5 },
+      { nombre: "Press jabalina", peso: 40, series: 3, repsMin: 3, repsMax: 5 },
+      { nombre: "Dominada supina", peso: 0, series: 4, repsMin: 5, repsMax: 8 },
+      { nombre: "Fondos en paralelas", peso: 0, series: 3, repsMin: 5, repsMax: 8 },
+      { nombre: "Elevaciones laterales", peso: 5, series: 3, repsMin: 12, repsMax: 15 }, // añadido
+      { nombre: "Encogimientos", peso: 0, series: 2, repsMin: 8, repsMax: 10 }
     ]
   },
   pierna_fuerza: {
     nombre: "Día 2 – Pierna Fuerza",
     ejercicios: [
-      { nombre: "Sentadilla trasera", peso: 100, series: 4, repsMin: 3, repsMax: 5 }
+      { nombre: "Sentadilla trasera", peso: 100, series: 4, repsMin: 3, repsMax: 5 },
+      { nombre: "Peso muerto convencional", peso: 80, series: 3, repsMin: 3, repsMax: 5 },
+      { nombre: "Buenos días", peso: 20, series: 2, repsMin: 6, repsMax: 6 }, // añadido
+      { nombre: "Elevaciones de piernas colgado", peso: 0, series: 3, repsMin: 8, repsMax: 10 },
+      { nombre: "Jalón abdominal con peso", peso: 20, series: 3, repsMin: 10, repsMax: 10 },
+      { nombre: "Sentadilla a una pierna", peso: 0, series: 2, repsMin: 5, repsMax: 5 }
     ]
   },
-  torso_hipertrofia: { nombre: "Día 3 – Torso Hipertrofia", ejercicios: [] },
-  pierna_hipertrofia: { nombre: "Día 4 – Pierna Hipertrofia", ejercicios: [] },
-  potencia: { nombre: "Día 5 – Potencia", ejercicios: [] }
+  torso_hipertrofia: {
+    nombre: "Día 3 – Torso Hipertrofia",
+    ejercicios: [
+      { nombre: "Press militar", peso: 40, series: 4, repsMin: 8, repsMax: 10 },
+      { nombre: "Press banca", peso: 60, series: 4, repsMin: 8, repsMax: 10 },
+      { nombre: "Dominadas prono", peso: 0, series: 3, repsMin: 0, repsMax: 1 },
+      { nombre: "Press banca inclinado", peso: 50, series: 3, repsMin: 8, repsMax: 10 },
+      { nombre: "Remo con barra", peso: 50, series: 3, repsMin: 8, repsMax: 10 },
+      { nombre: "Curl bíceps", peso: 15, series: 3, repsMin: 10, repsMax: 12 },
+      { nombre: "Curl invertido", peso: 0, series: 2, repsMin: 10, repsMax: 10 },
+      { nombre: "Tríceps francés / fondos ligeros", peso: 10, series: 3, repsMin: 10, repsMax: 12 }
+    ]
+  },
+  pierna_hipertrofia: {
+    nombre: "Día 4 – Pierna Hipertrofia",
+    ejercicios: [
+      { nombre: "Sentadilla frontal", peso: 60, series: 4, repsMin: 8, repsMax: 10 },
+      { nombre: "Peso muerto rumano", peso: 70, series: 4, repsMin: 8, repsMax: 10 },
+      { nombre: "Desplantes con barra", peso: 30, series: 4, repsMin: 8, repsMax: 10 },
+      { nombre: "Elevación de talones", peso: 0, series: 4, repsMin: 12, repsMax: 15 },
+      { nombre: "Peso muerto unilateral", peso: 20, series: 2, repsMin: 6, repsMax: 8 },
+      { nombre: "Roll-out", peso: 0, series: 4, repsMin: 10, repsMax: 10 }
+    ]
+  },
+  potencia: {
+    nombre: "Día 5 – Potencia",
+    ejercicios: [
+      { nombre: "Clean", peso: 40, series: 5, repsMin: 3, repsMax: 3 },
+      { nombre: "HIIT", peso: 0, series: 1, repsMin: 8, repsMax: 12 } // min y max en minutos
+    ]
+  }
 };
 
 /*************************
