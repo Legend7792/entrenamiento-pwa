@@ -1,4 +1,4 @@
-const CACHE_NAME = "entrenamiento-v4";
+const CACHE_NAME = "entrenamiento-v6";
 const urlsToCache = ["/", "/index.html", "/app.js", "/style.css", "/manifest.json", "/beep.mp3"];
 
 self.addEventListener("install", event => {
