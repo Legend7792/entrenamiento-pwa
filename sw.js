@@ -4,9 +4,9 @@ const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 const PRECACHE_URLS = [
   "/",
   "/index.html",
-  "/app.js",
-  "/style.css",
-  "/manifest.json",
+  "/app.js?v=14",
+  "/style.css?v=14",
+  "/manifest.json?v=14",
   "/beep.mp3"
 ];
 
