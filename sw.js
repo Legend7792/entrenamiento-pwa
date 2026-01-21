@@ -1,12 +1,12 @@
-const CACHE_VERSION = "v14";
+const CACHE_VERSION = "v16"; // Cambia esto cada vez que actualices archivos
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
   "/",
   "/index.html",
-  "/app.js?v=14",
-  "/style.css?v=14",
-  "/manifest.json?v=14",
+  "/app.js?v=16",
+  "/style.css?v=16",
+  "/manifest.json?v=16",
   "/beep.mp3"
 ];
 
@@ -29,9 +29,7 @@ self.addEventListener("activate", event => {
     caches.keys().then(keys =>
       Promise.all(
         keys.map(key => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
+          if (key !== CACHE_NAME) return caches.delete(key);
         })
       )
     )
@@ -50,7 +48,7 @@ self.addEventListener("fetch", event => {
 
   const url = new URL(req.url);
 
-  // HTML → Network first (actualiza solo)
+  // HTML → Network first
   if (req.headers.get("accept")?.includes("text/html")) {
     event.respondWith(
       fetch(req)
@@ -64,7 +62,7 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  // JS / CSS / MP3 / demás → Cache first
+  // JS / CSS / MP3 / manifest → Cache first
   event.respondWith(
     caches.match(req).then(cached => {
       if (cached) return cached;
@@ -73,6 +71,9 @@ self.addEventListener("fetch", event => {
         const clone = resp.clone();
         caches.open(CACHE_NAME).then(c => c.put(req, clone));
         return resp;
+      }).catch(() => {
+        // Si falla el fetch y no hay cache → mensaje de error offline
+        return new Response("Archivo no disponible offline", { status: 503 });
       });
     })
   );
@@ -82,7 +83,5 @@ self.addEventListener("fetch", event => {
 // MENSAJES
 // ==============================
 self.addEventListener("message", event => {
-  if (event.data === "SKIP_WAITING") {
-    self.skipWaiting();
-  }
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
