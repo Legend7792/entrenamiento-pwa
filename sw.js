@@ -59,7 +59,7 @@ self.addEventListener("fetch", event => {
           caches.open(CACHE_NAME).then(c => c.put(req, clone));
           return resp;
         })
-        .catch(() => caches.match(req))
+        .catch(() => caches.match("/index.html"))
     );
     return;
   }
