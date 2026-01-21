@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v16"; // Cambia esto cada vez que actualices archivos
+const CACHE_VERSION = "v16"; // Incrementa cada vez que actualices
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -32,7 +32,7 @@ self.addEventListener("activate", event => {
           if (key !== CACHE_NAME) return caches.delete(key);
         })
       )
-    );
+    )
   );
   self.clients.claim();
 });
@@ -46,23 +46,22 @@ self.addEventListener("fetch", event => {
   // Solo GET
   if (req.method !== "GET") return;
 
-  const url = new URL(req.url);
-
-  // HTML → Network first
+  // HTML → Stale-while-revalidate
   if (req.headers.get("accept")?.includes("text/html")) {
     event.respondWith(
-      fetch(req)
-        .then(resp => {
-          const clone = resp.clone();
-          caches.open(CACHE_NAME).then(c => c.put(req, clone));
+      caches.match("/index.html").then(cached => {
+        const networkFetch = fetch(req).then(resp => {
+          caches.open(CACHE_NAME).then(c => c.put("/index.html", resp.clone()));
           return resp;
-        })
-        .catch(() => caches.match("/index.html"))
+        }).catch(() => cached); // Si no hay red, retorna lo cacheado
+
+        return cached || networkFetch; // Si hay cache, sirve inmediatamente
+      })
     );
     return;
   }
 
-  // JS / CSS / MP3 / manifest → Cache first
+  // JS / CSS / MP3 / manifest → Cache-first
   event.respondWith(
     caches.match(req).then(cached => {
       if (cached) return cached;
@@ -72,9 +71,17 @@ self.addEventListener("fetch", event => {
         caches.open(CACHE_NAME).then(c => c.put(req, clone));
         return resp;
       }).catch(() => {
-        // Si falla el fetch y no hay cache → mensaje de error offline
         return new Response("Archivo no disponible offline", { status: 503 });
       });
     })
   );
+});
+
+// ==============================
+// MENSAJES
+// ==============================
+self.addEventListener("message", event => {
+  if (event.data === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
