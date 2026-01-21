@@ -1,7 +1,7 @@
 const CACHE_VERSION = "v14";
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 
-const APP_SHELL = [
+const PRECACHE_URLS = [
   "/",
   "/index.html",
   "/app.js",
@@ -10,87 +10,79 @@ const APP_SHELL = [
   "/beep.mp3"
 ];
 
-/* ======================
-   INSTALL
-====================== */
+// ==============================
+// INSTALL
+// ==============================
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(APP_SHELL))
+      .then(cache => cache.addAll(PRECACHE_URLS))
       .then(() => self.skipWaiting())
   );
 });
 
-/* ======================
-   ACTIVATE
-====================== */
+// ==============================
+// ACTIVATE
+// ==============================
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
-        keys
-          .filter(key => key !== CACHE_NAME)
-          .map(key => caches.delete(key))
+        keys.map(key => {
+          if (key !== CACHE_NAME) {
+            return caches.delete(key);
+          }
+        })
       )
     )
   );
   self.clients.claim();
 });
 
-/* ======================
-   FETCH
-====================== */
+// ==============================
+// FETCH
+// ==============================
 self.addEventListener("fetch", event => {
-  if (event.request.method !== "GET") return;
+  const req = event.request;
 
-  const url = new URL(event.request.url);
+  // Solo GET
+  if (req.method !== "GET") return;
 
-  // Solo manejar requests del mismo origen
-  if (url.origin !== location.origin) return;
+  const url = new URL(req.url);
 
-  // HTML → Network First
-  if (event.request.destination === "document") {
+  // HTML → Network first (actualiza solo)
+  if (req.headers.get("accept")?.includes("text/html")) {
     event.respondWith(
-      fetch(event.request)
+      fetch(req)
         .then(resp => {
-          const copy = resp.clone();
-          caches.open(CACHE_NAME).then(c => c.put(event.request, copy));
+          const clone = resp.clone();
+          caches.open(CACHE_NAME).then(c => c.put(req, clone));
           return resp;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => caches.match(req))
     );
     return;
   }
 
-  // JS / CSS / manifest → Stale While Revalidate
-  if (
-    event.request.destination === "script" ||
-    event.request.destination === "style" ||
-    url.pathname.endsWith("manifest.json")
-  ) {
-    event.respondWith(
-      caches.match(event.request).then(cached => {
-        const fetchPromise = fetch(event.request).then(resp => {
-          caches.open(CACHE_NAME).then(c => c.put(event.request, resp.clone()));
-          return resp;
-        });
-        return cached || fetchPromise;
-      })
-    );
-    return;
-  }
-
-  // Audio / imágenes → Cache First
+  // JS / CSS / MP3 / demás → Cache first
   event.respondWith(
-    caches.match(event.request).then(resp => resp || fetch(event.request))
+    caches.match(req).then(cached => {
+      if (cached) return cached;
+
+      return fetch(req).then(resp => {
+        const clone = resp.clone();
+        caches.open(CACHE_NAME).then(c => c.put(req, clone));
+        return resp;
+      });
+    })
   );
 });
 
-/* ======================
-   MENSAJES
-====================== */
+// ==============================
+// MENSAJES
+// ==============================
 self.addEventListener("message", event => {
-  if (event.data?.type === "SKIP_WAITING") {
+  if (event.data === "SKIP_WAITING") {
     self.skipWaiting();
   }
 });
