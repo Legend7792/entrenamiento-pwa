@@ -32,7 +32,7 @@ self.addEventListener("activate", event => {
           if (key !== CACHE_NAME) return caches.delete(key);
         })
       )
-    )
+    );
   );
   self.clients.claim();
 });
@@ -77,11 +77,4 @@ self.addEventListener("fetch", event => {
       });
     })
   );
-});
-
-// ==============================
-// MENSAJES
-// ==============================
-self.addEventListener("message", event => {
-  if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
