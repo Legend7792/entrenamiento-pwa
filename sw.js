@@ -1,61 +1,96 @@
-const CACHE_VERSION = "v14"; // Cambiar en cada actualización
+const CACHE_VERSION = "v14";
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
-const urlsToCache = [
-  `/index.html?v=${CACHE_VERSION}`,
-  `/app.js?v=${CACHE_VERSION}`,
-  `/style.css?v=${CACHE_VERSION}`,
-  `/manifest.json?v=${CACHE_VERSION}`,
-  `/beep.mp3?v=${CACHE_VERSION}`
+
+const APP_SHELL = [
+  "/",
+  "/index.html",
+  "/app.js",
+  "/style.css",
+  "/manifest.json",
+  "/beep.mp3"
 ];
 
-// INSTALL
+/* ======================
+   INSTALL
+====================== */
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
+      .then(cache => cache.addAll(APP_SHELL))
       .then(() => self.skipWaiting())
   );
 });
 
-// ACTIVATE
+/* ======================
+   ACTIVATE
+====================== */
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
-        keys.map(key => {
-          if (key !== CACHE_NAME) return caches.delete(key);
-        })
+        keys
+          .filter(key => key !== CACHE_NAME)
+          .map(key => caches.delete(key))
       )
     )
   );
   self.clients.claim();
 });
 
-// FETCH
+/* ======================
+   FETCH
+====================== */
 self.addEventListener("fetch", event => {
-  const requestUrl = new URL(event.request.url);
+  if (event.request.method !== "GET") return;
 
-  // Network-first para archivos de la app (HTML, JS, CSS, manifest)
-  if ([".html", ".js", ".css", "manifest.json"].some(ext => requestUrl.pathname.endsWith(ext))) {
+  const url = new URL(event.request.url);
+
+  // Solo manejar requests del mismo origen
+  if (url.origin !== location.origin) return;
+
+  // HTML → Network First
+  if (event.request.destination === "document") {
     event.respondWith(
-      fetch(`${requestUrl.pathname}?v=${CACHE_VERSION}`)
+      fetch(event.request)
         .then(resp => {
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, resp.clone()));
+          const copy = resp.clone();
+          caches.open(CACHE_NAME).then(c => c.put(event.request, copy));
           return resp;
         })
         .catch(() => caches.match(event.request))
     );
-  } else {
-    // Cache-first para archivos estáticos (imágenes, mp3)
-    event.respondWith(
-      caches.match(event.request).then(resp => resp || fetch(event.request))
-    );
+    return;
   }
+
+  // JS / CSS / manifest → Stale While Revalidate
+  if (
+    event.request.destination === "script" ||
+    event.request.destination === "style" ||
+    url.pathname.endsWith("manifest.json")
+  ) {
+    event.respondWith(
+      caches.match(event.request).then(cached => {
+        const fetchPromise = fetch(event.request).then(resp => {
+          caches.open(CACHE_NAME).then(c => c.put(event.request, resp.clone()));
+          return resp;
+        });
+        return cached || fetchPromise;
+      })
+    );
+    return;
+  }
+
+  // Audio / imágenes → Cache First
+  event.respondWith(
+    caches.match(event.request).then(resp => resp || fetch(event.request))
+  );
 });
 
-// Mensajes desde la app
-self.addEventListener('message', e => {
-  if (e.data && e.data.type === 'SKIP_WAITING') {
-    self.skipWaiting(); // Fuerza reemplazo del SW
+/* ======================
+   MENSAJES
+====================== */
+self.addEventListener("message", event => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
   }
 });
