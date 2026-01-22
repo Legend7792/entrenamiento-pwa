@@ -218,16 +218,16 @@ function cargarEjerciciosDia() {
   ejerciciosDia = [...base, ...extra].map(ej => {
     const key = `${diaActual}_${ej.nombre}`;
     return {
-      nombre: ej.nombre,
-      series: ej.series,
-      repsMin: ej.repsMin,
-      repsMax: ej.repsMax,
-      peso: config.pesos[key] ?? ej.peso, // respeta el peso guardado
-      reps: Array(ej.series).fill(""),
-      incremento: 2,
-      noProgresar: false,
-      alFallo: ej.alFallo || false
-    };
+  nombre: ej.nombre,
+  series: ej.series,
+  repsMin: ej.repsMin,
+  repsMax: ej.alFallo ? 30 : ej.repsMax,
+  peso: ej.alFallo ? 0 : (config.pesos[key] ?? ej.peso),
+  reps: Array(ej.series).fill(""),
+  incremento: ej.alFallo ? 0 : 2,
+  noProgresar: ej.alFallo ? true : false,
+  alFallo: ej.alFallo || false
+};
   });
 }
 
@@ -241,9 +241,18 @@ function renderDia() {
   ejerciciosDia.forEach((ej, i) => {
     let seriesHTML = "";
     for (let s = 0; s < ej.series; s++) {
-      seriesHTML += `<input type="number" id="rep-${i}-${s}" placeholder="S${s + 1}" value="${ej.reps[s]}" 
-        onchange="ejerciciosDia[${i}].reps[${s}]=this.value === '' ? '' : Number(this.value)">`;
-    }
+  seriesHTML += `
+    <input 
+      type="number"
+      min="0"
+      max="${ej.alFallo ? 30 : ej.repsMax}"
+      id="rep-${i}-${s}"
+      placeholder="S${s + 1}"
+      value="${ej.reps[s]}"
+      oninput="actualizarSerie(${i}, ${s}, this.value, this)"
+    >
+  `;
+}
 
     cont.innerHTML += `
       <div class="ejercicio">
@@ -266,6 +275,24 @@ function renderDia() {
       </div>
     `;
   });
+}
+
+function actualizarSerie(ejIndex, serieIndex, valor, input) {
+  const ej = ejerciciosDia[ejIndex];
+  const reps = valor === "" ? "" : Number(valor);
+  ej.reps[serieIndex] = reps;
+
+  input.classList.remove("serie-ok", "serie-fail", "serie-mid");
+
+  if (ej.alFallo) return;
+
+  if (reps === ej.repsMax) {
+    input.classList.add("serie-ok");
+  } else if (reps < ej.repsMin) {
+    input.classList.add("serie-fail");
+  } else {
+    input.classList.add("serie-mid");
+  }
 }
 
 /*************************

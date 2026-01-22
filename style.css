@@ -228,3 +228,31 @@ select {
   padding: 6px 12px;
   font-size: 14px;
 }
+
+/* ==============================
+   BADGES SERIES
+================================ */
+.series input {
+  transition: all 0.25s ease;
+  font-weight: 600;
+}
+
+.series input.serie-ok {
+  background: #16a34a;
+  color: #fff;
+  border: 2px solid #15803d;
+}
+
+.series input.serie-fail {
+  background: #dc2626;
+  color: #fff;
+  border: 2px solid #991b1b;
+}
+
+.series input.serie-mid {
+  background: #facc15;
+  color: #222;
+  border: 2px solid #ca8a04;
+}
+
+
