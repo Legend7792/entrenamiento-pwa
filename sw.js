@@ -1,13 +1,13 @@
-const CACHE_VERSION = "v19";
+const CACHE_VERSION = "v20";
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 
-// Archivos CRÍTICOS (sin estos la app no vive)
 const CORE_ASSETS = [
-  "/index.html",
-  "/app.js",
-  "/style.css",
-  "/manifest.json",
-  "/beep.mp3"
+  "./",
+  "./index.html",
+  "./app.js",
+  "./style.css",
+  "./manifest.json",
+  "./beep.mp3"
 ];
 
 // ==============================
@@ -15,9 +15,7 @@ const CORE_ASSETS = [
 // ==============================
 self.addEventListener("install", event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(CORE_ASSETS);
-    })
+    caches.open(CACHE_NAME).then(cache => cache.addAll(CORE_ASSETS))
   );
   self.skipWaiting();
 });
@@ -29,11 +27,7 @@ self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
-        keys.map(key => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
+        keys.map(key => key !== CACHE_NAME && caches.delete(key))
       )
     )
   );
@@ -46,47 +40,28 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
 
-  // 1️⃣ NAVEGACIÓN (abrir app, recargar, volver desde background)
+  // NAVEGACIÓN
   if (event.request.mode === "navigate") {
     event.respondWith(
-      caches.match("/index.html").then(cached => {
-        if (cached) return cached;
-
-        // Fallback de emergencia (si Android limpió algo)
-        return fetch("/index.html").catch(() =>
-          new Response(
-            "<h1>App no disponible offline</h1>",
-            { headers: { "Content-Type": "text/html" } }
-          )
-        );
+      caches.match("./index.html").then(cached => {
+        return cached || fetch(event.request);
       })
     );
     return;
   }
 
-  // 2️⃣ ARCHIVOS ESTÁTICOS (JS, CSS, audio, etc.)
+  // RECURSOS
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
 
-      return fetch(event.request)
-        .then(resp => {
-          const clone = resp.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, clone);
-          });
-          return resp;
-        })
-        .catch(() => cached);
+      return fetch(event.request).then(resp => {
+        const clone = resp.clone();
+        caches.open(CACHE_NAME).then(cache => {
+          cache.put(event.request, clone);
+        });
+        return resp;
+      });
     })
   );
-});
-
-// ==============================
-// MENSAJES (actualización forzada)
-// ==============================
-self.addEventListener("message", event => {
-  if (event.data === "SKIP_WAITING") {
-    self.skipWaiting();
-  }
 });
