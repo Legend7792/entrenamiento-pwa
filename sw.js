@@ -1,8 +1,8 @@
-const CACHE_VERSION = "v18";
+const CACHE_VERSION = "v19";
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 
-const PRECACHE_URLS = [
-  "/",
+// Archivos CRÍTICOS (sin estos la app no vive)
+const CORE_ASSETS = [
   "/index.html",
   "/app.js",
   "/style.css",
@@ -16,7 +16,7 @@ const PRECACHE_URLS = [
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(PRECACHE_URLS);
+      return cache.addAll(CORE_ASSETS);
     })
   );
   self.skipWaiting();
@@ -30,7 +30,9 @@ self.addEventListener("activate", event => {
     caches.keys().then(keys =>
       Promise.all(
         keys.map(key => {
-          if (key !== CACHE_NAME) return caches.delete(key);
+          if (key !== CACHE_NAME) {
+            return caches.delete(key);
+          }
         })
       )
     )
@@ -42,27 +44,49 @@ self.addEventListener("activate", event => {
 // FETCH
 // ==============================
 self.addEventListener("fetch", event => {
+  if (event.request.method !== "GET") return;
 
-  // 👉 NAVEGACIÓN (HTML)
+  // 1️⃣ NAVEGACIÓN (abrir app, recargar, volver desde background)
   if (event.request.mode === "navigate") {
     event.respondWith(
-      caches.match("/index.html")
+      caches.match("/index.html").then(cached => {
+        if (cached) return cached;
+
+        // Fallback de emergencia (si Android limpió algo)
+        return fetch("/index.html").catch(() =>
+          new Response(
+            "<h1>App no disponible offline</h1>",
+            { headers: { "Content-Type": "text/html" } }
+          )
+        );
+      })
     );
     return;
   }
 
-  // 👉 OTROS ARCHIVOS (JS, CSS, audio, etc.)
+  // 2️⃣ ARCHIVOS ESTÁTICOS (JS, CSS, audio, etc.)
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
 
-      return fetch(event.request).then(resp => {
-        const clone = resp.clone();
-        caches.open(CACHE_NAME).then(cache => {
-          cache.put(event.request, clone);
-        });
-        return resp;
-      });
+      return fetch(event.request)
+        .then(resp => {
+          const clone = resp.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, clone);
+          });
+          return resp;
+        })
+        .catch(() => cached);
     })
   );
+});
+
+// ==============================
+// MENSAJES (actualización forzada)
+// ==============================
+self.addEventListener("message", event => {
+  if (event.data === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
