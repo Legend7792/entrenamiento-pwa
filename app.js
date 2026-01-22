@@ -186,17 +186,42 @@ function abrirDia(diaKey) {
   diaActual = diaKey;
   history.pushState({}, "");
 
-  document.getElementById("menu").classList.add("oculto");
-  document.getElementById("pantalla-dia").classList.remove("oculto");
-  document.getElementById("pantalla-historial").classList.add("oculto");
-  document.getElementById("pantalla-detalle").classList.add("oculto");
+  // Pantallas
+  const menu = document.getElementById("menu");
+  const pantallaDia = document.getElementById("pantalla-dia");
+  const pantallaHistorial = document.getElementById("pantalla-historial");
+  const pantallaDetalle = document.getElementById("pantalla-detalle");
 
-  document.getElementById("titulo-dia").innerText = rutina[diaKey].nombre;
+  if (!menu || !pantallaDia || !pantallaHistorial || !pantallaDetalle) return;
+
+  menu.classList.add("oculto");
+  pantallaDia.classList.remove("oculto");
+  pantallaHistorial.classList.add("oculto");
+  pantallaDetalle.classList.add("oculto");
+
+  // Título
+  const tituloDia = document.getElementById("titulo-dia");
+  if (tituloDia) tituloDia.innerText = rutina[diaKey].nombre;
 
   cargarEjerciciosDia();
   resetTemporizador();
   renderDia();
+
+  // HIT (día 5: potencia)
+  const hit = document.getElementById("hit-crono");
+  if (hit) hit.classList.toggle("oculto", diaKey !== "potencia");
+
+  // Temporizador en días normales
+  const timer = document.getElementById("temporizador");
+  if (timer) timer.classList.toggle("oculto", diaKey === "potencia");
 }
+
+if (diaActual === "potencia") {
+  document.getElementById("hit-crono").classList.remove("oculto");
+} else {
+  document.getElementById("hit-crono").classList.add("oculto");
+}
+
 
 function volverMenu() {
   document.getElementById("pantalla-dia").classList.add("oculto");
@@ -304,6 +329,61 @@ function guardarPesoBase(nombre, valor) {
   guardarConfig();
 }
 
+
+/*************************
+HIT – CRONÓMETRO REAL
+*************************/
+let hitActivo = false;
+let hitInicio = null;
+let hitTiempoAcumulado = 0;
+let hitInterval = null;
+let hitTipo = "HIT 1";
+
+document.addEventListener("DOMContentLoaded", () => {
+  const selectHit = document.getElementById("hit-tipo");
+  if (selectHit) {
+    selectHit.addEventListener("change", (e) => {
+      hitTipo = e.target.value;
+    });
+  }
+});
+
+function iniciarHIT() {
+  if (hitActivo) return;
+
+  hitActivo = true;
+  hitInicio = Date.now();
+
+  hitInterval = setInterval(() => {
+    const ahora = Date.now();
+    const total = hitTiempoAcumulado + Math.floor((ahora - hitInicio) / 1000);
+    document.getElementById("tiempo-hit").innerText = formatearTiempo(total);
+  }, 500);
+}
+
+function pausarHIT() {
+  if (!hitActivo) return;
+
+  hitTiempoAcumulado += Math.floor((Date.now() - hitInicio) / 1000);
+  hitActivo = false;
+  clearInterval(hitInterval);
+}
+
+function resetHIT() {
+  hitActivo = false;
+  clearInterval(hitInterval);
+  hitTiempoAcumulado = 0;
+  hitInicio = null;
+  document.getElementById("tiempo-hit").innerText = "0:00";
+}
+
+function obtenerTiempoHIT() {
+  if (hitActivo) {
+    pausarHIT();
+  }
+  return hitTiempoAcumulado;
+}
+
 /*************************
  * FINALIZAR SESIÓN CORREGIDO
  *************************/
@@ -315,14 +395,16 @@ function finalizarDia() {
 
   // Crear objeto de sesión con fecha completa
   const sesion = {
-    fecha: new Date().toISOString(), // fecha + hora
-    dia: rutina[diaActual].nombre,
-    ejercicios: ejerciciosDia.map(ej => ({
-      nombre: ej.nombre,
-      peso: ej.peso,
-      reps: [...ej.reps]
-    }))
-  };
+  fecha: new Date().toISOString(),
+  dia: rutina[diaActual].nombre,
+  ejercicios: ejerciciosDia.map(ej => ({
+    nombre: ej.nombre,
+    peso: ej.peso,
+    reps: [...ej.reps]
+  })), // 👈 COMA AQUÍ (OBLIGATORIA)
+  tiempoHIT: diaActual === "potencia" ? obtenerTiempoHIT() : null,
+  tipoHIT: diaActual === "potencia" ? hitTipo : null 
+};
 
   // Calcular progresión
   ejerciciosDia.forEach(ej => {
@@ -361,6 +443,8 @@ function finalizarDia() {
   mensaje += detallesProgreso.join("\n");
   alert(mensaje);
 }
+
+resetHIT();
 
 /*************************
  * HISTORIAL CORREGIDO
@@ -415,7 +499,7 @@ function verDetalle(index) {
   document.getElementById("pantalla-detalle").classList.remove("oculto");
 
   const cont = document.getElementById("detalle-sesion");
-  cont.innerHTML = `<p>${s.fecha} — ${s.dia} (${formatearTiempo(s.tiempo)})</p>`;
+cont.innerHTML = `<p>${s.fecha} — ${s.dia} (${s.tiempoHIT !== null ? formatearTiempo(s.tiempoHIT) : "0:00"})</p>`;
   s.ejercicios.forEach(ej => {
     cont.innerHTML += `
       <div class="ejercicio-detalle">
@@ -440,7 +524,10 @@ function añadirEjercicio() {
   if (!rutina[diaKey]) { alert("Día inválido"); return; }
   if (!nombre || series <= 0 || repsMin <= 0 || repsMax <= 0) { alert("Datos incompletos"); return; }
 
-  const nuevo = { nombre, peso, series, repsMin, repsMax };
+  const nuevo = { nombre, peso, series, repsMin, repsMax,alFallo: document.getElementById("nuevo-fallo").checked,
+  noProgresar: document.getElementById("nuevo-no-progresar").checked,
+  reps: []
+};
   if (!config.ejerciciosExtra[diaKey]) config.ejerciciosExtra[diaKey] = [];
   config.ejerciciosExtra[diaKey].push(nuevo);
   guardarConfig();
@@ -599,4 +686,25 @@ function forzarActualizacion() {
   } else {
     alert("Service Worker no activo. Por favor recarga la app manualmente.");
   }
+}
+
+/*************************
+BORRAR RUTINA COMPLETA DEL DÍA
+*************************/
+function borrarRutinaDia() {
+  if (!diaActual) return;
+
+  if (!confirm("Esto borrará TODA la rutina del día. ¿Continuar?")) return;
+
+  // Eliminar ejercicios base
+  rutina[diaActual].ejercicios = [];
+
+  // Eliminar extras
+  delete config.ejerciciosExtra[diaActual];
+
+  guardarConfig();
+  cargarEjerciciosDia();
+  renderDia();
+
+  alert("Rutina del día eliminada. Puedes crear una nueva desde 'Añadir ejercicio'.");
 }

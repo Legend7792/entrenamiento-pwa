@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Entrenamiento</title>
-<link rel="stylesheet" href="./style.css?v=20">
-<script src="./app.js?v=20" defer></script>
-<link rel="manifest" href="./manifest.json?v=20">
+<link rel="stylesheet" href="./style.css?v=25">
+<script src="./app.js?v=25" defer></script>
+<link rel="manifest" href="./manifest.json?v=25">
 <meta name="theme-color" content="#121212">
 </head>
 
@@ -56,6 +56,20 @@
   <button onclick="resetTemporizador()">Reset</button>
 </div>
 
+  <div id="hit-crono" class="oculto">
+  <h3>HIT Cronómetro</h3>
+   <label for="hit-tipo">Tipo de HIT:</label>
+  <select id="hit-tipo">
+    <option value="HIT 1">HIT 1</option>
+    <option value="HIT 2">HIT 2</option>
+  </select>
+
+  <h1 id="tiempo-hit">0:00</h1>
+  <button onclick="iniciarHIT()">Iniciar</button>
+  <button onclick="pausarHIT()">Pausar</button>
+  <button onclick="resetHIT()">Reset</button>
+</div>
+
   <!-- AÑADIR EJERCICIO (AQUÍ) -->
   <div class="ejercicio">
     <h3>Añadir ejercicio</h3>
@@ -73,12 +87,14 @@
     <input id="nuevo-series" type="number" placeholder="Series">
     <input id="nuevo-reps-min" type="number" placeholder="Reps mín">
     <input id="nuevo-reps-max" type="number" placeholder="Reps máx">
-
+    <input type="checkbox" id="nuevo-fallo">Al fallo
+    <input type="checkbox" id="nuevo-no-progresar">No progresar
     <button onclick="añadirEjercicio()">Añadir ejercicio</button>
   </div>
 
   <button onclick="finalizarDia()">Finalizar sesión</button>
   <button onclick="volverMenu()">Volver</button>
+  <button class="danger" onclick="borrarRutinaDia()">Borrar rutina completa</button>  
 </div>  
   
   <!-- VISTA HISTORIAL -->
