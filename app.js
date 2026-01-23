@@ -4,6 +4,7 @@
 const sonidoTimer = new Audio("beep.mp3");
 sonidoTimer.preload = "auto";
 sonidoTimer.loop = true; // para que suene continuo hasta que lo pares
+let audioDesbloqueado = false;
 
 const rutina = {
   torso_fuerza: {
@@ -140,6 +141,8 @@ function mostrarTiempo() {
 
 // Iniciar temporizador (segundo plano)
 function iniciarTemporizador(min = 0, seg = 0) {
+desbloquearAudio(); // ← seguridad extra
+
   if (timerID) return;
 
   tiempoRestante = min * 60 + seg;
@@ -183,6 +186,8 @@ document.addEventListener("DOMContentLoaded", () => {
  * NAVEGACIÓN
  *************************/
 function abrirDia(diaKey) {
+  desbloquearAudio(); // ← AÑADIR AQUÍ (primera línea)
+
   diaActual = diaKey;
   history.pushState({}, "");
 
@@ -707,4 +712,21 @@ function borrarRutinaDia() {
   renderDia();
 
   alert("Rutina del día eliminada. Puedes crear una nueva desde 'Añadir ejercicio'.");
+}
+
+function desbloquearAudio() {
+  if (audioDesbloqueado) return;
+
+  sonidoTimer.volume = 0; // no se oye
+  sonidoTimer.play()
+    .then(() => {
+      sonidoTimer.pause();
+      sonidoTimer.currentTime = 0;
+      sonidoTimer.volume = 1;
+      audioDesbloqueado = true;
+      console.log("Audio desbloqueado correctamente");
+    })
+    .catch(err => {
+      console.warn("Audio aún bloqueado:", err);
+    });
 }
