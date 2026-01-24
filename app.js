@@ -160,10 +160,18 @@ function iniciarTemporizador(min = 0, seg = 0) {
   }, 200); // actualiza cada 0.2s
 }
 
-if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-  navigator.serviceWorker.controller.postMessage({
-    type: "TIMER_FINISHED"
-  });
+if (tiempoRestante <= 0) {
+  clearInterval(timerID);
+  timerID = null;
+  sonidoTimer.currentTime = 0;
+  sonidoTimer.play();
+
+  // Mensaje al SW
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: "TIMER_FINISHED"
+    });
+  }
 }
 
 // Pausar temporizador
