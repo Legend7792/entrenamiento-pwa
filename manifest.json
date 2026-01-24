@@ -3,7 +3,7 @@
   "short_name": "Entreno",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#121212",
+  "background_color": "#ffffff",
   "theme_color": "#121212",
   "orientation": "portrait",
   "icons": [
@@ -18,7 +18,7 @@
       "type": "image/png"
     },
     {
-      "src": "icons/icon-512-maskable.png",
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

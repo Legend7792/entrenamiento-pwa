@@ -1,7 +1,7 @@
 /*************************
  * DATOS DE LA RUTINA (BASE - NO SE MODIFICA)
  *************************/
-const sonidoTimer = new Audio("beep.mp3");
+const sonidoTimer = new Audio("./beep.mp3");
 sonidoTimer.preload = "auto";
 sonidoTimer.loop = true; // para que suene continuo hasta que lo pares
 let audioDesbloqueado = false;
@@ -154,23 +154,18 @@ function iniciarTemporizador(min = 0, seg = 0) {
     if (tiempoRestante <= 0) {
       clearInterval(timerID);
       timerID = null;
+
       sonidoTimer.currentTime = 0;
       sonidoTimer.play();
+      mostrarModalTimer();
+      notificarTimerTerminado(); // notificación
     }
-  }, 200); // actualiza cada 0.2s
+  }, 1000);
 }
 
-if (tiempoRestante <= 0) {
-  clearInterval(timerID);
-  timerID = null;
-  sonidoTimer.currentTime = 0;
-  sonidoTimer.play();
-
-  // Mensaje al SW
-  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({
-      type: "TIMER_FINISHED"
-    });
+function notificarTimerTerminado() {
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: "TIMER_FINISHED" });
   }
 }
 
@@ -198,7 +193,7 @@ document.addEventListener("DOMContentLoaded", () => {
  * NAVEGACIÓN
  *************************/
 function abrirDia(diaKey) {
-
+  desbloquearAudioPorGesto();
   diaActual = diaKey;
   history.pushState({}, "");
 
@@ -746,18 +741,29 @@ document.addEventListener("click", function handler() {
   document.removeEventListener("click", handler);
 }, { once: true });
 
-
-if ("Notification" in window && Notification.permission === "default") {
-  Notification.requestPermission();
+if ("Notification" in window && Notification.permission !== "granted") {
+Notification.requestPermission().then(permission => {
+if (permission !== "granted") console.warn("Notificaciones no activadas");
+});
 }
 
-
-if (navigator.serviceWorker) {
+if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("message", event => {
     if (event.data?.type === "RESET_TIMER") {
-      resetearTemporizador();
+      resetTemporizador();
     }
   });
 }
 
+function mostrarModalTimer() {
+  document.getElementById("modal-timer").classList.remove("oculto");
+}
 
+function ocultarModalTimer() {
+  document.getElementById("modal-timer").classList.add("oculto");
+}
+
+function resetDesdeModal() {
+  resetTemporizador();
+  ocultarModalTimer();
+}
