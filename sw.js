@@ -66,3 +66,37 @@ self.addEventListener("fetch", event => {
   );
 });
 
+
+self.addEventListener("message", event => {
+  if (event.data?.type === "TIMER_FINISHED") {
+    self.registration.showNotification("⏱ Tiempo finalizado", {
+      body: "El temporizador llegó a 0",
+      tag: "timer-finished",
+      renotify: true,
+      requireInteraction: true,
+      actions: [
+        {
+          action: "reset-timer",
+          title: "Resetear"
+        }
+      ]
+    });
+  }
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+
+  if (event.action === "reset-timer") {
+    event.waitUntil(
+      self.clients.matchAll({ type: "window", includeUncontrolled: true })
+        .then(clients => {
+          for (const client of clients) {
+            client.postMessage({ type: "RESET_TIMER" });
+          }
+        })
+    );
+  }
+});
+
+

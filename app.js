@@ -141,8 +141,6 @@ function mostrarTiempo() {
 
 // Iniciar temporizador (segundo plano)
 function iniciarTemporizador(min = 0, seg = 0) {
-desbloquearAudio(); // ← seguridad extra
-
   if (timerID) return;
 
   tiempoRestante = min * 60 + seg;
@@ -160,6 +158,12 @@ desbloquearAudio(); // ← seguridad extra
       sonidoTimer.play();
     }
   }, 200); // actualiza cada 0.2s
+}
+
+if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+  navigator.serviceWorker.controller.postMessage({
+    type: "TIMER_FINISHED"
+  });
 }
 
 // Pausar temporizador
@@ -186,7 +190,6 @@ document.addEventListener("DOMContentLoaded", () => {
  * NAVEGACIÓN
  *************************/
 function abrirDia(diaKey) {
-  desbloquearAudio(); // ← AÑADIR AQUÍ (primera línea)
 
   diaActual = diaKey;
   history.pushState({}, "");
@@ -714,19 +717,39 @@ function borrarRutinaDia() {
   alert("Rutina del día eliminada. Puedes crear una nueva desde 'Añadir ejercicio'.");
 }
 
-function desbloquearAudio() {
+function desbloquearAudioPorGesto() {
   if (audioDesbloqueado) return;
 
-  sonidoTimer.volume = 0; // no se oye
-  sonidoTimer.play()
-    .then(() => {
-      sonidoTimer.pause();
-      sonidoTimer.currentTime = 0;
-      sonidoTimer.volume = 1;
-      audioDesbloqueado = true;
-      console.log("Audio desbloqueado correctamente");
-    })
-    .catch(err => {
-      console.warn("Audio aún bloqueado:", err);
-    });
+  sonidoTimer.muted = true;
+
+  sonidoTimer.play().then(() => {
+    sonidoTimer.pause();
+    sonidoTimer.currentTime = 0;
+    sonidoTimer.muted = false;
+    audioDesbloqueado = true;
+    console.log("Audio desbloqueado por gesto real");
+  }).catch(err => {
+    console.warn("Audio bloqueado:", err);
+  });
 }
+
+document.addEventListener("click", function handler() {
+  desbloquearAudioPorGesto();
+  document.removeEventListener("click", handler);
+}, { once: true });
+
+
+if ("Notification" in window && Notification.permission === "default") {
+  Notification.requestPermission();
+}
+
+
+if (navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener("message", event => {
+    if (event.data?.type === "RESET_TIMER") {
+      resetearTemporizador();
+    }
+  });
+}
+
+
