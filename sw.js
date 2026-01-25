@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v30";
+const CACHE_VERSION = "v31";
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 
 const CORE_ASSETS = [

@@ -1,10 +1,54 @@
 /*************************
  * DATOS DE LA RUTINA (BASE - NO SE MODIFICA)
  *************************/
-const sonidoTimer = new Audio("./beep.mp3");
-sonidoTimer.preload = "auto";
-sonidoTimer.loop = true; // para que suene continuo hasta que lo pares
-let audioDesbloqueado = false;
+let audioCtx;
+let bufferBeep;
+let sourceBeep;
+
+async function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  const resp = await fetch("./beep.mp3");
+  const arrayBuffer = await resp.arrayBuffer();
+  bufferBeep = await audioCtx.decodeAudioData(arrayBuffer);
+}
+
+function desbloquearAudioPorGesto() {
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+}
+
+function playBeep() {
+  if (!audioCtx) {
+    console.warn("Audio no inicializado");
+    return; // no recursión
+  }
+
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume().catch(e => console.warn("No se pudo reanudar audio", e));
+  }
+
+  sourceBeep = audioCtx.createBufferSource();
+  sourceBeep.buffer = bufferBeep;
+  sourceBeep.loop = true;
+  sourceBeep.connect(audioCtx.destination);
+  sourceBeep.start();
+}
+
+function stopBeep() {
+  if (sourceBeep) {
+    try {
+      sourceBeep.stop();
+      sourceBeep.disconnect();
+    } catch (e) {}
+    sourceBeep = null;
+  }
+}
+
 
 const rutina = {
   torso_fuerza: {
@@ -155,26 +199,19 @@ function iniciarTemporizador(min = 0, seg = 0) {
       clearInterval(timerID);
       timerID = null;
 
-      sonidoTimer.currentTime = 0;
-      sonidoTimer.play();
+      playBeep();
       mostrarModalTimer();
-      notificarTimerTerminado(); // notificación
     }
   }, 1000);
 }
 
-function notificarTimerTerminado() {
-  if (navigator.serviceWorker?.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: "TIMER_FINISHED" });
-  }
-}
+
 
 // Pausar temporizador
 function pausarTemporizador() {
   clearInterval(timerID);
   timerID = null;
-  sonidoTimer.pause();
-  sonidoTimer.currentTime = 0;
+  stopBeep();
 }
 
 // Resetear temporizador
@@ -278,7 +315,7 @@ function renderDia() {
     let seriesHTML = "";
     for (let s = 0; s < ej.series; s++) {
   seriesHTML += `
-    <input 
+    <input
       type="number"
       min="0"
       max="${ej.alFallo ? 30 : ej.repsMax}"
@@ -720,26 +757,7 @@ function borrarRutinaDia() {
   alert("Rutina del día eliminada. Puedes crear una nueva desde 'Añadir ejercicio'.");
 }
 
-function desbloquearAudioPorGesto() {
-  if (audioDesbloqueado) return;
 
-  sonidoTimer.muted = true;
-
-  sonidoTimer.play().then(() => {
-    sonidoTimer.pause();
-    sonidoTimer.currentTime = 0;
-    sonidoTimer.muted = false;
-    audioDesbloqueado = true;
-    console.log("Audio desbloqueado por gesto real");
-  }).catch(err => {
-    console.warn("Audio bloqueado:", err);
-  });
-}
-
-document.addEventListener("click", function handler() {
-  desbloquearAudioPorGesto();
-  document.removeEventListener("click", handler);
-}, { once: true });
 
 if ("Notification" in window && Notification.permission !== "granted") {
 Notification.requestPermission().then(permission => {
@@ -767,3 +785,18 @@ function resetDesdeModal() {
   resetTemporizador();
   ocultarModalTimer();
 }
+
+
+document.addEventListener("DOMContentLoaded", async () => {
+  renderTimers();
+  // Inicializar audio pero capturar errores
+  initAudio().catch(e => console.warn("Audio no cargado:", e));
+});
+
+document.addEventListener("click", async () => {
+  if (!audioCtx) {
+    await initAudio();
+  }
+  desbloquearAudioPorGesto();
+}, { once: true });
+
