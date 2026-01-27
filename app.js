@@ -515,11 +515,16 @@ function abrirHistorial() {
   // Obtener historial completo
   const historial = JSON.parse(localStorage.getItem("historial")) || [];
 
-  historial.forEach((s, i) => {
+  historial
+  .slice()
+  .reverse()
+  .forEach((s, i) => {
     cont.innerHTML += `
       <div class="historial-item">
         <p>${new Date(s.fecha).toLocaleString()} — ${s.dia}</p>
-        <button onclick="verDetalle(${i})">Ver detalles</button>
+        <button onclick="verDetalle(${historial.length - 1 - i})">
+          Ver detalles
+        </button>
       </div>
     `;
   });
