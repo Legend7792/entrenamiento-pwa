@@ -38,6 +38,22 @@
   <h2 id="titulo-dia"></h2>
   <div id="contenido"></div>
   
+  <!-- CRONOMETRO -->
+<div id="hit-crono" class="oculto">
+  <h3>HIT Cronómetro</h3>
+   <label for="hit-tipo">Tipo de HIT:</label>
+  <select id="hit-tipo">
+    <option value="HIT 1">HIT 1</option>
+    <option value="HIT 2">HIT 2</option>
+  </select>
+
+  <h1 id="tiempo-hit">0:00</h1>
+  <button onclick="iniciarHIT()">Iniciar</button>
+  <button onclick="pausarHIT()">Pausar</button>
+  <button onclick="resetHIT()">Reset</button>
+</div>
+
+
   <!-- TEMPORIZADOR -->
 <div id="temporizador" class="ejercicio">
   <h3>Temporizadores</h3>
@@ -56,19 +72,6 @@
   <button onclick="resetTemporizador()">Reset</button>
 </div>
 
-  <div id="hit-crono" class="oculto">
-  <h3>HIT Cronómetro</h3>
-   <label for="hit-tipo">Tipo de HIT:</label>
-  <select id="hit-tipo">
-    <option value="HIT 1">HIT 1</option>
-    <option value="HIT 2">HIT 2</option>
-  </select>
-
-  <h1 id="tiempo-hit">0:00</h1>
-  <button onclick="iniciarHIT()">Iniciar</button>
-  <button onclick="pausarHIT()">Pausar</button>
-  <button onclick="resetHIT()">Reset</button>
-</div>
 
 <div id="modal-timer" class="modal oculto">
   <div class="modal-content">

@@ -102,8 +102,7 @@ const rutina = {
   potencia: {
     nombre: "Día 5 – Potencia",
     ejercicios: [
-      { nombre: "Clean", peso: 40, series: 5, repsMin: 3, repsMax: 3 },
-      { nombre: "HIIT", peso: 0, series: 1, repsMin: 8, repsMax: 12 } // min y max en minutos
+      { nombre: "Clean", peso: 40, series: 5, repsMin: 3, repsMax: 3 }
     ]
   }
 };
@@ -261,7 +260,7 @@ function abrirDia(diaKey) {
 
   // Temporizador en días normales
   const timer = document.getElementById("temporizador");
-  if (timer) timer.classList.toggle("oculto", diaKey === "potencia");
+  if (timer) timer.classList.toggle("oculto", diaKey === "");
 }
 
 if (diaActual === "potencia") {
@@ -521,7 +520,10 @@ function abrirHistorial() {
   .forEach((s, i) => {
     cont.innerHTML += `
       <div class="historial-item">
-        <p>${new Date(s.fecha).toLocaleString()} — ${s.dia}</p>
+        <p>
+  ${new Date(s.fecha).toLocaleString()} — ${s.dia}
+  ${s.tiempoHIT !== null ? ` — ${s.tipoHIT} (${formatearTiempo(s.tiempoHIT)})` : ""}
+</p>
         <button onclick="verDetalle(${historial.length - 1 - i})">
           Ver detalles
         </button>
@@ -552,7 +554,14 @@ function verDetalle(index) {
   document.getElementById("pantalla-detalle").classList.remove("oculto");
 
   const cont = document.getElementById("detalle-sesion");
-cont.innerHTML = `<p>${s.fecha} — ${s.dia} (${s.tiempoHIT !== null ? formatearTiempo(s.tiempoHIT) : "0:00"})</p>`;
+cont.innerHTML = `
+  <p>
+    ${new Date(s.fecha).toLocaleString()} — ${s.dia}
+    ${s.tiempoHIT !== null
+      ? ` — ${s.tipoHIT}: ${formatearTiempo(s.tiempoHIT)}`
+      : ""}
+  </p>
+`;
   s.ejercicios.forEach(ej => {
     cont.innerHTML += `
       <div class="ejercicio-detalle">
