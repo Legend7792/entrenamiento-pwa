@@ -1025,7 +1025,7 @@ function cerrarSidebar() {
 document.addEventListener("DOMContentLoaded", async () => {
   // 1. Render timers
   renderTimers();
-  
+
   // 2. Renderizar botones de días
   renderizarBotonesDias();
 
@@ -1053,12 +1053,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (saved.repsPorEjercicio) {
     saved.repsPorEjercicio.forEach(savedEj => {
-      const ej = ejerciciosDia.find(e => e.nombre === savedEj.nom>
+      const ej = ejerciciosDia.find(e => e.nombre === savedEj.nombre);
       if (ej) ej.reps = savedEj.reps;
     });
   }
-
-
 
   if (tiempoFinal && tiempoFinal > Date.now()) {
     iniciarTemporizador(0, tiempoRestante);
