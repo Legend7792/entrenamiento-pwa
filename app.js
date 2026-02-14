@@ -1,10 +1,23 @@
 /*************************
  * DATOS DE LA RUTINA (BASE - NO SE MODIFICA)
  *************************/
+import "./auth.js";
+import "./cloud.js";
+import { loadRutinaUsuario } from "./rutinaUsuario.js";
+import "./userState.js";
+import { renderizarSelectorRutinas, obtenerRutinaActiva, RUTINA_BASE_ID } from "./selectorRutinas.js";
+import "./themes.js";
+import "./editorRutinas.js";
 let audioCtx;
 let bufferBeep;
 let sourceBeep;
-
+let estadoApp = JSON.parse(localStorage.getItem("estadoApp")) || {
+  pantalla: "menu",
+  diaActual: null,
+  ejerciciosDia: null,
+  tiempoRestante: 0,
+  tiempoFinal: null
+};
 async function initAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -28,6 +41,11 @@ function playBeep() {
     return; // no recursión
   }
 
+ if (!bufferBeep) {
+  console.warn("Buffer de audio no cargado");
+  return;
+}
+
   if (audioCtx.state === "suspended") {
     audioCtx.resume().catch(e => console.warn("No se pudo reanudar audio", e));
   }
@@ -49,7 +67,38 @@ function stopBeep() {
   }
 }
 
+// AÑADIR ESTA FUNCIÓN NUEVA:
+function obtenerRutinaCompleta() {
+  const rutinaActiva = obtenerRutinaActiva();
+  
+  if (rutinaActiva === RUTINA_BASE_ID) {
+    // Usar rutina base (la que ya existe en app.js)
+    return rutina;
+  } else {
+    // Convertir rutina personalizada al formato esperado
+    const rutinaUsuario = loadRutinaUsuario();
+    const rutinaConvertida = {};
+    
+    rutinaUsuario.dias.forEach((dia, idx) => {
+      const diaKey = `dia_personalizado_${idx}`;
+      rutinaConvertida[diaKey] = {
+        nombre: dia.nombre,
+        ejercicios: dia.ejercicios.map(ej => ({
+          nombre: ej.nombre,
+          peso: ej.peso,
+          series: ej.series,
+          repsMin: ej.repsMin,
+          repsMax: ej.repsMax,
+          alFallo: ej.alFallo || false
+        }))
+      };
+    });
+    
+    return rutinaConvertida;
+  }
+}
 
+// Mantén la rutina base como está (NO la borres)
 const rutina = {
   torso_fuerza: {
     nombre: "Día 1 – Torso Fuerza",
@@ -131,7 +180,7 @@ let ejerciciosDia = []; // array de objetos con estado de inputs
 let timerID = null;
 let tiempoRestante = 0;
 let tiempoFinal = null;
-
+let timerPausado = false;
 // Lista de timers guardados
 let timers = JSON.parse(localStorage.getItem("timers")) || [
   { nombre: "Descanso corto", minutos: 1, segundos: 30 },
@@ -145,17 +194,27 @@ function guardarTimers() {
 // Renderizar lista de timers
 function renderTimers() {
   const cont = document.getElementById("lista-timers");
+  if (!cont) return;
   cont.innerHTML = "";
   timers.forEach((t, i) => {
     cont.innerHTML += `
-      <div class="timer-item">
-        <p>${t.nombre} — ${t.minutos}m ${t.segundos}s</p>
-        <button onclick="borrarTimer(${i})">Borrar</button>
-        <button onclick="iniciarTemporizador(${t.minutos}, ${t.segundos})">Iniciar</button>
-      </div>
-    `;
+  <div class="timer-item">
+    <p>${t.nombre} — ${t.minutos}m ${t.segundos}s</p>
+    <button onclick="borrarTimer(${i})">Borrar</button>
+    <button onclick="iniciarTemporizador(${t.minutos}, ${t.segundos})">Iniciar</button>
+  </div>
+`;
   });
 }
+
+function mostrarTiempo() {
+  const el = document.getElementById("tiempo");
+  if (!el) return;
+  const m = Math.floor(tiempoRestante / 60);
+  const s = tiempoRestante % 60;
+  el.innerText = `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 
 // Añadir timer
 function añadirTimer() {
@@ -175,61 +234,99 @@ function borrarTimer(index) {
   renderTimers();
 }
 
-// Mostrar tiempo en pantalla
-function mostrarTiempo() {
-  const m = Math.floor(tiempoRestante / 60);
-  const s = tiempoRestante % 60;
-  document.getElementById("tiempo").innerText = `${m}:${s.toString().padStart(2, "0")}`;
-}
+
 
 // Iniciar temporizador (segundo plano)
 function iniciarTemporizador(min = 0, seg = 0) {
   if (timerID) return;
 
-  tiempoRestante = min * 60 + seg;
-  tiempoFinal = Date.now() + tiempoRestante * 1000;
+  const botonPausar = document.querySelector('#temporizador button[onclick*="pausar"]');
+
+  // si estaba pausado, continuar
+  if (timerPausado && tiempoRestante > 0) {
+    tiempoFinal = Date.now() + tiempoRestante * 1000;
+    timerPausado = false;
+  } else {
+    // inicio nuevo
+    tiempoRestante = min * 60 + seg;
+    tiempoFinal = Date.now() + tiempoRestante * 1000;
+  }
+
+  if (botonPausar) botonPausar.innerText = "Pausar";
 
   timerID = setInterval(() => {
     const ahora = Date.now();
-    tiempoRestante = Math.max(0, Math.round((tiempoFinal - ahora) / 1000));
+    tiempoRestante = Math.max(
+      0,
+      Math.round((tiempoFinal - ahora) / 1000)
+    );
+
     mostrarTiempo();
 
     if (tiempoRestante <= 0) {
       clearInterval(timerID);
       timerID = null;
-
+      timerPausado = false;
       playBeep();
       mostrarModalTimer();
     }
   }, 1000);
+
+  guardarEstadoApp();
 }
 
 
-
-// Pausar temporizador
+// Pausar/Reanudar temporizador
 function pausarTemporizador() {
-  clearInterval(timerID);
-  timerID = null;
-  stopBeep();
+  const botonPausar = document.querySelector('#temporizador button[onclick*="pausar"]');
+  
+  if (!timerID && timerPausado) {
+    // Está pausado -> Reanudar
+    iniciarTemporizador(0, tiempoRestante);
+    if (botonPausar) botonPausar.innerText = "Pausar";
+  } else if (timerID) {
+    // Está corriendo -> Pausar
+    clearInterval(timerID);
+    timerID = null;
+    
+    // Recalcular tiempo restante REAL
+    tiempoRestante = Math.max(
+      0,
+      Math.round((tiempoFinal - Date.now()) / 1000)
+    );
+    
+    timerPausado = true;
+    guardarEstadoApp();
+    stopBeep();
+    
+    if (botonPausar) botonPausar.innerText = "Reanudar";
+  }
 }
 
 // Resetear temporizador
 function resetTemporizador() {
-  pausarTemporizador();
+  const botonPausar = document.querySelector('#temporizador button[onclick*="pausar"]');
+  
+  clearInterval(timerID);
+  timerID = null;
+  timerPausado = false;
   tiempoRestante = 0;
+  tiempoFinal = null;
+  stopBeep();
   mostrarTiempo();
+  
+  if (botonPausar) botonPausar.innerText = "Pausar";
+  
+  guardarEstadoApp();
 }
 
-// Inicializar la lista de timers al cargar la app
-document.addEventListener("DOMContentLoaded", () => {
-  renderTimers();
-});
 
 /*************************
  * NAVEGACIÓN
  *************************/
 function abrirDia(diaKey) {
   desbloquearAudioPorGesto();
+  guardarEstadoApp();
   diaActual = diaKey;
   history.pushState({}, "");
 
@@ -246,60 +343,70 @@ function abrirDia(diaKey) {
   pantallaHistorial.classList.add("oculto");
   pantallaDetalle.classList.add("oculto");
 
+  // Obtener rutina actual (base o personalizada)
+  const rutinaActual = obtenerRutinaCompleta();
+  
+  // Verificar que el día existe
+  if (!rutinaActual[diaKey]) {
+    alert("Este día no existe en la rutina actual");
+    volverMenu();
+    return;
+  }
+
   // Título
   const tituloDia = document.getElementById("titulo-dia");
-  if (tituloDia) tituloDia.innerText = rutina[diaKey].nombre;
+  if (tituloDia) tituloDia.innerText = rutinaActual[diaKey].nombre;
 
   cargarEjerciciosDia();
   resetTemporizador();
   renderDia();
 
-  // HIT (día 5: potencia)
-  const hit = document.getElementById("hit-crono");
-  if (hit) hit.classList.toggle("oculto", diaKey !== "potencia");
-
-  // Temporizador en días normales
-  const timer = document.getElementById("temporizador");
-  if (timer) timer.classList.toggle("oculto", diaKey === "");
+// HIT (día 5: potencia)
+const hit = document.getElementById("hit-crono");
+if (hit) {
+  if (diaKey === "potencia") {
+    hit.classList.remove("oculto");
+  } else {
+    hit.classList.add("oculto");
+  }
 }
 
-if (diaActual === "potencia") {
-  document.getElementById("hit-crono").classList.remove("oculto");
-} else {
-  document.getElementById("hit-crono").classList.add("oculto");
+// Temporizador (visible en TODOS los días, incluido potencia)
+const timer = document.getElementById("temporizador");
+if (timer) {
+  timer.classList.remove("oculto");
 }
 
 
-function volverMenu() {
-  document.getElementById("pantalla-dia").classList.add("oculto");
-  document.getElementById("pantalla-historial").classList.add("oculto");
-  document.getElementById("pantalla-detalle").classList.add("oculto");
-  document.getElementById("pantalla-medidas").classList.add("oculto");
-
-  document.getElementById("menu").classList.remove("oculto");
-}
 
 /*************************
  * CARGAR EJERCICIOS DEL DÍA
  *************************/
 function cargarEjerciciosDia() {
-  const base = rutina[diaActual].ejercicios || [];
+  const rutinaActual = obtenerRutinaCompleta();
+  
+  if (!rutinaActual[diaActual]) {
+    console.error("Día no encontrado:", diaActual);
+    return;
+  }
+  
+  const base = rutinaActual[diaActual].ejercicios || [];
   const extra = config.ejerciciosExtra[diaActual] || [];
 
   // Combinar base + extra en un solo array
   ejerciciosDia = [...base, ...extra].map(ej => {
     const key = `${diaActual}_${ej.nombre}`;
     return {
-  nombre: ej.nombre,
-  series: ej.series,
-  repsMin: ej.repsMin,
-  repsMax: ej.alFallo ? 30 : ej.repsMax,
-  peso: ej.alFallo ? 0 : (config.pesos[key] ?? ej.peso),
-  reps: Array(ej.series).fill(""),
-  incremento: ej.alFallo ? 0 : 2,
-  noProgresar: ej.alFallo ? true : false,
-  alFallo: ej.alFallo || false
-};
+      nombre: ej.nombre,
+      series: ej.series,
+      repsMin: ej.repsMin,
+      repsMax: ej.alFallo ? 30 : ej.repsMax,
+      peso: ej.alFallo ? 0 : (config.pesos[key] ?? ej.peso),
+      reps: Array(ej.series).fill(""),
+      incremento: ej.alFallo ? 0 : 2,
+      noProgresar: ej.alFallo ? true : false,
+      alFallo: ej.alFallo || false
+    };
   });
 }
 
@@ -307,8 +414,9 @@ function cargarEjerciciosDia() {
  * RENDERIZAR DÍA
  *************************/
 function renderDia() {
-  const cont = document.getElementById("contenido");
-  cont.innerHTML = "";
+ const cont = document.getElementById("contenido");
+ if (!cont) return;
+ cont.innerHTML = "";
 
   ejerciciosDia.forEach((ej, i) => {
     let seriesHTML = "";
@@ -365,6 +473,7 @@ function actualizarSerie(ejIndex, serieIndex, valor, input) {
   } else {
     input.classList.add("serie-mid");
   }
+  guardarEstadoApp();
 }
 
 /*************************
@@ -386,14 +495,6 @@ let hitTiempoAcumulado = 0;
 let hitInterval = null;
 let hitTipo = "HIT 1";
 
-document.addEventListener("DOMContentLoaded", () => {
-  const selectHit = document.getElementById("hit-tipo");
-  if (selectHit) {
-    selectHit.addEventListener("change", (e) => {
-      hitTipo = e.target.value;
-    });
-  }
-});
 
 function iniciarHIT() {
   if (hitActivo) return;
@@ -440,39 +541,42 @@ function finalizarDia() {
   let huboProgresion = false;
   let detallesProgreso = [];
 
+  // Obtener rutina actual (base o personalizada)
+  const rutinaActual = obtenerRutinaCompleta();
+  
   // Crear objeto de sesión con fecha completa
   const sesion = {
-  fecha: new Date().toISOString(),
-  dia: rutina[diaActual].nombre,
-  ejercicios: ejerciciosDia.map(ej => ({
-    nombre: ej.nombre,
-    peso: ej.peso,
-    reps: [...ej.reps]
-  })), // 👈 COMA AQUÍ (OBLIGATORIA)
-  tiempoHIT: diaActual === "potencia" ? obtenerTiempoHIT() : null,
-  tipoHIT: diaActual === "potencia" ? hitTipo : null 
-};
+    fecha: new Date().toISOString(),
+    dia: rutinaActual[diaActual]?.nombre || "Día desconocido", // 👈 CORREGIDO
+    ejercicios: ejerciciosDia.map(ej => ({
+      nombre: ej.nombre,
+      peso: ej.peso,
+      reps: [...ej.reps]
+    })),
+    tiempoHIT: diaActual === "potencia" ? obtenerTiempoHIT() : null,
+    tipoHIT: diaActual === "potencia" ? hitTipo : null 
+  };
 
   // Calcular progresión
   ejerciciosDia.forEach(ej => {
-  const completo = ej.reps.every(r => Number(r) === ej.repsMax);
+    const completo = ej.reps.every(r => Number(r) === ej.repsMax);
 
-  // Solo incrementa si NO es al fallo y no está marcado "noProgresar"
-  if (!ej.alFallo && completo && !ej.noProgresar) {
-    ej.peso += ej.incremento;
-    guardarPesoBase(ej.nombre, ej.peso);
-    huboProgresion = true;
-    detallesProgreso.push(`${ej.nombre}: PROGRESO +${ej.incremento}kg`);
-  } else if (ej.alFallo) {
-    detallesProgreso.push(`${ej.nombre}: Al fallo — repeticiones registradas, SIN incremento`);
-  } else {
-    detallesProgreso.push(`${ej.nombre}: NO progresó`);
-  }
-});
+    // Solo incrementa si NO es al fallo y no está marcado "noProgresar"
+    if (!ej.alFallo && completo && !ej.noProgresar) {
+      ej.peso += ej.incremento;
+      guardarPesoBase(ej.nombre, ej.peso);
+      huboProgresion = true;
+      detallesProgreso.push(`${ej.nombre}: PROGRESO +${ej.incremento}kg`);
+    } else if (ej.alFallo) {
+      detallesProgreso.push(`${ej.nombre}: Al fallo — repeticiones registradas, SIN incremento`);
+    } else {
+      detallesProgreso.push(`${ej.nombre}: NO progresó`);
+    }
+  });
 
   // Guardar historial SIEMPRE
   let historial = JSON.parse(localStorage.getItem("historial")) || [];
-  historial.push(sesion); // no filtrar por fecha
+  historial.push(sesion);
   localStorage.setItem("historial", JSON.stringify(historial));
   guardarConfig();
 
@@ -497,6 +601,8 @@ resetHIT();
  * HISTORIAL CORREGIDO
  *************************/
 function abrirHistorial() {
+  cerrarSidebar();
+  guardarEstadoApp();
   history.pushState({}, "");
 
   // Ocultar TODO lo que no sea pantalla de historial
@@ -542,6 +648,7 @@ function volverHistorial() {
 }
 
 function verDetalle(index) {
+  guardarEstadoApp();
   // Guardar el estado actual en el historial del navegador
   history.pushState({ pantalla: 'detalle', index }, "");
 
@@ -583,18 +690,37 @@ function añadirEjercicio() {
   const repsMin = Number(document.getElementById("nuevo-reps-min").value);
   const repsMax = Number(document.getElementById("nuevo-reps-max").value);
 
-  if (!rutina[diaKey]) { alert("Día inválido"); return; }
-  if (!nombre || series <= 0 || repsMin <= 0 || repsMax <= 0) { alert("Datos incompletos"); return; }
+  // Validar que el día existe en la rutina actual
+  const rutinaActual = obtenerRutinaCompleta();
+  if (!rutinaActual[diaKey]) { 
+    alert("Día inválido"); 
+    return; 
+  }
+  
+  if (!nombre || series <= 0 || repsMin <= 0 || repsMax <= 0) { 
+    alert("Datos incompletos"); 
+    return; 
+  }
 
-  const nuevo = { nombre, peso, series, repsMin, repsMax,alFallo: document.getElementById("nuevo-fallo").checked,
-  noProgresar: document.getElementById("nuevo-no-progresar").checked,
-  reps: []
-};
+  const nuevo = { 
+    nombre, 
+    peso, 
+    series, 
+    repsMin, 
+    repsMax,
+    alFallo: document.getElementById("nuevo-fallo").checked,
+    noProgresar: document.getElementById("nuevo-no-progresar").checked,
+    reps: []
+  };
+  
   if (!config.ejerciciosExtra[diaKey]) config.ejerciciosExtra[diaKey] = [];
   config.ejerciciosExtra[diaKey].push(nuevo);
   guardarConfig();
 
-  if (diaActual === diaKey) cargarEjerciciosDia(), renderDia();
+  if (diaActual === diaKey) {
+    cargarEjerciciosDia();
+    renderDia();
+  }
 
   document.getElementById("nuevo-nombre").value = "";
   document.getElementById("nuevo-peso").value = "";
@@ -602,7 +728,7 @@ function añadirEjercicio() {
   document.getElementById("nuevo-reps-min").value = "";
   document.getElementById("nuevo-reps-max").value = "";
 
-  alert(`Ejercicio añadido a ${rutina[diaKey].nombre}`);
+  alert(`Ejercicio añadido a ${rutinaActual[diaKey].nombre}`); // 👈 CORREGIDO
 }
 
 /*************************
@@ -627,7 +753,18 @@ function limpiarHistorialDuplicados() {
  * BOTÓN ATRÁS ANDROID
  *************************/
 window.addEventListener("popstate", () => {
-  if (!document.getElementById("pantalla-detalle").classList.contains("oculto")) {
+  // Cerrar modal si está abierto
+  const modal = document.getElementById("modal-timer");
+  if (modal && !modal.classList.contains("oculto")) {
+    ocultarModalTimer();
+    return;
+  }
+
+  // Navegar según pantalla activa
+  if (!document.getElementById("pantalla-perfil").classList.contains("oculto")) {
+    volverMenu();
+  }
+  else if (!document.getElementById("pantalla-detalle").classList.contains("oculto")) {
     volverHistorial();
   }
   else if (!document.getElementById("pantalla-medidas").classList.contains("oculto")) {
@@ -651,6 +788,8 @@ function formatearTiempo(segundos) {
 }
 
 function abrirMedidas() {
+  cerrarSidebar();
+  guardarEstadoApp();
   history.pushState({}, "");
 
   document.getElementById("menu").classList.add("oculto");
@@ -800,17 +939,202 @@ function resetDesdeModal() {
   ocultarModalTimer();
 }
 
+function volverMenu() {
+  document.getElementById("pantalla-auth").classList.add("oculto");
+  document.getElementById("pantalla-perfil").classList.add("oculto");
+  document.getElementById("pantalla-dia").classList.add("oculto");
+  document.getElementById("pantalla-historial").classList.add("oculto");
+  document.getElementById("pantalla-detalle").classList.add("oculto");
+  document.getElementById("pantalla-medidas").classList.add("oculto");
+  document.getElementById("menu").classList.remove("oculto");
+  guardarEstadoApp();
+}
+
+// Renderizar botones de días según rutina activa
+function renderizarBotonesDias() {
+  const contenedor = document.getElementById("botones-dias");
+  if (!contenedor) return;
+
+  const rutinaActual = obtenerRutinaCompleta();
+  contenedor.innerHTML = "";
+
+  Object.keys(rutinaActual).forEach((diaKey, idx) => {
+    const dia = rutinaActual[diaKey];
+    const boton = document.createElement("button");
+    boton.textContent = `Día ${idx + 1} – ${dia.nombre}`;
+    boton.onclick = () => abrirDia(diaKey);
+    contenedor.appendChild(boton);
+  });
+}
+
+
+function guardarEstadoApp() {
+  estadoApp = {
+    pantalla:
+      !document.getElementById("menu").classList.contains("oculto") ? "menu" :
+      !document.getElementById("pantalla-dia").classList.contains("oculto") ? "dia" :
+      !document.getElementById("pantalla-historial").classList.contains("oculto") ? "historial" :
+      !document.getElementById("pantalla-detalle").classList.contains("oculto") ? "detalle" :
+      !document.getElementById("pantalla-medidas").classList.contains("oculto") ? "medidas" :
+      "menu",
+
+    diaActual,
+    repsPorEjercicio: ejerciciosDia.map(ej => ({
+  nombre: ej.nombre,
+  reps: [...ej.reps]
+})),
+    tiempoRestante,
+    tiempoFinal
+  };
+
+  localStorage.setItem("estadoApp", JSON.stringify(estadoApp));
+}
+
+// Toggle sidebar
+function toggleSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebar-overlay");
+  
+  if (!sidebar || !overlay) return;
+  
+  const isOpen = sidebar.classList.contains("sidebar-open");
+  
+  if (isOpen) {
+    sidebar.classList.remove("sidebar-open");
+    sidebar.classList.add("sidebar-closed");
+    overlay.classList.add("oculto");
+  } else {
+    sidebar.classList.remove("sidebar-closed");
+    sidebar.classList.add("sidebar-open");
+    overlay.classList.remove("oculto");
+  }
+}
+
+// Cerrar sidebar al navegar
+function cerrarSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebar-overlay");
+  
+  if (sidebar && overlay) {
+    sidebar.classList.remove("sidebar-open");
+    sidebar.classList.add("sidebar-closed");
+    overlay.classList.add("oculto");
+  }
+}
 
 document.addEventListener("DOMContentLoaded", async () => {
+  // 1. Render timers
   renderTimers();
-  // Inicializar audio pero capturar errores
-  initAudio().catch(e => console.warn("Audio no cargado:", e));
+  
+  // 2. Renderizar botones de días
+  renderizarBotonesDias();
+
+  // 3. Audio
+  try {
+    await initAudio();
+  } catch (e) {
+    console.warn("Audio no cargado:", e);
+  }
+
+  // 4. Restaurar estado
+  const saved = JSON.parse(localStorage.getItem("estadoApp"));
+  if (!saved) return;
+
+  diaActual = saved.diaActual;
+  tiempoRestante = saved.tiempoRestante || 0;
+  tiempoFinal = saved.tiempoFinal;
+
+  if (saved.pantalla === "dia" && diaActual) {
+    abrirDia(diaActual);
+    renderDia();
+    mostrarTiempo();
+  }
+  
+  if (saved.repsPorEjercicio) {
+    saved.repsPorEjercicio.forEach(savedEj => {
+      const ej = ejerciciosDia.find(e => e.nombre === savedEj.nombre);
+      if (ej) ej.reps = savedEj.reps;
+    });
+  }
+
+  if (tiempoFinal && tiempoFinal > Date.now()) {
+    iniciarTemporizador(0, tiempoRestante);
+  } else {
+    tiempoRestante = 0;
+  }
+
+  if (saved.pantalla === "historial") {
+    abrirHistorial();
+  } else if (saved.pantalla === "detalle") {
+    abrirHistorial();
+  } else if (saved.pantalla === "medidas") {
+    abrirMedidas();
+  }
+  
+  // 5. Event listener para HIT
+  const selectHit = document.getElementById("hit-tipo");
+  if (selectHit) {
+    selectHit.addEventListener("change", (e) => {
+      hitTipo = e.target.value;
+    });
+  }
 });
 
-document.addEventListener("click", async () => {
-  if (!audioCtx) {
-    await initAudio();
+
+
+window.abrirDia = abrirDia;
+window.volverMenu = volverMenu;
+window.abrirHistorial = abrirHistorial;
+window.finalizarDia = finalizarDia;
+window.forzarActualizacion = forzarActualizacion;
+window.iniciarTemporizador = iniciarTemporizador;
+window.pausarTemporizador = pausarTemporizador;
+window.resetTemporizador = resetTemporizador;
+window.añadirTimer = añadirTimer;
+window.añadirEjercicio = añadirEjercicio;
+window.borrarTimer = borrarTimer;
+window.iniciarHIT = iniciarHIT;
+window.pausarHIT = pausarHIT;
+window.resetHIT = resetHIT;
+window.borrarRutinaDia = borrarRutinaDia;
+window.guardarMedidas = guardarMedidas;
+window.borrarTodoHistorialMedidas = borrarTodoHistorialMedidas;
+window.abrirMedidas = abrirMedidas;
+window.verDetalle = verDetalle;
+window.limpiarHistorialDuplicados = limpiarHistorialDuplicados;
+window.borrarTodoHistorial = borrarTodoHistorial;
+window.actualizarSerie = actualizarSerie;
+window.toggleSidebar = toggleSidebar;
+window.resetDesdeModal = resetDesdeModal;
+// Escuchar cambios de rutina
+window.addEventListener("cambio-rutina", (e) => {
+  console.log("Rutina cambiada a:", e.detail.rutinaId);
+  // Aquí puedes recargar ejercicios si estás en un día activo
+  if (diaActual) {
+    cargarEjerciciosDia();
+    renderDia();
   }
-  desbloquearAudioPorGesto();
-}, { once: true });
+});
+
+// Sobrescribir para actualizar selector
+window.volverMenu = function() {
+  // Guardar estado para historial del navegador
+  history.pushState({ pantalla: 'menu' }, "");
+  
+  // Ocultar todas las pantallas
+  document.getElementById("pantalla-auth").classList.add("oculto");
+  document.getElementById("pantalla-perfil").classList.add("oculto");
+  document.getElementById("pantalla-dia").classList.add("oculto");
+  document.getElementById("pantalla-historial").classList.add("oculto");
+  document.getElementById("pantalla-detalle").classList.add("oculto");
+  document.getElementById("pantalla-medidas").classList.add("oculto");
+  
+  // Mostrar menú
+  document.getElementById("menu").classList.remove("oculto");
+  
+  // Actualizar selector por si hay cambios
+  renderizarSelectorRutinas();
+  
+  guardarEstadoApp();
+};
 

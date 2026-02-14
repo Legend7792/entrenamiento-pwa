@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v32";
+const CACHE_VERSION = "v33";
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 
 const CORE_ASSETS = [
@@ -65,5 +65,4 @@ self.addEventListener("fetch", event => {
     })
   );
 });
-
 
