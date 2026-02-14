@@ -552,3 +552,135 @@ label {
 .formulario-medidas button {
   margin-top: 10px;
 }
+
+/* ==============================
+   EDITOR DE RUTINAS
+================================ */
+.editor-vacio {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.lista-dias {
+  display: grid;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.dia-card {
+  background: var(--bg-secondary);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.dia-card h4 {
+  margin: 0 0 5px 0;
+}
+
+.dia-card p {
+  margin: 0 0 10px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.acciones-dia-card {
+  display: flex;
+  gap: 10px;
+}
+
+.acciones-dia-card button {
+  flex: 1;
+}
+
+.lista-ejercicios-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.ejercicio-editor-card {
+  background: var(--bg-secondary);
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.ejercicio-editor-card h4 {
+  margin: 0 0 5px 0;
+  font-size: 16px;
+}
+
+.ejercicio-editor-card p {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.badge {
+  display: inline-block;
+  background: var(--accent);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.form-ejercicio {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-secondary);
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.form-ejercicio label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-ejercicio input[type="checkbox"] {
+  width: auto;
+}
+
+.config-dia {
+  background: var(--bg-secondary);
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.config-dia h4 {
+  margin: 0 0 12px 0;
+}
+
+.config-dia label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.config-dia input[type="checkbox"] {
+  width: auto;
+}

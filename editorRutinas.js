@@ -1,158 +1,354 @@
-// editorRutinas.js
-import { loadRutinaUsuario, saveRutinaUsuario, crearRutinaBase } from "./rutinaUsuario.js";
-import { renderizarSelectorRutinas } from "./selectorRutinas.js";
+// editorRutinas.js - GESTOR DE MÚLTIPLES RUTINAS (VERSIÓN CORREGIDA)
+import { 
+  saveRutinaUsuario, 
+  loadRutinaUsuario, 
+  getAllRutinasUsuario,
+  deleteRutinaUsuario,
+  generarIdRutina
+} from "./rutinaUsuario.js";
 
-// Abrir editor de rutinas personalizadas
-export function abrirEditorRutinas() {
-  const html = `
-    <div id="editor-rutinas-modal" style="
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0,0,0,0.9);
-      z-index: 9999;
-      overflow-y: auto;
-      padding: 20px;
-    ">
-      <div style="max-width: 600px; margin: 0 auto; background: var(--bg-secondary); padding: 20px; border-radius: 8px;">
-        <h2>💪 Editor de Rutinas Personalizadas</h2>
-        <p style="color: var(--text-secondary)">Crea tu propia rutina con días y ejercicios personalizados</p>
-        
-        <div id="lista-dias-editor"></div>
-        
-        <button onclick="añadirDiaPersonalizado()" style="margin-top: 15px;">
-          ➕ Añadir Día
-        </button>
-        
-        <hr style="margin: 20px 0;">
-        
-        <button onclick="guardarRutinaPersonalizada()">
-          💾 Guardar Rutina
-        </button>
-        <button onclick="cerrarEditorRutinas()">
-          ❌ Cerrar
-        </button>
+let rutinaEditando = null;
+let rutinaEditandoId = null;
+let diaEditando = null;
+
+// Abrir el editor
+window.abrirEditorRutinas = function() {
+  document.getElementById("menu").classList.add("oculto");
+  document.getElementById("pantalla-editor").classList.remove("oculto");
+  
+  renderListaRutinas();
+};
+
+// Renderizar lista de rutinas
+function renderListaRutinas() {
+  const contenedor = document.getElementById("contenido-editor");
+  const rutinas = getAllRutinasUsuario();
+  const rutinasArray = Object.keys(rutinas).map(id => ({ id, ...rutinas[id] }));
+  
+  contenedor.innerHTML = `
+    <div class="gestor-rutinas">
+      <h3>Mis Rutinas</h3>
+      
+      <div class="lista-rutinas">
+        ${rutinasArray.length === 0 ? `
+          <p style="text-align: center; color: var(--text-secondary); padding: 20px;">
+            No tienes rutinas personalizadas
+          </p>
+        ` : rutinasArray.map(rutina => `
+          <div class="rutina-card">
+            <h4>📋 ${rutina.nombre}</h4>
+            <p>${rutina.dias.length} día(s)</p>
+            <div class="acciones-rutina-card">
+              <button onclick="editarRutina('${rutina.id}')">✏️ Editar</button>
+              <button class="danger" onclick="borrarRutinaCompleta('${rutina.id}')">🗑️</button>
+            </div>
+          </div>
+        `).join('')}
       </div>
+      
+      <button onclick="crearNuevaRutina()">➕ Crear nueva rutina</button>
+      <button onclick="volverMenuDesdeEditor()">Volver al menú</button>
     </div>
   `;
-  
-  document.body.insertAdjacentHTML("beforeend", html);
-  renderizarDiasEditor();
 }
 
-function renderizarDiasEditor() {
-  const rutina = loadRutinaUsuario();
-  const contenedor = document.getElementById("lista-dias-editor");
-  if (!contenedor) return;
+// Crear nueva rutina
+window.crearNuevaRutina = function() {
+  const nombre = prompt("Nombre de la rutina:") || "Mi Rutina";
   
-  contenedor.innerHTML = rutina.dias.map((dia, idx) => `
-    <div class="dia-editor" style="background: var(--bg-primary); padding: 15px; margin: 10px 0; border-radius: 5px;">
-      <h3>Día ${idx + 1}</h3>
-      <input 
-        type="text" 
-        value="${dia.nombre}" 
-        onchange="actualizarNombreDia(${idx}, this.value)"
-        placeholder="Nombre del día"
-        style="width: 100%; margin-bottom: 10px;"
-      >
-      
-      <div id="ejercicios-dia-${idx}">
-        ${dia.ejercicios.map((ej, ejIdx) => `
-          <div style="background: var(--bg-secondary); padding: 10px; margin: 5px 0; border-radius: 3px;">
-            <input type="text" value="${ej.nombre}" onchange="actualizarEjercicio(${idx}, ${ejIdx}, 'nombre', this.value)" placeholder="Ejercicio" style="width: 100%;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px; margin-top: 5px;">
-              <input type="number" value="${ej.peso}" onchange="actualizarEjercicio(${idx}, ${ejIdx}, 'peso', this.value)" placeholder="Peso">
-              <input type="number" value="${ej.series}" onchange="actualizarEjercicio(${idx}, ${ejIdx}, 'series', this.value)" placeholder="Series">
-              <input type="number" value="${ej.repsMin}" onchange="actualizarEjercicio(${idx}, ${ejIdx}, 'repsMin', this.value)" placeholder="Reps mín">
-              <input type="number" value="${ej.repsMax}" onchange="actualizarEjercicio(${idx}, ${ejIdx}, 'repsMax', this.value)" placeholder="Reps máx">
-            </div>
-            <button onclick="eliminarEjercicio(${idx}, ${ejIdx})" style="margin-top: 5px; background: var(--danger); font-size: 12px;">🗑️ Eliminar</button>
-          </div>
-        `).join("")}
-      </div>
-      
-      <button onclick="añadirEjercicioDia(${idx})" style="margin-top: 10px; font-size: 14px;">
-        ➕ Añadir Ejercicio
-      </button>
-      <button onclick="eliminarDia(${idx})" style="margin-top: 10px; margin-left: 10px; background: var(--danger); font-size: 14px;">
-        🗑️ Eliminar Día
-      </button>
-    </div>
-  `).join("");
-}
-
-window.actualizarNombreDia = function(diaIdx, nombre) {
-  const rutina = loadRutinaUsuario();
-  rutina.dias[diaIdx].nombre = nombre;
-  saveRutinaUsuario(rutina);
+  const nuevoId = generarIdRutina();
+  
+  const nuevaRutina = {
+    nombre: nombre,
+    dias: []
+  };
+  
+  saveRutinaUsuario(nuevaRutina, nuevoId);
+  
+  // Editar la nueva rutina
+  editarRutina(nuevoId);
 };
 
-window.actualizarEjercicio = function(diaIdx, ejIdx, campo, valor) {
-  const rutina = loadRutinaUsuario();
-  const ej = rutina.dias[diaIdx].ejercicios[ejIdx];
+// Editar rutina existente
+window.editarRutina = function(rutinaId) {
+  rutinaEditandoId = rutinaId;
+  rutinaEditando = loadRutinaUsuario(rutinaId);
+  renderEditorRutina();
+};
+
+// Renderizar editor de una rutina específica
+function renderEditorRutina() {
+  const contenedor = document.getElementById("contenido-editor");
   
-  if (campo === "nombre") {
-    ej[campo] = valor;
-  } else {
-    ej[campo] = Number(valor);
+  contenedor.innerHTML = `
+    <div class="editor-header">
+      <h3>${rutinaEditando.nombre}</h3>
+      <button onclick="cambiarNombreRutina()">✏️ Cambiar nombre</button>
+      <button onclick="volverListaRutinas()">← Volver a lista</button>
+    </div>
+    
+    <div class="lista-dias">
+      ${rutinaEditando.dias.length === 0 ? `
+        <p style="text-align: center; color: var(--text-secondary); padding: 20px;">
+          No hay días en esta rutina. Añade uno para empezar.
+        </p>
+      ` : rutinaEditando.dias.map((dia, idx) => `
+        <div class="dia-card">
+          <h4>📅 ${dia.nombre}</h4>
+          <p>${dia.ejercicios.length} ejercicio(s)</p>
+          <div class="acciones-dia-card">
+            <button onclick="editarDia(${idx})">✏️ Editar</button>
+            <button class="danger" onclick="borrarDia(${idx})">🗑️</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    
+    <button onclick="añadirNuevoDia()">➕ Añadir día</button>
+  `;
+}
+
+// Cambiar nombre de rutina
+window.cambiarNombreRutina = function() {
+  const nuevoNombre = prompt("Nuevo nombre:", rutinaEditando.nombre);
+  if (nuevoNombre && nuevoNombre.trim()) {
+    rutinaEditando.nombre = nuevoNombre.trim();
+    saveRutinaUsuario(rutinaEditando, rutinaEditandoId);
+    
+    window.dispatchEvent(new CustomEvent("cambio-rutina", {
+      detail: { rutinaId: rutinaEditandoId }
+    }));
+    
+    renderEditorRutina();
+  }
+};
+
+// Volver a lista de rutinas
+window.volverListaRutinas = function() {
+  rutinaEditando = null;
+  rutinaEditandoId = null;
+  renderListaRutinas();
+};
+
+// Borrar rutina completa
+window.borrarRutinaCompleta = function(rutinaId) {
+  const rutina = loadRutinaUsuario(rutinaId);
+  if (!confirm(`¿Borrar "${rutina.nombre}"?`)) return;
+  
+  deleteRutinaUsuario(rutinaId);
+  
+  // Si era la activa, volver a base
+  if (localStorage.getItem("rutinaActiva") === rutinaId) {
+    localStorage.setItem("rutinaActiva", "RUTINA_BASE");
   }
   
-  saveRutinaUsuario(rutina);
+  window.dispatchEvent(new CustomEvent("cambio-rutina", {
+    detail: { rutinaId: "RUTINA_BASE" }
+  }));
+  
+  renderListaRutinas();
 };
 
-window.añadirDiaPersonalizado = function() {
-  const rutina = loadRutinaUsuario();
-  rutina.dias.push({
-    id: `dia-${Date.now()}`,
-    nombre: `Día ${rutina.dias.length + 1}`,
-    temporizador: null,
-    ejercicios: []
+// Añadir nuevo día
+window.añadirNuevoDia = function() {
+  const nombre = prompt("Nombre del día:") || `Día ${rutinaEditando.dias.length + 1}`;
+  
+  rutinaEditando.dias.push({
+    nombre: nombre,
+    ejercicios: [],
+    tieneTimer: true,
+    tieneCronometro: false
   });
-  saveRutinaUsuario(rutina);
-  renderizarDiasEditor();
+  
+  saveRutinaUsuario(rutinaEditando, rutinaEditandoId);
+  
+  window.dispatchEvent(new CustomEvent("cambio-rutina", {
+    detail: { rutinaId: rutinaEditandoId }
+  }));
+  
+  renderEditorRutina();
 };
 
-window.añadirEjercicioDia = function(diaIdx) {
-  const rutina = loadRutinaUsuario();
-  rutina.dias[diaIdx].ejercicios.push({
-    nombre: "Nuevo ejercicio",
-    peso: 0,
-    series: 3,
-    repsMin: 8,
-    repsMax: 12
+// Borrar día
+window.borrarDia = function(index) {
+  if (!confirm(`¿Borrar "${rutinaEditando.dias[index].nombre}"?`)) return;
+  
+  rutinaEditando.dias.splice(index, 1);
+  saveRutinaUsuario(rutinaEditando, rutinaEditandoId);
+  
+  window.dispatchEvent(new CustomEvent("cambio-rutina", {
+    detail: { rutinaId: rutinaEditandoId }
+  }));
+  
+  renderEditorRutina();
+};
+
+// Editar día
+window.editarDia = function(index) {
+  diaEditando = index;
+  renderFormularioDia();
+};
+
+// Renderizar formulario de edición de día
+function renderFormularioDia() {
+  const dia = rutinaEditando.dias[diaEditando];
+  const contenedor = document.getElementById("contenido-editor");
+  
+  contenedor.innerHTML = `
+    <div class="editor-dia">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h3>📅 ${dia.nombre}</h3>
+        <button onclick="cambiarNombreDia()">✏️ Cambiar nombre</button>
+      </div>
+      
+      <div class="config-dia">
+        <h4>⚙️ Configuración del día</h4>
+        
+        <label>
+          <input type="checkbox" id="dia-timer" ${dia.tieneTimer !== false ? 'checked' : ''} onchange="toggleTimer(this.checked)" />
+          <span>⏱️ Mostrar temporizadores de descanso</span>
+        </label>
+        
+        <label>
+          <input type="checkbox" id="dia-cronometro" ${dia.tieneCronometro ? 'checked' : ''} onchange="toggleCronometro(this.checked)" />
+          <span>⏲️ Mostrar cronómetro HIT</span>
+        </label>
+      </div>
+      
+      <hr>
+      
+      <div class="lista-ejercicios-editor">
+        ${dia.ejercicios.length === 0 ? `
+          <p style="text-align: center; color: var(--text-secondary); padding: 10px;">
+            No hay ejercicios. Añade uno abajo.
+          </p>
+        ` : dia.ejercicios.map((ej, idx) => `
+          <div class="ejercicio-editor-card">
+            <h4>${ej.nombre}</h4>
+            <p>Series: ${ej.series} | Reps: ${ej.repsMin}-${ej.repsMax} | Peso: ${ej.peso}kg</p>
+            ${ej.alFallo ? '<span class="badge">Al fallo</span>' : ''}
+            <button class="danger" onclick="borrarEjercicio(${idx})">🗑️ Borrar</button>
+          </div>
+        `).join('')}
+      </div>
+      
+      <hr>
+      
+      <h4>➕ Añadir ejercicio</h4>
+      <div class="form-ejercicio">
+        <input id="ej-nombre" placeholder="Nombre del ejercicio" />
+        
+        <div class="form-row">
+          <input id="ej-peso" type="number" placeholder="Peso (kg)" />
+          <input id="ej-series" type="number" placeholder="Series" />
+        </div>
+        
+        <div class="form-row">
+          <input id="ej-reps-min" type="number" placeholder="Reps mín" />
+          <input id="ej-reps-max" type="number" placeholder="Reps máx" />
+        </div>
+        
+        <label>
+          <input type="checkbox" id="ej-fallo" />
+          <span>Al fallo (sin progresión de peso)</span>
+        </label>
+        
+        <button onclick="añadirEjercicioADia()">➕ Añadir ejercicio</button>
+      </div>
+      
+      <hr>
+      
+      <button onclick="volverListaDias()">← Volver a lista de días</button>
+    </div>
+  `;
+}
+
+// Añadir ejercicio al día
+window.añadirEjercicioADia = function() {
+  const nombre = document.getElementById("ej-nombre").value.trim();
+  const pesoInput = document.getElementById("ej-peso").value;
+  const seriesInput = document.getElementById("ej-series").value;
+  const repsMinInput = document.getElementById("ej-reps-min").value;
+  const repsMaxInput = document.getElementById("ej-reps-max").value;
+  const alFallo = document.getElementById("ej-fallo").checked;
+  
+  if (!nombre || !pesoInput || !seriesInput || !repsMinInput || !repsMaxInput) {
+    alert("⚠️ Completa todos los campos");
+    return;
+  }
+  
+  const peso = Number(pesoInput);
+  const series = Number(seriesInput);
+  const repsMin = Number(repsMinInput);
+  const repsMax = Number(repsMaxInput);
+  
+  if (series <= 0 || repsMin <= 0 || repsMax <= 0) {
+    alert("⚠️ Los números deben ser mayores que 0");
+    return;
+  }
+  
+  rutinaEditando.dias[diaEditando].ejercicios.push({
+    nombre,
+    peso: alFallo ? 0 : peso,
+    series,
+    repsMin,
+    repsMax,
+    alFallo
   });
-  saveRutinaUsuario(rutina);
-  renderizarDiasEditor();
+  
+  saveRutinaUsuario(rutinaEditando, rutinaEditandoId);
+  renderFormularioDia();
 };
 
-window.eliminarEjercicio = function(diaIdx, ejIdx) {
-  if (!confirm("¿Eliminar este ejercicio?")) return;
-  const rutina = loadRutinaUsuario();
-  rutina.dias[diaIdx].ejercicios.splice(ejIdx, 1);
-  saveRutinaUsuario(rutina);
-  renderizarDiasEditor();
+// Borrar ejercicio
+window.borrarEjercicio = function(index) {
+  if (!confirm("¿Borrar este ejercicio?")) return;
+  
+  rutinaEditando.dias[diaEditando].ejercicios.splice(index, 1);
+  saveRutinaUsuario(rutinaEditando, rutinaEditandoId);
+  renderFormularioDia();
 };
 
-window.eliminarDia = function(diaIdx) {
-  if (!confirm("¿Eliminar este día completo?")) return;
-  const rutina = loadRutinaUsuario();
-  rutina.dias.splice(diaIdx, 1);
-  saveRutinaUsuario(rutina);
-  renderizarDiasEditor();
+// Volver a lista de días
+window.volverListaDias = function() {
+  diaEditando = null;
+  renderEditorRutina();
 };
 
-window.guardarRutinaPersonalizada = function() {
-  alert("✅ Rutina guardada correctamente");
-  renderizarSelectorRutinas(); // Actualizar selector
-  cerrarEditorRutinas();
+// Volver al menú
+window.volverMenuDesdeEditor = function() {
+  document.getElementById("pantalla-editor").classList.add("oculto");
+  document.getElementById("menu").classList.remove("oculto");
+  
+  // Resetear estado
+  rutinaEditando = null;
+  rutinaEditandoId = null;
+  
+  window.dispatchEvent(new CustomEvent("cambio-rutina", {
+    detail: { rutinaId: localStorage.getItem("rutinaActiva") || "RUTINA_BASE" }
+  }));
 };
 
-window.cerrarEditorRutinas = function() {
-  const modal = document.getElementById("editor-rutinas-modal");
-  if (modal) modal.remove();
+// Toggle temporizador
+window.toggleTimer = function(value) {
+  rutinaEditando.dias[diaEditando].tieneTimer = value;
+  saveRutinaUsuario(rutinaEditando, rutinaEditandoId);
 };
 
-// Exponer función globalmente
-window.abrirEditorRutinas = abrirEditorRutinas;
+// Toggle cronómetro
+window.toggleCronometro = function(value) {
+  rutinaEditando.dias[diaEditando].tieneCronometro = value;
+  saveRutinaUsuario(rutinaEditando, rutinaEditandoId);
+};
+
+// Cambiar nombre del día
+window.cambiarNombreDia = function() {
+  const dia = rutinaEditando.dias[diaEditando];
+  const nuevoNombre = prompt("Nuevo nombre del día:", dia.nombre);
+  
+  if (nuevoNombre && nuevoNombre.trim()) {
+    rutinaEditando.dias[diaEditando].nombre = nuevoNombre.trim();
+    saveRutinaUsuario(rutinaEditando, rutinaEditandoId);
+    renderFormularioDia();
+  }
+};

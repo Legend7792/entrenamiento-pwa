@@ -1,36 +1,32 @@
-// rutinaUsuario.js
-import { markDirty } from "./userState.js";
+// rutinaUsuario.js - SISTEMA DE MÚLTIPLES RUTINAS
 
-const KEY = "rutinaUsuario";
-
-export function crearRutinaBase() {
-  return {
-    dias: [
-      {
-        id: "dia-1",
-        nombre: "Nuevo día",
-        temporizador: null,
-        ejercicios: []
-      }
-    ]
-  };
+// Guardar una rutina (con ID)
+export function saveRutinaUsuario(rutina, rutinaId = "rutina_1") {
+  const rutinas = getAllRutinasUsuario();
+  rutinas[rutinaId] = rutina;
+  localStorage.setItem("rutinasUsuario", JSON.stringify(rutinas));
 }
 
-export function loadRutinaUsuario() {
-  const raw = localStorage.getItem(KEY);
-  return raw ? JSON.parse(raw) : crearRutinaBase();
+// Cargar una rutina específica
+export function loadRutinaUsuario(rutinaId = "rutina_1") {
+  const rutinas = getAllRutinasUsuario();
+  return rutinas[rutinaId] || null;
 }
 
-export function saveRutinaUsuario(rutina) {
-  localStorage.setItem(KEY, JSON.stringify(rutina));
-  markDirty();
+// Obtener todas las rutinas
+export function getAllRutinasUsuario() {
+  const data = localStorage.getItem("rutinasUsuario");
+  return data ? JSON.parse(data) : {};
 }
 
-export function clonarRutina(rutina) {
-  return JSON.parse(JSON.stringify(rutina));
+// Borrar una rutina específica
+export function deleteRutinaUsuario(rutinaId) {
+  const rutinas = getAllRutinasUsuario();
+  delete rutinas[rutinaId];
+  localStorage.setItem("rutinasUsuario", JSON.stringify(rutinas));
 }
 
-export function borrarRutinaUsuario() {
-  localStorage.removeItem(KEY);
-  markDirty();
+// Generar ID único para nueva rutina
+export function generarIdRutina() {
+  return `rutina_${Date.now()}`;
 }
