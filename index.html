@@ -5,15 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Entrenamiento</title>
 
-  <link rel="stylesheet" href="./style.css?v=47" />
-  <link rel="manifest" href="./manifest.json?v=47" />
+  <link rel="stylesheet" href="./style.css?v=48" />
+  <link rel="manifest" href="./manifest.json?v=48" />
   <meta name="theme-color" content="#121212" />
 
   <!-- App principal -->
-  <script type="module" src="./app.js?v=47"></script>
+  <script type="module" src="./app.js?v=48/"></script>
 </head>
 
 <body>
+
+<!-- SCRIPT TEMPORAL - BORRAR DESPUÉS DE UNA CARGA -->
+<script>
+(async () => {
+  // Desregistrar TODOS los Service Workers
+  if ('serviceWorker' in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    for (let registration of registrations) {
+      await registration.unregister();
+      console.log('SW desregistrado');
+    }
+  }
+  
+  // Borrar TODAS las caches
+  const cacheNames = await caches.keys();
+  for (let name of cacheNames) {
+    await caches.delete(name);
+    console.log('Cache borrado:', name);
+  }
+  
+  console.log('✅ Limpieza completa - Recarga la página');
+})();
+</script>
+<!-- FIN SCRIPT TEMPORAL -->
+
 
 <!-- =====================================================
      CONTENEDOR GENERAL DE LA APP

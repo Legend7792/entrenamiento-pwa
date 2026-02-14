@@ -464,7 +464,10 @@ function actualizarSerie(ejIndex, serieIndex, valor, input) {
 
   input.classList.remove("serie-ok", "serie-fail", "serie-mid");
 
-  if (ej.alFallo) return;
+  if (ej.alFallo) {
+    guardarEstadoApp(); // 👈 AÑADIR AQUÍ
+    return;
+  }
 
   if (reps === ej.repsMax) {
     input.classList.add("serie-ok");
@@ -473,7 +476,8 @@ function actualizarSerie(ejIndex, serieIndex, valor, input) {
   } else {
     input.classList.add("serie-mid");
   }
-  guardarEstadoApp();
+  
+  guardarEstadoApp(); // 👈 YA ESTABA AQUÍ, está bien
 }
 
 /*************************
