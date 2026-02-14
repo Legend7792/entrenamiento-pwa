@@ -1044,18 +1044,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   tiempoRestante = saved.tiempoRestante || 0;
   tiempoFinal = saved.tiempoFinal;
 
+
+   if (saved.repsPorEjercicio) {
+    saved.repsPorEjercicio.forEach(savedEj => {
+      const ej = ejerciciosDia.find(e => e.nombre === savedEj.nom>
+      if (ej) ej.reps = savedEj.reps;
+    });
+  }
+
   if (saved.pantalla === "dia" && diaActual) {
     abrirDia(diaActual);
     renderDia();
     mostrarTiempo();
   }
   
-  if (saved.repsPorEjercicio) {
-    saved.repsPorEjercicio.forEach(savedEj => {
-      const ej = ejerciciosDia.find(e => e.nombre === savedEj.nombre);
-      if (ej) ej.reps = savedEj.reps;
-    });
-  }
+
 
   if (tiempoFinal && tiempoFinal > Date.now()) {
     iniciarTemporizador(0, tiempoRestante);
