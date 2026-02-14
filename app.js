@@ -375,8 +375,8 @@ if (hit) {
 const timer = document.getElementById("temporizador");
 if (timer) {
   timer.classList.remove("oculto");
+  }
 }
-
 
 
 /*************************
@@ -1102,8 +1102,6 @@ window.addEventListener('offline', () => {
 });
 
 // Función para verificar si estamos online
-window.isOnline = () => isOnline;
-
 window.abrirDia = abrirDia;
 window.volverMenu = volverMenu;
 window.abrirHistorial = abrirHistorial;

@@ -1,220 +1,238 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Entrenamiento</title>
 
-  <link rel="stylesheet" href="./style.css?v=38">
-  <link rel="manifest" href="./manifest.json?v=38">
-  <meta name="theme-color" content="#121212">
+  <link rel="stylesheet" href="./style.css?v=41" />
+  <link rel="manifest" href="./manifest.json?v=41" />
+  <meta name="theme-color" content="#121212" />
 
-  <script type="module" src="./app.js?v=38"></script>
+  <!-- App principal -->
+  <script type="module" src="./app.js?v=41"></script>
 </head>
 
 <body>
 
-<!-- ================= AUTH ================= -->
-<section id="pantalla-auth">
-  <h2>Acceso</h2>
+<!-- =====================================================
+     CONTENEDOR GENERAL DE LA APP
+===================================================== -->
+<div id="app">
 
-  <input id="user-email" placeholder="Email">
-  <input id="user-pass" type="password" placeholder="Contraseña">
+  <!-- =====================================================
+       AUTH / LOGIN
+  ===================================================== -->
+  <section id="pantalla-auth">
+    <h2>Acceso</h2>
 
-  <button onclick="login()">Iniciar sesión</button>
-  <button onclick="register()">Crear cuenta</button>
-</section>
+    <input id="user-email" placeholder="Email" />
+    <input id="user-pass" type="password" placeholder="Contraseña" />
 
-<!-- ================= PERFIL ================= -->
-<section id="pantalla-perfil" class="oculto">
-  <h2>Perfil de usuario</h2>
+    <button onclick="login()">Iniciar sesión</button>
+    <button onclick="register()">Crear cuenta</button>
+  </section>
 
-  <p id="user-email-label"></p>
+  <!-- =====================================================
+       PERFIL DE USUARIO
+  ===================================================== -->
+  <section id="pantalla-perfil" class="oculto">
+    <h2>Perfil de usuario</h2>
 
-  <button onclick="syncNow()">Sincronizar</button>
-  <button onclick="logout()">Cerrar sesión</button>
-  <button onclick="volverMenu()">Ir al menú</button>
-</section>
+    <p id="user-email-label"></p>
 
-<!-- ================= MENÚ ================= -->
-<section id="menu" class="oculto">
-  <!-- Barra superior con hamburguesa -->
-  <div class="top-bar">
-    <button class="hamburger-btn" onclick="toggleSidebar()">☰</button>
-    <h1>Entrenamiento</h1>
-  </div>
-
-  <!-- Selector de rutina -->
-  <div class="ejercicio">
-    <h3>Rutina activa</h3>
-    <select id="selector-rutina">
-      <!-- dinámico -->
-    </select>
-  </div>
-  
-  <!-- Botón editor de rutinas -->
-  <button onclick="abrirEditorRutinas()">✏️ Crear Mi Rutina</button>
-
-  <!-- Días dinámicos (se generan automáticamente) -->
-  <div id="botones-dias"></div>
-</section>
-
-<!-- ================= SIDEBAR ================= -->
-<div id="sidebar-overlay" class="oculto" onclick="toggleSidebar()"></div>
-<aside id="sidebar" class="sidebar-closed">
-  <div class="sidebar-header">
-    <h2>Menú</h2>
-    <button class="close-sidebar" onclick="toggleSidebar()">✕</button>
-  </div>
-  
-  <div class="sidebar-content">
-    <!-- Tema -->
-    <div class="sidebar-section">
-      <h3>🎨 Tema</h3>
-      <select id="selector-temas-sidebar">
-        <!-- dinámico desde themes.js -->
-      </select>
+    <div class="perfil-acciones">
+      <button onclick="syncNow()">Sincronizar</button>
+      <button onclick="logout()">Cerrar sesión</button>
     </div>
 
-    <hr>
+    <button onclick="volverMenu()">Volver al menú</button>
+  </section>
 
-    <!-- Navegación -->
-    <button onclick="toggleSidebar(); mostrarPerfil()">👤 Perfil</button>
-    <button onclick="toggleSidebar(); abrirMedidas()">📏 Medidas corporales</button>
-    <button onclick="toggleSidebar(); abrirHistorial()">📊 Historial</button>
-    
-    <hr>
-    
-    <button onclick="forzarActualizacion()">🔄 Forzar actualización</button>
-  </div>
-</aside>
+  <!-- =====================================================
+       MENÚ PRINCIPAL
+  ===================================================== -->
+  <section id="menu" class="oculto">
 
-<!-- ================= RESULTADO ================= -->
-<section id="resultado" class="oculto">
-  <h2>Resultado</h2>
-  <div id="resumen"></div>
-  <button onclick="volverMenu()">Volver</button>
-</section>
+    <!-- Barra superior -->
+    <header class="top-bar">
+      <button class="hamburger-btn" onclick="toggleSidebar()">☰</button>
+      <h1>Entrenamiento</h1>
+    </header>
 
-<!-- ================= DÍA ================= -->
-<section id="pantalla-dia" class="oculto">
-  <h2 id="titulo-dia"></h2>
-  <div id="contenido"></div>
+    <!-- =============================
+         SELECCIÓN DE RUTINAS
+         (permite múltiples)
+    ============================== -->
+    <section class="bloque-rutinas">
+      <h3>Rutinas disponibles</h3>
 
-  <!-- HIT -->
-  <div id="hit-crono" class="oculto">
-    <h3>HIT</h3>
+      <!-- Selector principal -->
+      <select id="selector-rutina">
+        <!-- dinámico desde selectorRutinas.js -->
+      </select>
 
-    <select id="hit-tipo">
-      <option value="HIT 1">HIT 1</option>
-      <option value="HIT 2">HIT 2</option>
-    </select>
+      <!-- FUTURO: checklist de rutinas activas -->
+      <div id="rutinas-activas">
+        <!-- aquí podrás permitir múltiples rutinas -->
+      </div>
 
-    <h1 id="tiempo-hit">0:00</h1>
+      <button onclick="abrirEditorRutinas()">✏️ Crear / Editar rutinas</button>
+    </section>
 
-    <button onclick="iniciarHIT()">Iniciar</button>
-    <button onclick="pausarHIT()">Pausar</button>
-    <button onclick="resetHIT()">Reset</button>
-  </div>
+    <!-- =============================
+         BOTONES DE DÍAS
+    ============================== -->
+    <section id="botones-dias">
+      <!-- generado dinámicamente -->
+    </section>
 
-  <!-- TEMPORIZADOR -->
-  <div id="temporizador" class="ejercicio">
-    <h3>Temporizadores</h3>
+  </section>
 
-    <div id="lista-timers"></div>
-    <button onclick="añadirTimer()">Añadir temporizador</button>
+  <!-- =====================================================
+       SIDEBAR
+  ===================================================== -->
+  <div id="sidebar-overlay" class="oculto" onclick="toggleSidebar()"></div>
 
-    <h1 id="tiempo">0:00</h1>
+  <aside id="sidebar" class="sidebar-closed">
+    <div class="sidebar-header">
+      <h2>Menú</h2>
+      <button class="close-sidebar" onclick="toggleSidebar()">✕</button>
+    </div>
 
-    <button onclick="pausarTemporizador()">Pausar</button>
-    <button onclick="resetTemporizador()">Reset</button>
-  </div>
+    <div class="sidebar-content">
 
-  <!-- AÑADIR EJERCICIO -->
-  <div class="ejercicio">
-    <h3>Añadir ejercicio</h3>
+      <div class="sidebar-section">
+        <h3>🎨 Tema</h3>
+        <select id="selector-temas-sidebar"></select>
+      </div>
 
-    <select id="dia-ejercicio">
-      <option value="torso_fuerza">Día 1 – Torso Fuerza</option>
-      <option value="pierna_fuerza">Día 2 – Pierna Fuerza</option>
-      <option value="torso_hipertrofia">Día 3 – Torso Hipertrofia</option>
-      <option value="pierna_hipertrofia">Día 4 – Pierna Hipertrofia</option>
-      <option value="potencia">Día 5 – Potencia</option>
-    </select>
+      <hr />
 
-    <input id="nuevo-nombre" placeholder="Ejercicio">
-    <input id="nuevo-peso" type="number" placeholder="Peso">
-    <input id="nuevo-series" type="number" placeholder="Series">
-    <input id="nuevo-reps-min" type="number" placeholder="Reps mín">
-    <input id="nuevo-reps-max" type="number" placeholder="Reps máx">
+      <button onclick="toggleSidebar(); mostrarPerfil()">👤 Perfil</button>
+      <button onclick="toggleSidebar(); abrirMedidas()">📏 Medidas corporales</button>
+      <button onclick="toggleSidebar(); abrirHistorial()">📊 Historial</button>
 
-    <label><input type="checkbox" id="nuevo-fallo"> Al fallo</label>
-    <label><input type="checkbox" id="nuevo-no-progresar"> No progresar</label>
+      <hr />
 
-    <button onclick="añadirEjercicio()">Añadir</button>
-  </div>
+      <button onclick="forzarActualizacion()">🔄 Forzar actualización</button>
+    </div>
+  </aside>
 
-  <button onclick="finalizarDia()">Finalizar sesión</button>
-  <button onclick="volverMenu()">Volver</button>
-  <button class="danger" onclick="borrarRutinaDia()">Borrar rutina completa</button>
-</section>
+  <!-- =====================================================
+       PANTALLA DÍA DE ENTRENAMIENTO
+  ===================================================== -->
+  <section id="pantalla-dia" class="oculto">
 
-<!-- ================= HISTORIAL ================= -->
-<section id="pantalla-historial" class="oculto">
-  <h2>Historial</h2>
-  <div id="lista-historial"></div>
+    <h2 id="titulo-dia"></h2>
 
-  <button onclick="limpiarHistorialDuplicados()">Limpiar duplicados</button>
-  <button onclick="borrarTodoHistorial()">Borrar todo</button>
-  <button onclick="volverMenu()">Volver</button>
-</section>
+    <div id="contenido"></div>
 
-<!-- ================= MEDIDAS ================= -->
-<section id="pantalla-medidas" class="oculto">
-  <h2>Medidas corporales</h2>
+    <!-- HIT -->
+    <section id="hit-crono" class="oculto">
+      <h3>HIT</h3>
 
-  <div class="ejercicio">
-    <input id="peso" type="number" step="0.1" placeholder="Peso (kg)">
-    <input id="altura" type="number" placeholder="Altura (cm)">
-    <input id="cintura" type="number" placeholder="Cintura">
-    <input id="cadera" type="number" placeholder="Cadera">
-    <input id="pecho" type="number" placeholder="Pecho">
-    <input id="brazo_relajado" type="number" placeholder="Brazo relajado">
-    <input id="brazo_contraido" type="number" placeholder="Brazo contraído">
-    <input id="muslo" type="number" placeholder="Muslo">
+      <select id="hit-tipo">
+        <option value="HIT 1">HIT 1</option>
+        <option value="HIT 2">HIT 2</option>
+      </select>
 
-    <button onclick="guardarMedidas()">Guardar</button>
-  </div>
+      <h1 id="tiempo-hit">0:00</h1>
 
-  <div id="lista-medidas"></div>
+      <button onclick="iniciarHIT()">Iniciar</button>
+      <button onclick="pausarHIT()">Pausar</button>
+      <button onclick="resetHIT()">Reset</button>
+    </section>
 
-  <button onclick="borrarTodoHistorialMedidas()">Borrar historial</button>
-  <button onclick="volverMenu()">Volver</button>
-</section>
+    <!-- TEMPORIZADORES -->
+    <section id="temporizador" class="ejercicio">
+      <h3>Temporizadores</h3>
+      <div id="lista-timers"></div>
+      <button onclick="añadirTimer()">Añadir temporizador</button>
 
-<!-- ================= DETALLE ================= -->
-<section id="pantalla-detalle" class="oculto">
-  <h2>Detalle del entrenamiento</h2>
-  <div id="detalle-sesion"></div>
-  <button onclick="volverHistorial()">Volver</button>
-</section>
+      <h1 id="tiempo">0:00</h1>
 
-<!-- ================= CONFIG RUTINA ================= -->
-<section id="acciones-rutina" class="oculto">
-  <h3>Configuración de rutina</h3>
+      <button onclick="pausarTemporizador()">Pausar</button>
+      <button onclick="resetTemporizador()">Reset</button>
+    </section>
 
-  <button onclick="confirmarBorradoBase()">Borrar rutina base</button>
-  <button onclick="mostrarConfigDia()">Añadir día</button>
+    <!-- AÑADIR EJERCICIO -->
+    <section class="ejercicio">
+      <h3>Añadir ejercicio</h3>
 
-  <div id="config-dia" class="oculto">
-    <input id="nombre-dia" placeholder="Nombre del día">
-    <label><input type="checkbox" id="dia-timer"> Temporizador</label>
-    <label><input type="checkbox" id="dia-crono"> Cronómetro</label>
-    <button onclick="crearDia()">Guardar día</button>
-  </div>
-</section>
+      <select id="dia-ejercicio"></select>
 
-<!-- ================= MODAL ================= -->
+      <input id="nuevo-nombre" placeholder="Ejercicio" />
+      <input id="nuevo-peso" type="number" placeholder="Peso" />
+      <input id="nuevo-series" type="number" placeholder="Series" />
+      <input id="nuevo-reps-min" type="number" placeholder="Reps mín" />
+      <input id="nuevo-reps-max" type="number" placeholder="Reps máx" />
+
+      <label><input type="checkbox" id="nuevo-fallo" /> Al fallo</label>
+      <label><input type="checkbox" id="nuevo-no-progresar" /> No progresar</label>
+
+      <button onclick="añadirEjercicio()">Añadir</button>
+    </section>
+
+    <div class="acciones-dia">
+      <button onclick="finalizarDia()">Finalizar sesión</button>
+      <button onclick="volverMenu()">Volver</button>
+      <button class="danger" onclick="borrarRutinaDia()">Borrar rutina completa</button>
+    </div>
+  </section>
+
+  <!-- =====================================================
+       HISTORIAL
+  ===================================================== -->
+  <section id="pantalla-historial" class="oculto">
+    <h2>Historial</h2>
+
+    <div id="lista-historial"></div>
+
+    <button onclick="limpiarHistorialDuplicados()">Limpiar duplicados</button>
+    <button onclick="borrarTodoHistorial()">Borrar todo</button>
+    <button onclick="volverMenu()">Volver</button>
+  </section>
+
+  <!-- =====================================================
+       DETALLE SESIÓN
+  ===================================================== -->
+  <section id="pantalla-detalle" class="oculto">
+    <h2>Detalle del entrenamiento</h2>
+    <div id="detalle-sesion"></div>
+    <button onclick="volverHistorial()">Volver</button>
+  </section>
+
+  <!-- =====================================================
+       MEDIDAS
+  ===================================================== -->
+  <section id="pantalla-medidas" class="oculto">
+    <h2>Medidas corporales</h2>
+
+    <div class="ejercicio">
+      <input id="peso" type="number" step="0.1" placeholder="Peso (kg)" />
+      <input id="altura" type="number" placeholder="Altura (cm)" />
+      <input id="cintura" type="number" placeholder="Cintura" />
+      <input id="cadera" type="number" placeholder="Cadera" />
+      <input id="pecho" type="number" placeholder="Pecho" />
+      <input id="b_relaj" type="number" placeholder="Brazo relajado" />
+      <input id="b_contraido" type="number" placeholder="Brazo contraído" />
+      <input id="muslo" type="number" placeholder="Muslo" />
+
+      <button onclick="guardarMedidas()">Guardar</button>
+    </div>
+
+    <div id="lista-medidas"></div>
+
+    <button onclick="borrarTodoHistorialMedidas()">Borrar historial</button>
+    <button onclick="volverMenu()">Volver</button>
+  </section>
+
+</div>
+
+<!-- =====================================================
+     MODAL TIMER
+===================================================== -->
 <div id="modal-timer" class="modal oculto">
   <div class="modal-content">
     <h2>⏱ Tiempo finalizado</h2>
@@ -222,7 +240,9 @@
   </div>
 </div>
 
-<!-- ================= SERVICE WORKER ================= -->
+<!-- =====================================================
+     SERVICE WORKER
+===================================================== -->
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

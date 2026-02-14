@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v38"; // 👈 Incrementa siempre
+const CACHE_VERSION = "v41"; // 👈 Incrementa siempre
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 
 // TODOS los archivos de tu app
@@ -15,7 +15,9 @@ const CORE_ASSETS = [
   "./editorRutinas.js",
   "./style.css",
   "./manifest.json",
-  "./beep.mp3"
+  "./beep.mp3",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png"
 ];
 
 // ==============================
@@ -153,3 +155,4 @@ async function syncData() {
   // Aquí podrías añadir lógica de sincronización automática
   console.log('SW: Sincronizando datos en background');
 }
+

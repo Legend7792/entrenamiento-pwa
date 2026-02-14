@@ -166,5 +166,3 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
-// Exponer función para app.js
-window.mostrarPerfil = mostrarPerfil
