@@ -1029,7 +1029,7 @@ function cerrarSidebar() {
 document.addEventListener("DOMContentLoaded", async () => {
   // 1. Render timers
   renderTimers();
-
+  
   // 2. Renderizar botones de días
   renderizarBotonesDias();
 
@@ -1048,26 +1048,65 @@ document.addEventListener("DOMContentLoaded", async () => {
   tiempoRestante = saved.tiempoRestante || 0;
   tiempoFinal = saved.tiempoFinal;
 
-
+  // ========================================
+  // RESTAURAR PANTALLA DÍA
+  // ========================================
   if (saved.pantalla === "dia" && diaActual) {
-    abrirDia(diaActual);
+    // Cargar ejercicios del día
+    cargarEjerciciosDia();
+    
+    // 👇 RESTAURAR REPS ANTES DE RENDERIZAR
+    if (saved.repsPorEjercicio) {
+      saved.repsPorEjercicio.forEach(savedEj => {
+        const ej = ejerciciosDia.find(e => e.nombre === savedEj.nombre);
+        if (ej) ej.reps = savedEj.reps;
+      });
+    }
+    
+    // AHORA sí renderizar con las reps restauradas
     renderDia();
     mostrarTiempo();
+    
+    // Mostrar la pantalla correcta
+    document.getElementById("menu").classList.add("oculto");
+    document.getElementById("pantalla-dia").classList.remove("oculto");
+    
+    // Obtener rutina actual para el título
+    const rutinaActual = obtenerRutinaCompleta();
+    const tituloDia = document.getElementById("titulo-dia");
+    if (tituloDia && rutinaActual[diaActual]) {
+      tituloDia.innerText = rutinaActual[diaActual].nombre;
+    }
+    
+    // Mostrar/ocultar HIT según día
+    const hit = document.getElementById("hit-crono");
+    if (hit) {
+      if (diaActual === "potencia") {
+        hit.classList.remove("oculto");
+      } else {
+        hit.classList.add("oculto");
+      }
+    }
+    
+    // Mostrar temporizador
+    const timer = document.getElementById("temporizador");
+    if (timer) {
+      timer.classList.remove("oculto");
+    }
   }
 
-  if (saved.repsPorEjercicio) {
-    saved.repsPorEjercicio.forEach(savedEj => {
-      const ej = ejerciciosDia.find(e => e.nombre === savedEj.nombre);
-      if (ej) ej.reps = savedEj.reps;
-    });
-  }
-
+  // ========================================
+  // RESTAURAR TEMPORIZADOR
+  // ========================================
   if (tiempoFinal && tiempoFinal > Date.now()) {
     iniciarTemporizador(0, tiempoRestante);
   } else {
     tiempoRestante = 0;
   }
 
+  // ========================================
+  // RESTAURAR OTRAS PANTALLAS
+  // ========================================
   if (saved.pantalla === "historial") {
     abrirHistorial();
   } else if (saved.pantalla === "detalle") {
