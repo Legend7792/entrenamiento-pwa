@@ -1080,7 +1080,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
+// Detectar estado de conexión
+let isOnline = navigator.onLine;
 
+window.addEventListener('online', () => {
+  isOnline = true;
+  console.log('✅ Conexión restaurada - Puedes sincronizar');
+  
+  // Mostrar notificación al usuario
+  if (confirm('Conexión restaurada. ¿Sincronizar datos ahora?')) {
+    if (typeof syncNow === 'function') {
+      syncNow();
+    }
+  }
+});
+
+window.addEventListener('offline', () => {
+  isOnline = false;
+  console.log('⚠️ Sin conexión - Trabajando offline');
+  alert('Sin conexión. Los datos se guardarán localmente.');
+});
+
+// Función para verificar si estamos online
+window.isOnline = () => isOnline;
 
 window.abrirDia = abrirDia;
 window.volverMenu = volverMenu;
