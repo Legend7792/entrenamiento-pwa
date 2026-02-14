@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Entrenamiento</title>
 
-  <link rel="stylesheet" href="./style.css?v=42" />
-  <link rel="manifest" href="./manifest.json?v=42" />
+  <link rel="stylesheet" href="./style.css?v=43" />
+  <link rel="manifest" href="./manifest.json?v=43" />
   <meta name="theme-color" content="#121212" />
 
   <!-- App principal -->
-  <script type="module" src="./app.js?v=42"></script>
+  <script type="module" src="./app.js?v=43"></script>
 </head>
 
 <body>
@@ -203,32 +203,59 @@
     <button onclick="volverHistorial()">Volver</button>
   </section>
 
-  <!-- =====================================================
-       MEDIDAS
-  ===================================================== -->
-  <section id="pantalla-medidas" class="oculto">
-    <h2>Medidas corporales</h2>
+<!-- ================= MEDIDAS ================= -->
+<section id="pantalla-medidas" class="oculto">
+  <h2>Medidas corporales</h2>
 
-    <div class="ejercicio">
-      <input id="peso" type="number" step="0.1" placeholder="Peso (kg)" />
-      <input id="altura" type="number" placeholder="Altura (cm)" />
-      <input id="cintura" type="number" placeholder="Cintura" />
-      <input id="cadera" type="number" placeholder="Cadera" />
-      <input id="pecho" type="number" placeholder="Pecho" />
-      <input id="b_relaj" type="number" placeholder="Brazo relajado" />
-      <input id="b_contraido" type="number" placeholder="Brazo contraído" />
-      <input id="muslo" type="number" placeholder="Muslo" />
+  <div class="formulario-medidas">
+    <label>
+      <span>Peso (kg)</span>
+      <input id="peso" type="number" step="0.1" placeholder="70.5">
+    </label>
 
-      <button onclick="guardarMedidas()">Guardar</button>
-    </div>
+    <label>
+      <span>Altura (cm)</span>
+      <input id="altura" type="number" placeholder="175">
+    </label>
 
-    <div id="lista-medidas"></div>
+    <label>
+      <span>Cintura (cm)</span>
+      <input id="cintura" type="number" placeholder="85">
+    </label>
 
-    <button onclick="borrarTodoHistorialMedidas()">Borrar historial</button>
-    <button onclick="volverMenu()">Volver</button>
-  </section>
+    <label>
+      <span>Cadera (cm)</span>
+      <input id="cadera" type="number" placeholder="95">
+    </label>
 
-</div>
+    <label>
+      <span>Pecho (cm)</span>
+      <input id="pecho" type="number" placeholder="100">
+    </label>
+
+    <label>
+      <span>Brazo relajado (cm)</span>
+      <input id="brazo_relajado" type="number" placeholder="35">
+    </label>
+
+    <label>
+      <span>Brazo contraído (cm)</span>
+      <input id="brazo_contraido" type="number" placeholder="38">
+    </label>
+
+    <label>
+      <span>Muslo (cm)</span>
+      <input id="muslo" type="number" placeholder="55">
+    </label>
+
+    <button onclick="guardarMedidas()">Guardar</button>
+  </div>
+
+  <div id="lista-medidas"></div>
+
+  <button onclick="borrarTodoHistorialMedidas()">Borrar historial</button>
+  <button onclick="volverMenu()">Volver</button>
+</section>
 
 <!-- =====================================================
      MODAL TIMER

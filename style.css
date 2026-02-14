@@ -510,3 +510,45 @@ label {
   position: relative;
   z-index: 100;
 }
+
+/* ==============================
+   FORMULARIO MEDIDAS
+================================ */
+.formulario-medidas {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.formulario-medidas label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.formulario-medidas label span {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.formulario-medidas input {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+}
+
+.formulario-medidas input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.5;
+  font-size: 14px;
+}
+
+.formulario-medidas button {
+  margin-top: 10px;
+}

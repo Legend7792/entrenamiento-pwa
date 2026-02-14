@@ -174,3 +174,4 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
+window.mostrarPerfil = mostrarPerfil;
