@@ -1045,19 +1045,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   tiempoFinal = saved.tiempoFinal;
 
 
-   if (saved.repsPorEjercicio) {
+  if (saved.pantalla === "dia" && diaActual) {
+    abrirDia(diaActual);
+    renderDia();
+    mostrarTiempo();
+  }
+
+  if (saved.repsPorEjercicio) {
     saved.repsPorEjercicio.forEach(savedEj => {
       const ej = ejerciciosDia.find(e => e.nombre === savedEj.nom>
       if (ej) ej.reps = savedEj.reps;
     });
   }
 
-  if (saved.pantalla === "dia" && diaActual) {
-    abrirDia(diaActual);
-    renderDia();
-    mostrarTiempo();
-  }
-  
 
 
   if (tiempoFinal && tiempoFinal > Date.now()) {
