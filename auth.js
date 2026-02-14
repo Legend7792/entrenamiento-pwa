@@ -16,11 +16,19 @@ export function mostrarMenu() {
   document.getElementById("menu").classList.remove("oculto");
 }
 
-// Mostrar perfil (ACTUALIZAR para incluir history)
+// Mostrar perfil (ACTUALIZAR para ocultar TODAS las pantallas)
 export function mostrarPerfil() {
   history.pushState({ pantalla: 'perfil' }, "");
 
+  // Ocultar TODAS las pantallas
+  document.getElementById("pantalla-auth").classList.add("oculto");
   document.getElementById("menu").classList.add("oculto");
+  document.getElementById("pantalla-dia").classList.add("oculto");
+  document.getElementById("pantalla-historial").classList.add("oculto");
+  document.getElementById("pantalla-detalle").classList.add("oculto");
+  document.getElementById("pantalla-medidas").classList.add("oculto");
+  
+  // Mostrar solo perfil
   document.getElementById("pantalla-perfil").classList.remove("oculto");
   document.getElementById("user-email-label").innerText = `Usuario: ${userState.email}`;
 }

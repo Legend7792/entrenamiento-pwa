@@ -505,3 +505,8 @@ label {
 #sidebar-overlay.oculto {
   display: none;
 }
+
+#pantalla-perfil {
+  position: relative;
+  z-index: 100;
+}
