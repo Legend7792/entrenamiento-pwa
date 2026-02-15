@@ -1,95 +1,91 @@
-// userState.js
-import { saveUserToCloud, loadUserFromCloud } from "./cloud.js";
-
+// userState.js - CON PERSISTENCIA DE SESIÓN
 export const userState = {
   uid: null,
   email: null,
-  isDirty: false // marca si hay cambios sin sincronizar
+  sessionToken: null // 👈 NUEVO
 };
 
-const LOCAL_KEY = "userState";
-
-// Cargar estado del usuario desde localStorage
+// Cargar estado desde localStorage
 export function loadLocal() {
-  const saved = localStorage.getItem(LOCAL_KEY);
+  const saved = localStorage.getItem("userState");
   if (saved) {
-    const parsed = JSON.parse(saved);
-    userState.uid = parsed.uid;
-    userState.email = parsed.email;
+    try {
+      const data = JSON.parse(saved);
+      userState.uid = data.uid;
+      userState.email = data.email;
+      userState.sessionToken = data.sessionToken; // 👈 NUEVO
+    } catch (e) {
+      console.error("Error cargando userState:", e);
+    }
   }
 }
 
-// Guardar estado del usuario en localStorage
+// Guardar estado en localStorage
 export function saveLocal() {
-  localStorage.setItem(LOCAL_KEY, JSON.stringify({
+  localStorage.setItem("userState", JSON.stringify({
     uid: userState.uid,
-    email: userState.email
+    email: userState.email,
+    sessionToken: userState.sessionToken // 👈 NUEVO
   }));
 }
 
-// Marcar que hay cambios pendientes
-export function markDirty() {
-  userState.isDirty = true;
-}
-
-// Sincronizar datos con la nube
-export async function syncToCloud() {
-  if (!userState.uid) {
-    console.warn("No hay usuario logueado para sincronizar");
-    return false;
-  }
-
-  try {
-    // Recopilar TODOS los datos locales
-    const datosLocales = {
-      config: localStorage.getItem("config"),
-      historial: localStorage.getItem("historial"),
-      historialMedidas: localStorage.getItem("historialMedidas"),
-      timers: localStorage.getItem("timers"),
-      rutinaUsuario: localStorage.getItem("rutinaUsuario"),
-      tema: localStorage.getItem("tema") // para cuando añadamos temas
-    };
-
-    await saveUserToCloud(userState.uid, datosLocales);
-    userState.isDirty = false;
-    console.log("✅ Sincronización exitosa");
-    return true;
-  } catch (error) {
-    console.error("❌ Error en sincronización:", error);
-    return false;
-  }
-}
-
-// Cargar datos desde la nube
+// Sincronizar desde la nube
 export async function syncFromCloud() {
-  if (!userState.uid) {
-    console.warn("No hay usuario logueado");
-    return false;
+  if (!userState.uid) return;
+  
+  const { data, error } = await supabase
+    .from("user_data")
+    .select("*")
+    .eq("user_id", userState.uid)
+    .single();
+
+  if (error) {
+    console.log("No hay datos en la nube (primera vez)");
+    return;
   }
 
-  try {
-    const datos = await loadUserFromCloud(userState.uid);
+  if (data && data.local_storage) {
+    const cloudData = JSON.parse(data.local_storage);
     
-    if (!datos) {
-      console.log("Primera vez del usuario, no hay datos en la nube");
-      return true; // No es error, solo no hay datos aún
-    }
-
-    // Restaurar datos locales
-    if (datos.config) localStorage.setItem("config", datos.config);
-    if (datos.historial) localStorage.setItem("historial", datos.historial);
-    if (datos.historialMedidas) localStorage.setItem("historialMedidas", datos.historialMedidas);
-    if (datos.timers) localStorage.setItem("timers", datos.timers);
-    if (datos.rutinaUsuario) localStorage.setItem("rutinaUsuario", datos.rutinaUsuario);
-    if (datos.tema) localStorage.setItem("tema", datos.tema);
-
-    console.log("✅ Datos cargados desde la nube");
-    return true;
-  } catch (error) {
-    console.error("❌ Error cargando desde la nube:", error);
-    return false;
+    // Restaurar datos en localStorage
+    Object.keys(cloudData).forEach(key => {
+      if (key !== "userState") { // No sobrescribir userState
+        localStorage.setItem(key, cloudData[key]);
+      }
+    });
+    
+    console.log("Datos sincronizados desde la nube");
   }
 }
 
-// Inicializar al cargar la app
+// Sincronizar a la nube
+export async function syncToCloud() {
+  if (!userState.uid) return;
+
+  // Recopilar todos los datos de localStorage
+  const localData = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key !== "userState") { // No sincronizar userState (tiene el token)
+      localData[key] = localStorage.getItem(key);
+    }
+  }
+
+  const { error } = await supabase
+    .from("user_data")
+    .upsert({
+      user_id: userState.uid,
+      local_storage: JSON.stringify(localData),
+      updated_at: new Date().toISOString()
+    });
+
+  if (error) {
+    console.error("Error sincronizando:", error);
+    throw error;
+  }
+  
+  console.log("Datos sincronizados a la nube");
+}
+
+// Cargar al inicio
 loadLocal();

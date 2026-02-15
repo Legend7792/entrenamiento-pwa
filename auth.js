@@ -1,4 +1,4 @@
-// auth.js
+// auth.js - CON RESTAURACIÓN OFFLINE
 import { supabase } from "./cloud.js";
 import { userState, saveLocal, syncFromCloud, syncToCloud } from "./userState.js";
 
@@ -16,11 +16,10 @@ export function mostrarMenu() {
   document.getElementById("menu").classList.remove("oculto");
 }
 
-// Mostrar perfil (ACTUALIZAR para ocultar TODAS las pantallas)
+// Mostrar perfil
 export function mostrarPerfil() {
   history.pushState({ pantalla: 'perfil' }, "");
 
-  // Ocultar TODAS las pantallas
   document.getElementById("pantalla-auth").classList.add("oculto");
   document.getElementById("menu").classList.add("oculto");
   document.getElementById("pantalla-dia").classList.add("oculto");
@@ -28,14 +27,12 @@ export function mostrarPerfil() {
   document.getElementById("pantalla-detalle").classList.add("oculto");
   document.getElementById("pantalla-medidas").classList.add("oculto");
   
-  // Mostrar solo perfil
   document.getElementById("pantalla-perfil").classList.remove("oculto");
   document.getElementById("user-email-label").innerText = `Usuario: ${userState.email}`;
 }
 
 // Volver al menú desde perfil
 window.volverMenu = function() {
-  // Guardar estado para historial del navegador
   history.pushState({ pantalla: 'menu' }, "");
 
   document.getElementById("pantalla-auth").classList.add("oculto");
@@ -74,9 +71,9 @@ window.register = async function () {
     
     userState.uid = data.user.id;
     userState.email = email;
+    userState.sessionToken = data.session.access_token; // 👈 GUARDAR TOKEN
     saveLocal();
     
-    // Guardar datos actuales en la nube
     await syncToCloud();
     
     mostrarMenu();
@@ -105,13 +102,13 @@ window.login = async function () {
 
     userState.uid = data.user.id;
     userState.email = email;
+    userState.sessionToken = data.session.access_token; // 👈 GUARDAR TOKEN
     saveLocal();
     
-    // Cargar datos desde la nube
     await syncFromCloud();
     
     mostrarMenu();
-    location.reload(); // Recargar para aplicar datos sincronizados
+    location.reload();
   } catch (error) {
     alert("❌ Error al iniciar sesión: " + error.message);
   }
@@ -122,14 +119,14 @@ window.logout = async function () {
   if (!confirm("¿Cerrar sesión? Los datos locales se mantendrán.")) return;
   
   try {
-    // Sincronizar antes de cerrar sesión
     await syncToCloud();
-    
     await supabase.auth.signOut();
-    localStorage.removeItem("userState");
     
+    // Limpiar estado
     userState.uid = null;
     userState.email = null;
+    userState.sessionToken = null;
+    localStorage.removeItem("userState");
     
     location.reload();
   } catch (error) {
@@ -162,14 +159,29 @@ window.syncNow = async function () {
 
 // Verificar sesión al cargar
 window.addEventListener("DOMContentLoaded", async () => {
-  const { data } = await supabase.auth.getSession();
-  
-  if (data.session) {
-    userState.uid = data.session.user.id;
-    userState.email = data.session.user.email;
-    saveLocal();
+  // 👇 PRIMERO: Verificar si hay sesión guardada en localStorage
+  if (userState.uid && userState.email) {
+    console.log("📱 Sesión offline detectada:", userState.email);
     mostrarMenu();
-  } else {
+    return; // No intentar conectar con Supabase si estamos offline
+  }
+  
+  // 👇 SEGUNDO: Si no hay sesión local, intentar con Supabase (requiere internet)
+  try {
+    const { data } = await supabase.auth.getSession();
+    
+    if (data.session) {
+      userState.uid = data.session.user.id;
+      userState.email = data.session.user.email;
+      userState.sessionToken = data.session.access_token;
+      saveLocal();
+      mostrarMenu();
+    } else {
+      mostrarPantallaAuth();
+    }
+  } catch (error) {
+    // Sin internet y sin sesión local → mostrar login
+    console.log("Sin conexión y sin sesión local");
     mostrarPantallaAuth();
   }
 });
