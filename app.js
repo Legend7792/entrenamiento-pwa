@@ -922,16 +922,48 @@ function limpiarFormularioMedidas() {
   });
 }
 
-function forzarActualizacion() {
-  if (navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
-    alert("Actualización forzada. La app se recargará automáticamente.");
-    // Recarga la página para aplicar la nueva versión
-    setTimeout(() => location.reload(), 1000);
-  } else {
-    alert("Service Worker no activo. Por favor recarga la app manualmente.");
+async function forzarActualizacion() {
+  const confirmar = confirm(
+    '⚠️ Esto limpiará la caché y recargará la app.\n\n' +
+    'Tus datos locales (entrenamientos, sesión) NO se perderán.\n\n' +
+    '¿Continuar?'
+  );
+  
+  if (!confirmar) return;
+  
+  try {
+    // 1. Enviar mensaje al SW para limpiar caché
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'CLEAR_CACHE'
+      });
+    }
+    
+    // 2. Desregistrar Service Worker
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (let registration of registrations) {
+        await registration.unregister();
+      }
+    }
+    
+    // 3. Limpiar cachés del navegador
+    if ('caches' in window) {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map(name => caches.delete(name)));
+    }
+    
+    // 4. Recargar
+    alert('✅ Caché limpiado. La app se recargará.');
+    window.location.reload(true);
+    
+  } catch (error) {
+    console.error('Error:', error);
+    alert('⚠️ Error al actualizar. Cierra y vuelve a abrir la app.');
   }
 }
+
+
 
 /*************************
 BORRAR RUTINA COMPLETA DEL DÍA
@@ -1161,6 +1193,8 @@ if (saved.pantalla === "dia" && diaActual) {
     }
   }
 
+
+
   // ========================================
   // RESTAURAR TEMPORIZADOR
   // ========================================
@@ -1360,6 +1394,91 @@ document.getElementById("sidebar")?.addEventListener('touchend', (e) => {
   isSwiping = false;
 }, { passive: true });
 
+// ========================================
+// DETECCIÓN AUTOMÁTICA DE ACTUALIZACIONES
+// ========================================
+
+let swRegistration = null;
+
+// Registrar Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js')
+    .then(registration => {
+      swRegistration = registration;
+      console.log('✅ Service Worker registrado');
+      
+      // Verificar actualizaciones cada 60 segundos
+      setInterval(() => {
+        registration.update();
+      }, 60000);
+      
+      // Detectar cuando hay nueva versión instalándose
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed') {
+            if (navigator.serviceWorker.controller) {
+              // Hay nueva versión disponible
+              console.log('🎉 Nueva versión detectada');
+              
+              // Mostrar notificación al usuario
+              if (confirm('🎉 Nueva versión disponible. ¿Actualizar ahora?')) {
+                newWorker.postMessage({ type: 'SKIP_WAITING' });
+                window.location.reload();
+              }
+            } else {
+              // Primera instalación
+              console.log('✅ App lista para uso offline');
+            }
+          }
+        });
+      });
+    })
+    .catch(err => {
+      console.error('❌ Error registrando SW:', err);
+    });
+}
+
+// Escuchar mensajes del Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data && event.data.type === 'SW_UPDATED') {
+      console.log('✅ Service Worker actualizado a versión:', event.data.version);
+      
+      // La app ya se recargó, solo log
+    }
+    
+    if (event.data && event.data.type === 'SYNC_DATA') {
+      console.log('🔄 SW solicita sincronización');
+      
+      // Sincronizar si hay sesión activa
+      if (userState.uid && typeof syncToCloud === 'function') {
+        syncToCloud().catch(e => console.log('Error sync:', e));
+      }
+    }
+  });
+}
+
+// Detectar cuando vuelve la conexión
+window.addEventListener('online', async () => {
+  console.log('🌐 Conexión restaurada');
+  
+  // 1. Verificar si hay actualizaciones
+  if (swRegistration) {
+    await swRegistration.update();
+  }
+  
+  // 2. Sincronizar datos
+  if (userState.uid && typeof syncToCloud === 'function') {
+    try {
+      await syncToCloud();
+      console.log('✅ Datos sincronizados');
+    } catch (error) {
+      console.log('⚠️ Error sincronizando:', error);
+    }
+  }
+});
 
 // ========================================
 // VER ÚLTIMA SESIÓN COMO GUÍA
