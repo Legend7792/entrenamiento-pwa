@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v57"; // 👈 Incrementa siempre
+const CACHE_VERSION = "v58"; // 👈 Incrementa siempre
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 
 // TODOS los archivos de tu app

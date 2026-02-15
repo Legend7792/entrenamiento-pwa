@@ -205,11 +205,11 @@ window.reenviarVerificacion = async function() {
 // INICIALIZACIÓN Y MANEJO DE SESIÓN
 // ========================================
 window.addEventListener("DOMContentLoaded", async () => {
-  // PASO 1: Verificar si venimos de un link de verificación de email
   const hashParams = new URLSearchParams(window.location.hash.substring(1));
   const accessToken = hashParams.get('access_token');
   const type = hashParams.get('type');
   
+  // CASO 1: Link de verificación de email
   if (accessToken && type === 'signup') {
     console.log('🔍 Detectado link de verificación de email');
     
@@ -230,7 +230,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         
         alert('✅ Email verificado correctamente. ¡Bienvenido!');
         mostrarMenu();
-        return; // ← IMPORTANTE: Salir aquí
+        return;
       } else {
         alert('⚠️ No se pudo verificar el email. Intenta iniciar sesión manualmente.');
         mostrarPantallaAuth();
@@ -244,14 +244,51 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
   
-  // PASO 2: Verificar si hay sesión guardada en localStorage (offline)
+  // 👇 NUEVO: CASO 2: Link de recuperación de contraseña
+  if (window.location.hash.includes('reset-password')) {
+    console.log('🔍 Detectado link de recuperación de contraseña');
+    
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error) throw error;
+      
+      if (data.session) {
+        userState.uid = data.session.user.id;
+        userState.email = data.session.user.email;
+        userState.sessionToken = data.session.access_token;
+        saveLocal();
+        
+        window.location.hash = '';
+        
+        // Mostrar pantalla de perfil para cambiar contraseña
+        mostrarPerfil();
+        
+        alert('✅ Ahora puedes establecer tu nueva contraseña abajo.');
+        
+        // Hacer scroll al formulario de cambio de contraseña
+        setTimeout(() => {
+          document.getElementById('nueva-password')?.scrollIntoView({ behavior: 'smooth' });
+        }, 500);
+        
+        return;
+      }
+    } catch (error) {
+      console.error('Error con link de recuperación:', error);
+      alert('❌ Error: ' + error.message);
+      mostrarPantallaAuth();
+      return;
+    }
+  }
+  
+  // CASO 3: Sesión offline
   if (userState.uid && userState.email) {
     console.log("📱 Sesión offline detectada:", userState.email);
     mostrarMenu();
-    return; // ← IMPORTANTE: Salir aquí
+    return;
   }
   
-  // PASO 3: Intentar obtener sesión de Supabase (online)
+  // CASO 4: Sesión online
   try {
     const { data } = await supabase.auth.getSession();
     
@@ -269,5 +306,68 @@ window.addEventListener("DOMContentLoaded", async () => {
     mostrarPantallaAuth();
   }
 });
+
+// ========================================
+// RECUPERACIÓN DE CONTRASEÑA
+// ========================================
+
+// Enviar email de recuperación
+window.recuperarPassword = async function() {
+  const email = document.getElementById("user-email").value.trim();
+  
+  if (!email) {
+    alert("⚠️ Por favor ingresa tu email");
+    return;
+  }
+  
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname + '#reset-password'
+    });
+    
+    if (error) throw error;
+    
+    alert('✅ Email de recuperación enviado. Revisa tu bandeja de entrada y spam.');
+  } catch (error) {
+    alert('❌ Error: ' + error.message);
+  }
+};
+
+// Cambiar contraseña (cuando el usuario está logueado)
+window.cambiarPassword = async function() {
+  const nuevaPassword = document.getElementById("nueva-password").value;
+  const confirmarPassword = document.getElementById("confirmar-password").value;
+  
+  if (!nuevaPassword || !confirmarPassword) {
+    alert("⚠️ Completa ambos campos");
+    return;
+  }
+  
+  if (nuevaPassword.length < 6) {
+    alert("⚠️ La contraseña debe tener al menos 6 caracteres");
+    return;
+  }
+  
+  if (nuevaPassword !== confirmarPassword) {
+    alert("❌ Las contraseñas no coinciden");
+    return;
+  }
+  
+  try {
+    const { error } = await supabase.auth.updateUser({
+      password: nuevaPassword
+    });
+    
+    if (error) throw error;
+    
+    // Limpiar campos
+    document.getElementById("nueva-password").value = "";
+    document.getElementById("confirmar-password").value = "";
+    
+    alert('✅ Contraseña actualizada correctamente');
+  } catch (error) {
+    alert('❌ Error al cambiar contraseña: ' + error.message);
+  }
+};
 
 window.mostrarPerfil = mostrarPerfil;

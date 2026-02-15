@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Entrenamiento</title>
 
-  <link rel="stylesheet" href="./style.css?v=57" />
-  <link rel="manifest" href="./manifest.json?v=57" />
+  <link rel="stylesheet" href="./style.css?v=58" />
+  <link rel="manifest" href="./manifest.json?v=58" />
   <meta name="theme-color" content="#121212" />
 
   <!-- App principal -->
-  <script type="module" src="./app.js?v=57"></script>
+  <script type="module" src="./app.js?v=58"></script>
 </head>
 
 <body>
@@ -23,7 +23,7 @@
   <!-- =====================================================
        AUTH / LOGIN
   ===================================================== -->
- <section id="pantalla-auth" class="oculto">
+  <section id="pantalla-auth" class="oculto">
   <h2>Iniciar sesión / Registrarse</h2>
   <input type="email" id="user-email" placeholder="Email" />
   <input type="password" id="user-pass" placeholder="Contraseña" />
@@ -31,27 +31,36 @@
   <button onclick="login()">Iniciar sesión</button>
   <button onclick="register()">Registrarse</button>
   
-  <!-- BOTÓN DE REENVÍO -->
+  <!-- BOTONES ADICIONALES -->
   <button onclick="reenviarVerificacion()" style="background: var(--bg-secondary); font-size: 13px; margin-top: 10px;">
     📧 Reenviar email de verificación
+  </button>
+  
+  <button onclick="recuperarPassword()" style="background: var(--bg-secondary); font-size: 13px;">
+    🔑 Olvidé mi contraseña
   </button>
 </section>
 
   <!-- =====================================================
        PERFIL DE USUARIO
   ===================================================== -->
-  <section id="pantalla-perfil" class="oculto">
-    <h2>Perfil de usuario</h2>
-
-    <p id="user-email-label"></p>
-
-    <div class="perfil-acciones">
-      <button onclick="syncNow()">Sincronizar</button>
-      <button onclick="logout()">Cerrar sesión</button>
-    </div>
-
-    <button onclick="volverMenu()">Volver al menú</button>
-  </section>
+ <section id="pantalla-perfil" class="oculto">
+  <h2>Perfil</h2>
+  <p id="user-email-label">Usuario:</p>
+  
+  <button onclick="syncNow()">Sincronizar ahora</button>
+  
+  <!-- 👇 NUEVA SECCIÓN DE CAMBIO DE CONTRASEÑA -->
+  <hr>
+  <h3>Cambiar contraseña</h3>
+  <input type="password" id="nueva-password" placeholder="Nueva contraseña (mín. 6 caracteres)" />
+  <input type="password" id="confirmar-password" placeholder="Confirmar contraseña" />
+  <button onclick="cambiarPassword()">💾 Guardar nueva contraseña</button>
+  
+  <hr>
+  <button class="danger" onclick="logout()">Cerrar sesión</button>
+  <button onclick="volverMenu()">Volver al menú</button>
+</section>
 
   <!-- =====================================================
        MENÚ PRINCIPAL
