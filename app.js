@@ -1267,3 +1267,93 @@ window.volverMenu = function() {
   guardarEstadoApp();
 };
 
+// ========================================
+// SWIPE GESTURE PARA SIDEBAR
+// ========================================
+let touchStartX = 0;
+let touchStartY = 0;
+let touchEndX = 0;
+let touchEndY = 0;
+let isSwiping = false;
+
+const SWIPE_THRESHOLD = 100; // Píxeles mínimos para considerar swipe
+const EDGE_ZONE = 30; // Zona del borde izquierdo donde funciona el swipe (píxeles)
+
+document.addEventListener('touchstart', (e) => {
+  touchStartX = e.changedTouches[0].screenX;
+  touchStartY = e.changedTouches[0].screenY;
+  
+  // Solo detectar swipe si empieza desde el borde izquierdo
+  if (touchStartX <= EDGE_ZONE) {
+    isSwiping = true;
+  }
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+  if (!isSwiping) return;
+  
+  touchEndX = e.changedTouches[0].screenX;
+  touchEndY = e.changedTouches[0].screenY;
+  
+  const deltaX = touchEndX - touchStartX;
+  const deltaY = Math.abs(touchEndY - touchStartY);
+  
+  // Si el swipe es más horizontal que vertical y va hacia la derecha
+  if (deltaX > 50 && deltaY < 100) {
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("sidebar-overlay");
+    
+    // Abrir sidebar mientras arrastras (opcional, para feedback visual)
+    if (sidebar && !sidebar.classList.contains("sidebar-open")) {
+      sidebar.classList.remove("sidebar-closed");
+      sidebar.classList.add("sidebar-open");
+      if (overlay) overlay.classList.remove("oculto");
+    }
+  }
+}, { passive: true });
+
+document.addEventListener('touchend', (e) => {
+  if (!isSwiping) return;
+  
+  touchEndX = e.changedTouches[0].screenX;
+  touchEndY = e.changedTouches[0].screenY;
+  
+  const deltaX = touchEndX - touchStartX;
+  const deltaY = Math.abs(touchEndY - touchStartY);
+  
+  // Si el swipe es horizontal y supera el umbral
+  if (deltaX > SWIPE_THRESHOLD && deltaY < 100) {
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("sidebar-overlay");
+    
+    if (sidebar && overlay) {
+      sidebar.classList.remove("sidebar-closed");
+      sidebar.classList.add("sidebar-open");
+      overlay.classList.remove("oculto");
+    }
+  }
+  
+  isSwiping = false;
+}, { passive: true });
+
+// CERRAR SIDEBAR CON SWIPE HACIA LA IZQUIERDA
+document.getElementById("sidebar")?.addEventListener('touchstart', (e) => {
+  if (!document.getElementById("sidebar").classList.contains("sidebar-open")) return;
+  
+  touchStartX = e.changedTouches[0].screenX;
+  isSwiping = true;
+}, { passive: true });
+
+document.getElementById("sidebar")?.addEventListener('touchend', (e) => {
+  if (!isSwiping) return;
+  
+  touchEndX = e.changedTouches[0].screenX;
+  const deltaX = touchEndX - touchStartX;
+  
+  // Si el swipe es hacia la izquierda
+  if (deltaX < -SWIPE_THRESHOLD) {
+    toggleSidebar();
+  }
+  
+  isSwiping = false;
+}, { passive: true });

@@ -684,3 +684,18 @@ label {
 .config-dia input[type="checkbox"] {
   width: auto;
 }
+
+/* Transición suave para el sidebar */
+#sidebar {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Cuando está abierto */
+#sidebar.sidebar-open {
+  transform: translateX(0);
+}
+
+/* Cuando está cerrado */
+#sidebar.sidebar-closed {
+  transform: translateX(-100%);
+}
