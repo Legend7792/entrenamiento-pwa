@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Entrenamiento</title>
 
-  <link rel="stylesheet" href="./style.css?v=56" />
-  <link rel="manifest" href="./manifest.json?v=56" />
+  <link rel="stylesheet" href="./style.css?v=57" />
+  <link rel="manifest" href="./manifest.json?v=57" />
   <meta name="theme-color" content="#121212" />
 
   <!-- App principal -->
-  <script type="module" src="./app.js?v=56"></script>
+  <script type="module" src="./app.js?v=57"></script>
 </head>
 
 <body>
@@ -23,15 +23,19 @@
   <!-- =====================================================
        AUTH / LOGIN
   ===================================================== -->
-  <section id="pantalla-auth">
-    <h2>Acceso</h2>
-
-    <input id="user-email" placeholder="Email" />
-    <input id="user-pass" type="password" placeholder="Contraseña" />
-
-    <button onclick="login()">Iniciar sesión</button>
-    <button onclick="register()">Crear cuenta</button>
-  </section>
+ <section id="pantalla-auth" class="oculto">
+  <h2>Iniciar sesión / Registrarse</h2>
+  <input type="email" id="user-email" placeholder="Email" />
+  <input type="password" id="user-pass" placeholder="Contraseña" />
+  
+  <button onclick="login()">Iniciar sesión</button>
+  <button onclick="register()">Registrarse</button>
+  
+  <!-- BOTÓN DE REENVÍO -->
+  <button onclick="reenviarVerificacion()" style="background: var(--bg-secondary); font-size: 13px; margin-top: 10px;">
+    📧 Reenviar email de verificación
+  </button>
+</section>
 
   <!-- =====================================================
        PERFIL DE USUARIO

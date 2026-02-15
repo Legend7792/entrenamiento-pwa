@@ -1,4 +1,4 @@
-// auth.js - CON RESTAURACIÓN OFFLINE
+// auth.js - VERSIÓN CORREGIDA
 import { supabase } from "./cloud.js";
 import { userState, saveLocal, syncFromCloud, syncToCloud } from "./userState.js";
 
@@ -52,18 +52,31 @@ window.register = async function () {
       password: pass 
     });
     
-    if (error) throw error;
+    if (error) {
+      // Manejar error de usuario ya registrado
+      if (error.message.includes('User already registered')) {
+        alert('⚠️ Este email ya está registrado. Si no has verificado tu email, usa el botón "📧 Reenviar email de verificación".');
+        return;
+      }
+      throw error;
+    }
 
-    alert("✅ Cuenta creada. Revisa tu email para confirmar (si Supabase lo requiere)");
-    
-    userState.uid = data.user.id;
-    userState.email = email;
-    userState.sessionToken = data.session.access_token;
-    saveLocal();
-    
-    await syncToCloud();
-    
-    mostrarMenu();
+    // Verificar si hay sesión
+    if (data.session) {
+      // Verificación desactivada → sesión inmediata
+      userState.uid = data.user.id;
+      userState.email = email;
+      userState.sessionToken = data.session.access_token;
+      saveLocal();
+      
+      await syncToCloud();
+      
+      alert("✅ Cuenta creada correctamente");
+      mostrarMenu();
+    } else {
+      // Verificación activada → sin sesión hasta verificar
+      alert("✅ Cuenta creada. Revisa tu email (y carpeta spam) para verificar tu cuenta.");
+    }
   } catch (error) {
     alert("❌ Error al registrar: " + error.message);
   }
@@ -85,10 +98,20 @@ window.login = async function () {
       password: pass 
     });
     
-    if (error) throw error;
+    if (error) {
+      // Mensajes específicos según el error
+      if (error.message.includes('Invalid login credentials')) {
+        alert("❌ Email o contraseña incorrectos. Si no has verificado tu email, usa el botón de reenvío.");
+      } else if (error.message.includes('Email not confirmed')) {
+        alert("⚠️ Debes verificar tu email antes de iniciar sesión. Usa el botón '📧 Reenviar email de verificación'.");
+      } else {
+        alert("❌ Error al iniciar sesión: " + error.message);
+      }
+      return;
+    }
 
     userState.uid = data.user.id;
-    userState.email = email;
+    userState.email = data.user.email;
     userState.sessionToken = data.session.access_token;
     saveLocal();
     
@@ -144,16 +167,91 @@ window.syncNow = async function () {
   }
 };
 
-// Verificar sesión al cargar
-window.addEventListener("DOMContentLoaded", async () => {
-  // PRIMERO: Verificar si hay sesión guardada en localStorage
-  if (userState.uid && userState.email) {
-    console.log("📱 Sesión offline detectada:", userState.email);
-    mostrarMenu();
+// Reenviar email de verificación
+window.reenviarVerificacion = async function() {
+  const email = document.getElementById("user-email").value.trim();
+  
+  if (!email) {
+    alert("⚠️ Por favor ingresa tu email");
     return;
   }
   
-  // SEGUNDO: Si no hay sesión local, intentar con Supabase
+  try {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
+      options: {
+        emailRedirectTo: window.location.origin + window.location.pathname
+      }
+    });
+    
+    if (error) {
+      if (error.message.includes('already confirmed') || error.message.includes('Email already confirmed')) {
+        alert('✅ Esta cuenta ya está verificada. Puedes iniciar sesión directamente.');
+      } else if (error.message.includes('not found') || error.message.includes('User not found')) {
+        alert('❌ No existe una cuenta con este email. Regístrate primero.');
+      } else {
+        throw error;
+      }
+    } else {
+      alert('✅ Email de verificación reenviado. Revisa tu bandeja de entrada y carpeta de spam.');
+    }
+  } catch (error) {
+    alert('❌ Error: ' + error.message);
+  }
+};
+
+// ========================================
+// INICIALIZACIÓN Y MANEJO DE SESIÓN
+// ========================================
+window.addEventListener("DOMContentLoaded", async () => {
+  // PASO 1: Verificar si venimos de un link de verificación de email
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const accessToken = hashParams.get('access_token');
+  const type = hashParams.get('type');
+  
+  if (accessToken && type === 'signup') {
+    console.log('🔍 Detectado link de verificación de email');
+    
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error) throw error;
+      
+      if (data.session) {
+        userState.uid = data.session.user.id;
+        userState.email = data.session.user.email;
+        userState.sessionToken = data.session.access_token;
+        saveLocal();
+        
+        await syncFromCloud();
+        
+        window.location.hash = '';
+        
+        alert('✅ Email verificado correctamente. ¡Bienvenido!');
+        mostrarMenu();
+        return; // ← IMPORTANTE: Salir aquí
+      } else {
+        alert('⚠️ No se pudo verificar el email. Intenta iniciar sesión manualmente.');
+        mostrarPantallaAuth();
+        return;
+      }
+    } catch (error) {
+      console.error('Error verificando email:', error);
+      alert('❌ Error al verificar: ' + error.message);
+      mostrarPantallaAuth();
+      return;
+    }
+  }
+  
+  // PASO 2: Verificar si hay sesión guardada en localStorage (offline)
+  if (userState.uid && userState.email) {
+    console.log("📱 Sesión offline detectada:", userState.email);
+    mostrarMenu();
+    return; // ← IMPORTANTE: Salir aquí
+  }
+  
+  // PASO 3: Intentar obtener sesión de Supabase (online)
   try {
     const { data } = await supabase.auth.getSession();
     
