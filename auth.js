@@ -129,19 +129,40 @@ window.logout = async function () {
   if (!confirm("¿Cerrar sesión? Los datos locales se mantendrán.")) return;
   
   try {
-    await syncToCloud();
-    await supabase.auth.signOut();
+    // Intentar sincronizar a la nube (pero no fallar si no se puede)
+    if (userState.uid && navigator.onLine) {
+      try {
+        await syncToCloud();
+        console.log('✅ Datos sincronizados antes de cerrar sesión');
+      } catch (syncError) {
+        console.warn('⚠️ No se pudo sincronizar antes de cerrar sesión:', syncError);
+        // Continuar de todas formas
+      }
+    }
     
-    // Limpiar estado
+    // Intentar cerrar sesión en Supabase (pero no fallar si no se puede)
+    try {
+      await supabase.auth.signOut();
+      console.log('✅ Sesión cerrada en Supabase');
+    } catch (signOutError) {
+      console.warn('⚠️ No se pudo cerrar sesión en Supabase:', signOutError);
+      // Continuar de todas formas
+    }
+    
+  } catch (error) {
+    console.error("Error durante logout:", error);
+    // Continuar de todas formas con la limpieza
+  } finally {
+    // SIEMPRE limpiar estado local (incluso si falló todo lo anterior)
     userState.uid = null;
     userState.email = null;
     userState.sessionToken = null;
     localStorage.removeItem("userState");
     
+    console.log('✅ Estado local limpiado');
+    
+    // SIEMPRE recargar
     location.reload();
-  } catch (error) {
-    console.error("Error cerrando sesión:", error);
-    alert("Error al cerrar sesión");
   }
 };
 
