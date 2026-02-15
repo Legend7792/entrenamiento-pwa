@@ -31,19 +31,6 @@ export function mostrarPerfil() {
   document.getElementById("user-email-label").innerText = `Usuario: ${userState.email}`;
 }
 
-// Volver al menú desde perfil
-window.volverMenu = function() {
-  history.pushState({ pantalla: 'menu' }, "");
-
-  document.getElementById("pantalla-auth").classList.add("oculto");
-  document.getElementById("pantalla-perfil").classList.add("oculto");
-  document.getElementById("pantalla-dia").classList.add("oculto");
-  document.getElementById("pantalla-historial").classList.add("oculto");
-  document.getElementById("pantalla-detalle").classList.add("oculto");
-  document.getElementById("pantalla-medidas").classList.add("oculto");
-  document.getElementById("menu").classList.remove("oculto");
-};
-
 // Registrar usuario
 window.register = async function () {
   const email = document.getElementById("user-email").value.trim();
@@ -71,7 +58,7 @@ window.register = async function () {
     
     userState.uid = data.user.id;
     userState.email = email;
-    userState.sessionToken = data.session.access_token; // 👈 GUARDAR TOKEN
+    userState.sessionToken = data.session.access_token;
     saveLocal();
     
     await syncToCloud();
@@ -102,7 +89,7 @@ window.login = async function () {
 
     userState.uid = data.user.id;
     userState.email = email;
-    userState.sessionToken = data.session.access_token; // 👈 GUARDAR TOKEN
+    userState.sessionToken = data.session.access_token;
     saveLocal();
     
     await syncFromCloud();
@@ -159,14 +146,14 @@ window.syncNow = async function () {
 
 // Verificar sesión al cargar
 window.addEventListener("DOMContentLoaded", async () => {
-  // 👇 PRIMERO: Verificar si hay sesión guardada en localStorage
+  // PRIMERO: Verificar si hay sesión guardada en localStorage
   if (userState.uid && userState.email) {
     console.log("📱 Sesión offline detectada:", userState.email);
     mostrarMenu();
-    return; // No intentar conectar con Supabase si estamos offline
+    return;
   }
   
-  // 👇 SEGUNDO: Si no hay sesión local, intentar con Supabase (requiere internet)
+  // SEGUNDO: Si no hay sesión local, intentar con Supabase
   try {
     const { data } = await supabase.auth.getSession();
     
@@ -180,7 +167,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       mostrarPantallaAuth();
     }
   } catch (error) {
-    // Sin internet y sin sesión local → mostrar login
     console.log("Sin conexión y sin sesión local");
     mostrarPantallaAuth();
   }

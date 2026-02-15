@@ -699,3 +699,82 @@ label {
 #sidebar.sidebar-closed {
   transform: translateX(-100%);
 }
+
+/* ==============================
+   BOTONES ÚLTIMA SESIÓN
+================================ */
+.botones-ultima-sesion {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.btn-secundario {
+  flex: 1;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secundario:active {
+  transform: scale(0.98);
+  background: var(--border);
+}
+
+.btn-secundario.activo {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* ==============================
+   GUÍA DE ÚLTIMA SESIÓN
+================================ */
+.guia-ultima-sesion {
+  background: var(--bg-secondary);
+  border-left: 3px solid var(--accent);
+  padding: 10px 12px;
+  margin: 10px 0 15px 0;
+  border-radius: 6px;
+  font-size: 13px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.guia-fecha {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-bottom: 6px;
+  font-style: italic;
+}
+
+.guia-detalles {
+  display: flex;
+  gap: 15px;
+  color: var(--text-primary);
+}
+
+.guia-peso {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.guia-reps {
+  color: var(--text-secondary);
+}

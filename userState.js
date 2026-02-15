@@ -1,3 +1,7 @@
+// userState.js - VERSIÓN CORREGIDA
+import { supabase } from "./cloud.js"; // 👈 AÑADIR ESTA LÍNEA
+
+
 // userState.js - CON PERSISTENCIA DE SESIÓN
 export const userState = {
   uid: null,
@@ -85,6 +89,12 @@ export async function syncToCloud() {
   }
   
   console.log("Datos sincronizados a la nube");
+}
+
+// Marcar como modificado (para themes.js)
+export function markDirty() {
+  // Guardar inmediatamente cuando hay cambios
+  saveLocal();
 }
 
 // Cargar al inicio

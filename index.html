@@ -5,15 +5,48 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Entrenamiento</title>
 
-  <link rel="stylesheet" href="./style.css?v=54" />
-  <link rel="manifest" href="./manifest.json?v=54" />
+  <link rel="stylesheet" href="./style.css?v=55" />
+  <link rel="manifest" href="./manifest.json?v=55" />
   <meta name="theme-color" content="#121212" />
 
   <!-- App principal -->
-  <script type="module" src="./app.js?v=54"></script>
+  <script type="module" src="./app.js?v=55"></script>
 </head>
 
 <body>
+
+<!-- DEBUG DE ERRORES -->
+<div id="debug-panel" style="position: fixed; top: 0; left: 0; background: red; color: white; padding: 10px; z-index: 9999; font-size: 11px; max-width: 100%; overflow: auto; max-height: 200px; font-family: monospace;">
+  Esperando errores...
+</div>
+
+<script>
+const debug = document.getElementById('debug-panel');
+let logs = [];
+
+window.addEventListener('error', (e) => {
+  logs.unshift(`❌ ERROR: ${e.message}`);
+  logs.unshift(`📁 Archivo: ${e.filename.split('/').pop()}`);
+  logs.unshift(`📍 Línea: ${e.lineno}`);
+  debug.innerHTML = logs.slice(0, 20).join('<br>');
+  debug.style.background = 'red';
+});
+
+// Verificar funciones cargadas
+setTimeout(() => {
+  if (logs.length === 0) {
+    const checks = [];
+    
+    checks.push('✓ Sin errores de carga');
+    checks.push(`login: ${typeof window.login}`);
+    checks.push(`register: ${typeof window.register}`);
+    checks.push(`userState: ${typeof userState !== 'undefined' ? 'OK' : 'undefined'}`);
+    
+    debug.innerHTML = checks.join('<br>');
+    debug.style.background = 'green';
+  }
+}, 2000);
+</script>
 
 <!-- =====================================================
      CONTENEDOR GENERAL DE LA APP

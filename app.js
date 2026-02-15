@@ -368,6 +368,7 @@ function abrirDia(diaKey) {
   cargarEjerciciosDia();
   resetTemporizador();
   renderDia();
+  renderBotonesUltimaSesion();
 
  // 👇 CONFIGURACIÓN DINÁMICA DE HIT/Timer (ACTUALIZADA)
 const rutinaActiva = obtenerRutinaActiva();
@@ -1235,6 +1236,7 @@ window.borrarTodoHistorial = borrarTodoHistorial;
 window.actualizarSerie = actualizarSerie;
 window.toggleSidebar = toggleSidebar;
 window.resetDesdeModal = resetDesdeModal;
+window.volverHistorial = volverHistorial;
 // Escuchar cambios de rutina
 window.addEventListener("cambio-rutina", (e) => {
   console.log("Rutina cambiada a:", e.detail.rutinaId);
@@ -1357,3 +1359,132 @@ document.getElementById("sidebar")?.addEventListener('touchend', (e) => {
   
   isSwiping = false;
 }, { passive: true });
+
+
+// ========================================
+// VER ÚLTIMA SESIÓN COMO GUÍA
+// ========================================
+
+// Renderizar botones de última sesión
+function renderBotonesUltimaSesion() {
+  console.log('🔍 Llamando renderBotonesUltimaSesion'); // Debug
+  
+  // Buscar el contenedor de la pantalla del día
+  const pantallaDia = document.getElementById("pantalla-dia");
+  if (!pantallaDia) {
+    console.log('❌ No se encontró pantalla-dia');
+    return;
+  }
+  
+  // Buscar el contenedor de ejercicios
+  const contenedor = document.getElementById("contenido");
+  if (!contenedor) {
+    console.log('❌ No se encontró contenido');
+    return;
+  }
+  
+  const ultimaSesion = obtenerUltimaSesion();
+  console.log('🔍 Última sesión:', ultimaSesion);
+  
+  if (!ultimaSesion) {
+    console.log('❌ No hay sesión anterior');
+    return;
+  }
+  
+  // Verificar si ya existe el botón
+  const botonExistente = document.getElementById('btn-toggle-guia');
+  if (botonExistente) {
+    console.log('✓ Botón ya existe, no duplicar');
+    return;
+  }
+  
+  // Crear botón toggle
+  const botonHTML = `
+    <div class="botones-ultima-sesion">
+      <button onclick="toggleGuiaUltimaSesion()" id="btn-toggle-guia" class="btn-secundario">
+        👁️ Mostrar última sesión como guía
+      </button>
+    </div>
+  `;
+  
+  console.log('✅ Insertando botón');
+  contenedor.insertAdjacentHTML('afterbegin', botonHTML);
+}
+
+// Obtener la última sesión del día actual
+function obtenerUltimaSesion() {
+  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const rutinaActual = obtenerRutinaCompleta();
+  const nombreDiaActual = rutinaActual[diaActual]?.nombre;
+  
+  if (!nombreDiaActual) return null;
+  
+  // Buscar la última sesión de este mismo día (más reciente primero)
+  const sesionesDelDia = historial
+    .filter(s => s.dia === nombreDiaActual)
+    .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+  
+  return sesionesDelDia[0] || null;
+}
+
+// Toggle mostrar/ocultar guía
+window.toggleGuiaUltimaSesion = function() {
+  const guiasActuales = document.querySelectorAll('.guia-ultima-sesion');
+  const btn = document.getElementById('btn-toggle-guia');
+  
+  if (guiasActuales.length > 0) {
+    // Ocultar guías
+    guiasActuales.forEach(g => g.remove());
+    btn.textContent = '👁️ Mostrar última sesión como guía';
+    btn.classList.remove('activo');
+  } else {
+    // Mostrar guías
+    mostrarGuiaUltimaSesion();
+    btn.textContent = '🚫 Ocultar guía';
+    btn.classList.add('activo');
+  }
+};
+
+// Mostrar guía de última sesión
+function mostrarGuiaUltimaSesion() {
+  const ultimaSesion = obtenerUltimaSesion();
+  if (!ultimaSesion) return;
+  
+  const fecha = new Date(ultimaSesion.fecha).toLocaleDateString('es-ES', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  
+  // Para cada ejercicio, añadir la guía
+  ejerciciosDia.forEach((ej, ejIndex) => {
+    // Buscar datos del ejercicio en la última sesión
+    const ejAnterior = ultimaSesion.ejercicios.find(e => e.nombre === ej.nombre);
+    
+    if (!ejAnterior) return; // No hay datos anteriores de este ejercicio
+    
+    // Buscar el contenedor del ejercicio en el DOM
+    const ejercicioDiv = document.querySelectorAll('.ejercicio')[ejIndex];
+    if (!ejercicioDiv) return;
+    
+    // Crear elemento de guía
+    const guiaHTML = `
+      <div class="guia-ultima-sesion">
+        <span class="guia-fecha">📅 ${fecha}</span>
+        <div class="guia-detalles">
+          <span class="guia-peso">Peso: ${ejAnterior.peso} kg</span>
+          <span class="guia-reps">Reps: ${ejAnterior.reps.filter(r => r !== "").join(" - ")}</span>
+        </div>
+      </div>
+    `;
+    
+    // Insertar después del título del ejercicio
+    const titulo = ejercicioDiv.querySelector('h3');
+    if (titulo) {
+      titulo.insertAdjacentHTML('afterend', guiaHTML);
+    }
+  });
+}
+
+
