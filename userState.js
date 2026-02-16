@@ -75,12 +75,17 @@ export async function syncToCloud() {
     }
   }
 
-  const { error } = await supabase
-    .from("usuarios")  // ← CAMBIADO de "user_data" a "usuarios"
-    .upsert({
-      id: userState.uid,  // ← CAMBIADO de "user_id" a "id"
-      data: localData     // ← CAMBIADO de "local_storage" a "data"
-    });
+const { error } = await supabase
+  .from("usuarios")
+  .upsert(
+    {
+      id: userState.uid,
+      data: localData
+    },
+    { 
+      onConflict: 'id'  // 👈 AÑADE ESTO
+    }
+  );
 
   if (error) {
     console.error("Error sincronizando:", error);
