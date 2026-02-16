@@ -49,7 +49,7 @@ window.register = async function () {
   try {
     const { data, error } = await supabase.auth.signUp({ 
       email, 
-      password: pass 
+      password: pass
     });
     
     if (error) {
@@ -82,6 +82,7 @@ window.register = async function () {
   }
 };
 
+  
 // Iniciar sesión
 window.login = async function () {
   const email = document.getElementById("user-email").value.trim();
