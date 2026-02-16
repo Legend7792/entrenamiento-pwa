@@ -229,6 +229,54 @@ window.addEventListener("DOMContentLoaded", async () => {
   const hashParams = new URLSearchParams(window.location.hash.substring(1));
   const accessToken = hashParams.get('access_token');
   const type = hashParams.get('type');
+  const fullHash = window.location.hash;
+  
+  // 👇 NUEVO: Detectar hash personalizado "#reset-password"
+  if (fullHash === '#reset-password' || fullHash.includes('reset-password')) {
+    console.log('🔍 Detectado hash personalizado de recuperación');
+    
+    try {
+      // Supabase ya procesó el token y estableció la sesión
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error) throw error;
+      
+      if (data.session) {
+        userState.uid = data.session.user.id;
+        userState.email = data.session.user.email;
+        userState.sessionToken = data.session.access_token;
+        saveLocal();
+        
+        // Limpiar el hash
+        window.location.hash = '';
+        
+        // Mostrar perfil para cambiar contraseña
+        mostrarPerfil();
+        
+        alert('🔑 Ahora puedes establecer tu nueva contraseña abajo.');
+        
+        // Hacer scroll al formulario
+        setTimeout(() => {
+          const inputPassword = document.getElementById('nueva-password');
+          if (inputPassword) {
+            inputPassword.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            inputPassword.focus();
+          }
+        }, 500);
+        
+        return;
+      } else {
+        alert('⚠️ No se pudo procesar el link. Intenta solicitar uno nuevo.');
+        mostrarPantallaAuth();
+        return;
+      }
+    } catch (error) {
+      console.error('Error con link de recuperación:', error);
+      alert('❌ Error: ' + error.message);
+      mostrarPantallaAuth();
+      return;
+    }
+  }
   
   // CASO 1: Link de verificación de email (signup)
   if (accessToken && type === 'signup') {
@@ -265,9 +313,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
   
-  // 👇 NUEVO: CASO 2: Link de recuperación de contraseña (recovery)
+  // CASO 2: Link de recuperación con token en URL (formato alternativo)
   if (accessToken && (type === 'recovery' || type === 'magiclink')) {
-    console.log('🔍 Detectado link de recuperación de contraseña');
+    console.log('🔍 Detectado link de recuperación con access_token');
     
     try {
       const { data, error } = await supabase.auth.getSession();
@@ -282,12 +330,10 @@ window.addEventListener("DOMContentLoaded", async () => {
         
         window.location.hash = '';
         
-        // Mostrar perfil para cambiar contraseña
         mostrarPerfil();
         
         alert('🔑 Ahora puedes establecer tu nueva contraseña abajo.');
         
-        // Hacer scroll al formulario de cambio de contraseña
         setTimeout(() => {
           const inputPassword = document.getElementById('nueva-password');
           if (inputPassword) {
@@ -335,6 +381,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     mostrarPantallaAuth();
   }
 });
+
 
 // ========================================
 // RECUPERACIÓN DE CONTRASEÑA
