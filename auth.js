@@ -61,26 +61,25 @@ window.register = async function () {
       throw error;
     }
 
-    // Verificar si hay sesión
-    if (data.session) {
-      // Verificación desactivada → sesión inmediata
-      userState.uid = data.user.id;
-      userState.email = email;
-      userState.sessionToken = data.session.access_token;
-      saveLocal();
-      
-      await syncToCloud();
-      
-      alert("✅ Cuenta creada correctamente");
-      mostrarMenu();
-    } else {
-      // Verificación activada → sin sesión hasta verificar
-      alert("✅ Cuenta creada. Revisa tu email (y carpeta spam) para verificar tu cuenta.");
-    }
-  } catch (error) {
-    alert("❌ Error al registrar: " + error.message);
-  }
-};
+   // Verificar si hay sesión
+if (data.session) {
+  // Verificación desactivada → sesión inmediata
+  userState.uid = data.user.id;
+  userState.email = email;
+  userState.sessionToken = data.session.access_token;
+  saveLocal();
+  
+  await syncToCloud();
+  
+  // 👇 LIMPIAR ESTADO DE PANTALLA
+  localStorage.removeItem("estadoApp");
+  
+  alert("✅ Cuenta creada correctamente");
+  mostrarMenu();
+} else {
+  // Verificación activada → sin sesión hasta verificar
+  alert("✅ Cuenta creada. Revisa tu email (y carpeta spam) para verificar tu cuenta.");
+}
 
   
 // Iniciar sesión
@@ -117,6 +116,9 @@ window.login = async function () {
     saveLocal();
     
     await syncFromCloud();
+    
+    // 👇 LIMPIAR ESTADO DE PANTALLA AL HACER LOGIN
+    localStorage.removeItem("estadoApp");
     
     mostrarMenu();
     location.reload();
@@ -279,40 +281,32 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
   
-  // CASO 1: Link de verificación de email (signup)
-  if (accessToken && type === 'signup') {
-    console.log('🔍 Detectado link de verificación de email');
+ // CASO 1: Link de verificación de email (signup)
+if (accessToken && type === 'signup') {
+  console.log('🔍 Detectado link de verificación de email');
+  
+  try {
+    const { data, error } = await supabase.auth.getSession();
     
-    try {
-      const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    
+    if (data.session) {
+      userState.uid = data.session.user.id;
+      userState.email = data.session.user.email;
+      userState.sessionToken = data.session.access_token;
+      saveLocal();
       
-      if (error) throw error;
+      await syncFromCloud();
       
-      if (data.session) {
-        userState.uid = data.session.user.id;
-        userState.email = data.session.user.email;
-        userState.sessionToken = data.session.access_token;
-        saveLocal();
-        
-        await syncFromCloud();
-        
-        window.location.hash = '';
-        
-        alert('✅ Email verificado correctamente. ¡Bienvenido!');
-        mostrarMenu();
-        return;
-      } else {
-        alert('⚠️ No se pudo verificar el email. Intenta iniciar sesión manualmente.');
-        mostrarPantallaAuth();
-        return;
-      }
-    } catch (error) {
-      console.error('Error verificando email:', error);
-      alert('❌ Error al verificar: ' + error.message);
-      mostrarPantallaAuth();
+      window.location.hash = '';
+      
+      // 👇 AÑADIR ESTA LÍNEA
+      localStorage.removeItem("estadoApp");
+      
+      alert('✅ Email verificado correctamente. ¡Bienvenido!');
+      mostrarMenu();
       return;
     }
-  }
   
   // CASO 2: Link de recuperación con token en URL (formato alternativo)
   if (accessToken && (type === 'recovery' || type === 'magiclink')) {
