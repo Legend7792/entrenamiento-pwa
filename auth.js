@@ -1,4 +1,4 @@
-// auth.js - VERSIÓN CORREGIDA
+// auth.js - VERSIÓN CORREGIDA COMPLETA
 import { supabase } from "./cloud.js";
 import { userState, saveLocal, syncFromCloud, syncToCloud } from "./userState.js";
 
@@ -53,7 +53,6 @@ window.register = async function () {
     });
     
     if (error) {
-      // Manejar error de usuario ya registrado
       if (error.message.includes('User already registered')) {
         alert('⚠️ Este email ya está registrado. Si no has verificado tu email, usa el botón "📧 Reenviar email de verificación".');
         return;
@@ -61,27 +60,33 @@ window.register = async function () {
       throw error;
     }
 
-   // Verificar si hay sesión
-if (data.session) {
-  // Verificación desactivada → sesión inmediata
-  userState.uid = data.user.id;
-  userState.email = email;
-  userState.sessionToken = data.session.access_token;
-  saveLocal();
-  
-  await syncToCloud();
-  
-  // 👇 LIMPIAR ESTADO DE PANTALLA
-  localStorage.removeItem("estadoApp");
-  
-  alert("✅ Cuenta creada correctamente");
-  mostrarMenu();
-} else {
-  // Verificación activada → sin sesión hasta verificar
-  alert("✅ Cuenta creada. Revisa tu email (y carpeta spam) para verificar tu cuenta.");
-}
+    // Verificar si hay sesión
+    if (data.session) {
+      // Verificación desactivada → sesión inmediata
+      userState.uid = data.user.id;
+      userState.email = email;
+      userState.sessionToken = data.session.access_token;
+      saveLocal();
+      
+      await syncToCloud();
+      
+      // Resetear SOLO la pantalla, mantener datos
+      const estadoActual = JSON.parse(localStorage.getItem("estadoApp")) || {};
+      estadoActual.pantalla = "menu";
+      estadoActual.diaActual = null;
+      localStorage.setItem("estadoApp", JSON.stringify(estadoActual));
+      
+      alert("✅ Cuenta creada correctamente");
+      mostrarMenu();
+    } else {
+      // Verificación activada → sin sesión hasta verificar
+      alert("✅ Cuenta creada. Revisa tu email (y carpeta spam) para verificar tu cuenta.");
+    }
+  } catch (error) {
+    alert("❌ Error al registrar: " + error.message);
+  }
+};
 
-  
 // Iniciar sesión
 window.login = async function () {
   const email = document.getElementById("user-email").value.trim();
@@ -99,7 +104,6 @@ window.login = async function () {
     });
     
     if (error) {
-      // Mensajes específicos según el error
       if (error.message.includes('Invalid login credentials')) {
         alert("❌ Email o contraseña incorrectos. Si no has verificado tu email, usa el botón de reenvío.");
       } else if (error.message.includes('Email not confirmed')) {
@@ -117,8 +121,11 @@ window.login = async function () {
     
     await syncFromCloud();
     
-    // 👇 LIMPIAR ESTADO DE PANTALLA AL HACER LOGIN
-    localStorage.removeItem("estadoApp");
+    // Resetear SOLO la pantalla, mantener datos
+    const estadoActual = JSON.parse(localStorage.getItem("estadoApp")) || {};
+    estadoActual.pantalla = "menu";
+    estadoActual.diaActual = null;
+    localStorage.setItem("estadoApp", JSON.stringify(estadoActual));
     
     mostrarMenu();
     location.reload();
@@ -132,39 +139,31 @@ window.logout = async function () {
   if (!confirm("¿Cerrar sesión? Los datos locales se mantendrán.")) return;
   
   try {
-    // Intentar sincronizar a la nube (pero no fallar si no se puede)
     if (userState.uid && navigator.onLine) {
       try {
         await syncToCloud();
         console.log('✅ Datos sincronizados antes de cerrar sesión');
       } catch (syncError) {
         console.warn('⚠️ No se pudo sincronizar antes de cerrar sesión:', syncError);
-        // Continuar de todas formas
       }
     }
     
-    // Intentar cerrar sesión en Supabase (pero no fallar si no se puede)
     try {
       await supabase.auth.signOut();
       console.log('✅ Sesión cerrada en Supabase');
     } catch (signOutError) {
       console.warn('⚠️ No se pudo cerrar sesión en Supabase:', signOutError);
-      // Continuar de todas formas
     }
     
   } catch (error) {
     console.error("Error durante logout:", error);
-    // Continuar de todas formas con la limpieza
   } finally {
-    // SIEMPRE limpiar estado local (incluso si falló todo lo anterior)
     userState.uid = null;
     userState.email = null;
     userState.sessionToken = null;
     localStorage.removeItem("userState");
     
     console.log('✅ Estado local limpiado');
-    
-    // SIEMPRE recargar
     location.reload();
   }
 };
@@ -203,10 +202,7 @@ window.reenviarVerificacion = async function() {
   try {
     const { error } = await supabase.auth.resend({
       type: 'signup',
-      email: email,
-      options: {
-        emailRedirectTo: window.location.origin + window.location.pathname
-      }
+      email: email
     });
     
     if (error) {
@@ -225,163 +221,6 @@ window.reenviarVerificacion = async function() {
   }
 };
 
-// ========================================
-// INICIALIZACIÓN Y MANEJO DE SESIÓN
-// ========================================
-window.addEventListener("DOMContentLoaded", async () => {
-  const hashParams = new URLSearchParams(window.location.hash.substring(1));
-  const accessToken = hashParams.get('access_token');
-  const type = hashParams.get('type');
-  const fullHash = window.location.hash;
-  
-  // 👇 NUEVO: Detectar hash personalizado "#reset-password"
-  if (fullHash === '#reset-password' || fullHash.includes('reset-password')) {
-    console.log('🔍 Detectado hash personalizado de recuperación');
-    
-    try {
-      // Supabase ya procesó el token y estableció la sesión
-      const { data, error } = await supabase.auth.getSession();
-      
-      if (error) throw error;
-      
-      if (data.session) {
-        userState.uid = data.session.user.id;
-        userState.email = data.session.user.email;
-        userState.sessionToken = data.session.access_token;
-        saveLocal();
-        
-        // Limpiar el hash
-        window.location.hash = '';
-        
-        // Mostrar perfil para cambiar contraseña
-        mostrarPerfil();
-        
-        alert('🔑 Ahora puedes establecer tu nueva contraseña abajo.');
-        
-        // Hacer scroll al formulario
-        setTimeout(() => {
-          const inputPassword = document.getElementById('nueva-password');
-          if (inputPassword) {
-            inputPassword.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            inputPassword.focus();
-          }
-        }, 500);
-        
-        return;
-      } else {
-        alert('⚠️ No se pudo procesar el link. Intenta solicitar uno nuevo.');
-        mostrarPantallaAuth();
-        return;
-      }
-    } catch (error) {
-      console.error('Error con link de recuperación:', error);
-      alert('❌ Error: ' + error.message);
-      mostrarPantallaAuth();
-      return;
-    }
-  }
-  
- // CASO 1: Link de verificación de email (signup)
-if (accessToken && type === 'signup') {
-  console.log('🔍 Detectado link de verificación de email');
-  
-  try {
-    const { data, error } = await supabase.auth.getSession();
-    
-    if (error) throw error;
-    
-    if (data.session) {
-      userState.uid = data.session.user.id;
-      userState.email = data.session.user.email;
-      userState.sessionToken = data.session.access_token;
-      saveLocal();
-      
-      await syncFromCloud();
-      
-      window.location.hash = '';
-      
-      // 👇 AÑADIR ESTA LÍNEA
-      localStorage.removeItem("estadoApp");
-      
-      alert('✅ Email verificado correctamente. ¡Bienvenido!');
-      mostrarMenu();
-      return;
-    }
-  
-  // CASO 2: Link de recuperación con token en URL (formato alternativo)
-  if (accessToken && (type === 'recovery' || type === 'magiclink')) {
-    console.log('🔍 Detectado link de recuperación con access_token');
-    
-    try {
-      const { data, error } = await supabase.auth.getSession();
-      
-      if (error) throw error;
-      
-      if (data.session) {
-        userState.uid = data.session.user.id;
-        userState.email = data.session.user.email;
-        userState.sessionToken = data.session.access_token;
-        saveLocal();
-        
-        window.location.hash = '';
-        
-        mostrarPerfil();
-        
-        alert('🔑 Ahora puedes establecer tu nueva contraseña abajo.');
-        
-        setTimeout(() => {
-          const inputPassword = document.getElementById('nueva-password');
-          if (inputPassword) {
-            inputPassword.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            inputPassword.focus();
-          }
-        }, 500);
-        
-        return;
-      } else {
-        alert('⚠️ No se pudo procesar el link. Intenta solicitar uno nuevo.');
-        mostrarPantallaAuth();
-        return;
-      }
-    } catch (error) {
-      console.error('Error con link de recuperación:', error);
-      alert('❌ Error: ' + error.message);
-      mostrarPantallaAuth();
-      return;
-    }
-  }
-  
-  // CASO 3: Sesión offline
-  if (userState.uid && userState.email) {
-    console.log("📱 Sesión offline detectada:", userState.email);
-    mostrarMenu();
-    return;
-  }
-  
-  // CASO 4: Sesión online
-  try {
-    const { data } = await supabase.auth.getSession();
-    
-    if (data.session) {
-      userState.uid = data.session.user.id;
-      userState.email = data.session.user.email;
-      userState.sessionToken = data.session.access_token;
-      saveLocal();
-      mostrarMenu();
-    } else {
-      mostrarPantallaAuth();
-    }
-  } catch (error) {
-    console.log("Sin conexión y sin sesión local");
-    mostrarPantallaAuth();
-  }
-});
-
-
-// ========================================
-// RECUPERACIÓN DE CONTRASEÑA
-// ========================================
-
 // Enviar email de recuperación
 window.recuperarPassword = async function() {
   const email = document.getElementById("user-email").value.trim();
@@ -393,7 +232,7 @@ window.recuperarPassword = async function() {
   
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'https://legend7792.github.io/entrenamiento-pwa/'  // 👈 Añadir esto
+      redirectTo: 'https://legend7792.github.io/entrenamiento-pwa/'
     });
     
     if (error) throw error;
@@ -404,7 +243,7 @@ window.recuperarPassword = async function() {
   }
 };
 
-// Cambiar contraseña (cuando el usuario está logueado)
+// Cambiar contraseña
 window.cambiarPassword = async function() {
   const nuevaPassword = document.getElementById("nueva-password").value;
   const confirmarPassword = document.getElementById("confirmar-password").value;
@@ -431,7 +270,6 @@ window.cambiarPassword = async function() {
     
     if (error) throw error;
     
-    // Limpiar campos
     document.getElementById("nueva-password").value = "";
     document.getElementById("confirmar-password").value = "";
     
@@ -440,5 +278,165 @@ window.cambiarPassword = async function() {
     alert('❌ Error al cambiar contraseña: ' + error.message);
   }
 };
+
+// ========================================
+// INICIALIZACIÓN Y MANEJO DE SESIÓN
+// ========================================
+window.addEventListener("DOMContentLoaded", async () => {
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const accessToken = hashParams.get('access_token');
+  const type = hashParams.get('type');
+  const fullHash = window.location.hash;
+  
+  // CASO 1: Hash personalizado de recuperación
+  if (fullHash === '#reset-password' || fullHash.includes('reset-password')) {
+    console.log('🔍 Detectado hash personalizado de recuperación');
+    
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error) throw error;
+      
+      if (data.session) {
+        userState.uid = data.session.user.id;
+        userState.email = data.session.user.email;
+        userState.sessionToken = data.session.access_token;
+        saveLocal();
+        
+        window.location.hash = '';
+        mostrarPerfil();
+        
+        alert('🔑 Ahora puedes establecer tu nueva contraseña abajo.');
+        
+        setTimeout(() => {
+          const inputPassword = document.getElementById('nueva-password');
+          if (inputPassword) {
+            inputPassword.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            inputPassword.focus();
+          }
+        }, 500);
+        
+        return;
+      } else {
+        alert('⚠️ No se pudo procesar el link. Intenta solicitar uno nuevo.');
+        mostrarPantallaAuth();
+        return;
+      }
+    } catch (error) {
+      console.error('Error con link de recuperación:', error);
+      alert('❌ Error: ' + error.message);
+      mostrarPantallaAuth();
+      return;
+    }
+  }
+  
+  // CASO 2: Link de verificación de email
+  if (accessToken && type === 'signup') {
+    console.log('🔍 Detectado link de verificación de email');
+    
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error) throw error;
+      
+      if (data.session) {
+        userState.uid = data.session.user.id;
+        userState.email = data.session.user.email;
+        userState.sessionToken = data.session.access_token;
+        saveLocal();
+        
+        await syncFromCloud();
+        
+        window.location.hash = '';
+        
+        // Resetear SOLO la pantalla
+        const estadoActual = JSON.parse(localStorage.getItem("estadoApp")) || {};
+        estadoActual.pantalla = "menu";
+        estadoActual.diaActual = null;
+        localStorage.setItem("estadoApp", JSON.stringify(estadoActual));
+        
+        alert('✅ Email verificado correctamente. ¡Bienvenido!');
+        mostrarMenu();
+        return;
+      } else {
+        alert('⚠️ No se pudo verificar el email. Intenta iniciar sesión manualmente.');
+        mostrarPantallaAuth();
+        return;
+      }
+    } catch (error) {
+      console.error('Error verificando email:', error);
+      alert('❌ Error al verificar: ' + error.message);
+      mostrarPantallaAuth();
+      return;
+    }
+  }
+  
+  // CASO 3: Link de recuperación con access_token
+  if (accessToken && (type === 'recovery' || type === 'magiclink')) {
+    console.log('🔍 Detectado link de recuperación con access_token');
+    
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error) throw error;
+      
+      if (data.session) {
+        userState.uid = data.session.user.id;
+        userState.email = data.session.user.email;
+        userState.sessionToken = data.session.access_token;
+        saveLocal();
+        
+        window.location.hash = '';
+        mostrarPerfil();
+        
+        alert('🔑 Ahora puedes establecer tu nueva contraseña abajo.');
+        
+        setTimeout(() => {
+          const inputPassword = document.getElementById('nueva-password');
+          if (inputPassword) {
+            inputPassword.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            inputPassword.focus();
+          }
+        }, 500);
+        
+        return;
+      } else {
+        alert('⚠️ No se pudo procesar el link. Intenta solicitar uno nuevo.');
+        mostrarPantallaAuth();
+        return;
+      }
+    } catch (error) {
+      console.error('Error con link de recuperación:', error);
+      alert('❌ Error: ' + error.message);
+      mostrarPantallaAuth();
+      return;
+    }
+  }
+  
+  // CASO 4: Sesión offline
+  if (userState.uid && userState.email) {
+    console.log("📱 Sesión offline detectada:", userState.email);
+    mostrarMenu();
+    return;
+  }
+  
+  // CASO 5: Sesión online
+  try {
+    const { data } = await supabase.auth.getSession();
+    
+    if (data.session) {
+      userState.uid = data.session.user.id;
+      userState.email = data.session.user.email;
+      userState.sessionToken = data.session.access_token;
+      saveLocal();
+      mostrarMenu();
+    } else {
+      mostrarPantallaAuth();
+    }
+  } catch (error) {
+    console.log("Sin conexión y sin sesión local");
+    mostrarPantallaAuth();
+  }
+});
 
 window.mostrarPerfil = mostrarPerfil;
