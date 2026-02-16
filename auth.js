@@ -230,7 +230,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const accessToken = hashParams.get('access_token');
   const type = hashParams.get('type');
   
-  // CASO 1: Link de verificación de email
+  // CASO 1: Link de verificación de email (signup)
   if (accessToken && type === 'signup') {
     console.log('🔍 Detectado link de verificación de email');
     
@@ -265,8 +265,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
   
-  // 👇 NUEVO: CASO 2: Link de recuperación de contraseña
-  if (window.location.hash.includes('reset-password')) {
+  // 👇 NUEVO: CASO 2: Link de recuperación de contraseña (recovery)
+  if (accessToken && (type === 'recovery' || type === 'magiclink')) {
     console.log('🔍 Detectado link de recuperación de contraseña');
     
     try {
@@ -282,16 +282,24 @@ window.addEventListener("DOMContentLoaded", async () => {
         
         window.location.hash = '';
         
-        // Mostrar pantalla de perfil para cambiar contraseña
+        // Mostrar perfil para cambiar contraseña
         mostrarPerfil();
         
-        alert('✅ Ahora puedes establecer tu nueva contraseña abajo.');
+        alert('🔑 Ahora puedes establecer tu nueva contraseña abajo.');
         
         // Hacer scroll al formulario de cambio de contraseña
         setTimeout(() => {
-          document.getElementById('nueva-password')?.scrollIntoView({ behavior: 'smooth' });
+          const inputPassword = document.getElementById('nueva-password');
+          if (inputPassword) {
+            inputPassword.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            inputPassword.focus();
+          }
         }, 500);
         
+        return;
+      } else {
+        alert('⚠️ No se pudo procesar el link. Intenta solicitar uno nuevo.');
+        mostrarPantallaAuth();
         return;
       }
     } catch (error) {
@@ -343,7 +351,7 @@ window.recuperarPassword = async function() {
   
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + window.location.pathname + '#reset-password'
+      redirectTo: 'https://legend7792.github.io/entrenamiento-pwa/'  // 👈 Añadir esto
     });
     
     if (error) throw error;
