@@ -1,12 +1,10 @@
-// userState.js - VERSIÓN CORREGIDA
-import { supabase } from "./cloud.js"; // 👈 AÑADIR ESTA LÍNEA
+// userState.js - ACTUALIZADO PARA USAR TABLA "usuarios"
+import { supabase } from "./cloud.js";
 
-
-// userState.js - CON PERSISTENCIA DE SESIÓN
 export const userState = {
   uid: null,
   email: null,
-  sessionToken: null // 👈 NUEVO
+  sessionToken: null
 };
 
 // Cargar estado desde localStorage
@@ -17,7 +15,7 @@ export function loadLocal() {
       const data = JSON.parse(saved);
       userState.uid = data.uid;
       userState.email = data.email;
-      userState.sessionToken = data.sessionToken; // 👈 NUEVO
+      userState.sessionToken = data.sessionToken;
     } catch (e) {
       console.error("Error cargando userState:", e);
     }
@@ -29,7 +27,7 @@ export function saveLocal() {
   localStorage.setItem("userState", JSON.stringify({
     uid: userState.uid,
     email: userState.email,
-    sessionToken: userState.sessionToken // 👈 NUEVO
+    sessionToken: userState.sessionToken
   }));
 }
 
@@ -38,9 +36,9 @@ export async function syncFromCloud() {
   if (!userState.uid) return;
   
   const { data, error } = await supabase
-    .from("user_data")
+    .from("usuarios")  // ← CAMBIADO de "user_data" a "usuarios"
     .select("*")
-    .eq("user_id", userState.uid)
+    .eq("id", userState.uid)  // ← CAMBIADO de "user_id" a "id"
     .single();
 
   if (error) {
@@ -48,12 +46,14 @@ export async function syncFromCloud() {
     return;
   }
 
-  if (data && data.local_storage) {
-    const cloudData = JSON.parse(data.local_storage);
+  if (data && data.data) {  // ← CAMBIADO de "local_storage" a "data"
+    const cloudData = typeof data.data === 'string' 
+      ? JSON.parse(data.data) 
+      : data.data;
     
     // Restaurar datos en localStorage
     Object.keys(cloudData).forEach(key => {
-      if (key !== "userState") { // No sobrescribir userState
+      if (key !== "userState") {
         localStorage.setItem(key, cloudData[key]);
       }
     });
@@ -70,17 +70,16 @@ export async function syncToCloud() {
   const localData = {};
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key !== "userState") { // No sincronizar userState (tiene el token)
+    if (key !== "userState") {
       localData[key] = localStorage.getItem(key);
     }
   }
 
   const { error } = await supabase
-    .from("user_data")
+    .from("usuarios")  // ← CAMBIADO de "user_data" a "usuarios"
     .upsert({
-      user_id: userState.uid,
-      local_storage: JSON.stringify(localData),
-      updated_at: new Date().toISOString()
+      id: userState.uid,  // ← CAMBIADO de "user_id" a "id"
+      data: localData     // ← CAMBIADO de "local_storage" a "data"
     });
 
   if (error) {
@@ -91,9 +90,8 @@ export async function syncToCloud() {
   console.log("Datos sincronizados a la nube");
 }
 
-// Marcar como modificado (para themes.js)
+// Marcar como modificado
 export function markDirty() {
-  // Guardar inmediatamente cuando hay cambios
   saveLocal();
 }
 
