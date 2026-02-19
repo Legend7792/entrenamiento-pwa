@@ -3,7 +3,7 @@
  *************************/
 import "./auth.js";
 import "./cloud.js";
-import { loadRutinaUsuario } from "./rutinaUsuario.js";
+import { loadRutinaUsuario, inicializarRutinaBase, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
 import "./userState.js";
 import { renderizarSelectorRutinas, obtenerRutinaActiva, RUTINA_BASE_ID } from "./selectorRutinas.js";
 import "./themes.js";
@@ -70,39 +70,29 @@ function stopBeep() {
 // AÑADIR ESTA FUNCIÓN NUEVA:
 function obtenerRutinaCompleta() {
   const rutinaActiva = obtenerRutinaActiva();
-  
-  // Si es la rutina base, usar la que está hardcodeada en app.js
-  if (rutinaActiva === RUTINA_BASE_ID) {
+
+  // Siempre leer de localStorage (base o personalizada)
+  const rutinaData = loadRutinaUsuario(rutinaActiva);
+
+  if (!rutinaData || !rutinaData.dias || rutinaData.dias.length === 0) {
+    // Fallback a la hardcodeada si algo falla
     return rutina;
   }
-  
-  // Si es una rutina personalizada, cargarla por ID
-  const rutinaUsuario = loadRutinaUsuario(rutinaActiva);
-  
-  // Si no existe o no tiene días, volver a rutina base
-  if (!rutinaUsuario || !rutinaUsuario.dias || rutinaUsuario.dias.length === 0) {
-    console.warn('Rutina no encontrada, usando base');
-    return rutina;
-  }
-  
-  // Convertir rutina personalizada al formato esperado
+
   const rutinaConvertida = {};
-  
-  rutinaUsuario.dias.forEach((dia, idx) => {
-    const diaKey = `dia_personalizado_${idx}`;
+  rutinaData.dias.forEach((dia, idx) => {
+    const diaKey = rutinaActiva === RUTINA_BASE_KEY
+      ? `dia_base_${idx}`
+      : `dia_personalizado_${idx}`;
+
     rutinaConvertida[diaKey] = {
       nombre: dia.nombre,
-      ejercicios: dia.ejercicios.map(ej => ({
-        nombre: ej.nombre,
-        peso: ej.peso,
-        series: ej.series,
-        repsMin: ej.repsMin,
-        repsMax: ej.repsMax,
-        alFallo: ej.alFallo || false
-      }))
+      ejercicios: dia.ejercicios,
+      tieneCronometro: dia.tieneCronometro || false,
+      tieneTimer: dia.tieneTimer !== false
     };
   });
-  
+
   return rutinaConvertida;
 }
 
@@ -393,9 +383,20 @@ if (rutinaActiva !== RUTINA_BASE_ID) {
       }
     }
   }
-} else {
-  // Rutina base: HIT solo en día "potencia"
-  mostrarCronometro = (diaKey === "potencia");
+}  else {
+  // Rutina base: leer tieneCronometro del día
+  const rutinaBase = loadRutinaUsuario(RUTINA_BASE_KEY);
+  if (rutinaBase && rutinaBase.dias) {
+    const match = diaKey.match(/dia_base_(\d+)/);
+    if (match) {
+      const diaIndex = parseInt(match[1]);
+      const diaConfig = rutinaBase.dias[diaIndex];
+      if (diaConfig) {
+        mostrarCronometro = diaConfig.tieneCronometro || false;
+        mostrarTimer = diaConfig.tieneTimer !== false;
+      }
+    }
+  }
 }
 
 // Mostrar/ocultar cronómetro HIT
@@ -1099,6 +1100,10 @@ function cerrarSidebar() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  // 👇 AÑADIR ESTO AL INICIO
+  inicializarRutinaBase();
+  
+
   // 1. Render timers
   renderTimers();
   
@@ -1227,22 +1232,10 @@ if (saved.pantalla === "dia" && diaActual) {
 // Detectar estado de conexión
 let isOnline = navigator.onLine;
 
-window.addEventListener('online', () => {
-  isOnline = true;
-  console.log('✅ Conexión restaurada - Puedes sincronizar');
-  
-  // Mostrar notificación al usuario
-  if (confirm('Conexión restaurada. ¿Sincronizar datos ahora?')) {
-    if (typeof syncNow === 'function') {
-      syncNow();
-    }
-  }
-});
-
 window.addEventListener('offline', () => {
   isOnline = false;
-  console.log('⚠️ Sin conexión - Trabajando offline');
-  alert('Sin conexión. Los datos se guardarán localmente.');
+  console.log('⚠️ Sin conexión - Modo offline');
+  // Sin alert - funciona silenciosamente offline
 });
 
 // Función para verificar si estamos online
@@ -1271,10 +1264,9 @@ window.actualizarSerie = actualizarSerie;
 window.toggleSidebar = toggleSidebar;
 window.resetDesdeModal = resetDesdeModal;
 window.volverHistorial = volverHistorial;
-// Escuchar cambios de rutina
 window.addEventListener("cambio-rutina", (e) => {
   console.log("Rutina cambiada a:", e.detail.rutinaId);
-  // Aquí puedes recargar ejercicios si estás en un día activo
+  renderizarBotonesDias(); // ← AÑADIR ESTA LÍNEA
   if (diaActual) {
     cargarEjerciciosDia();
     renderDia();

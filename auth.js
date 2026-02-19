@@ -439,4 +439,52 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
+// ========================================
+// ORDENAR EJERCICIOS
+// ========================================
+
+function moverEjercicioArriba(ejercicioIndex) {
+  if (!rutinaEditando || diaEditando === null) return;
+  
+  const exito = moverEjercicio(rutinaEditandoId, diaEditando, ejercicioIndex, 'arriba');
+  
+  if (exito) {
+    rutinaEditando = loadRutinaUsuario(rutinaEditandoId);
+    renderEditorDia();
+  }
+}
+
+function moverEjercicioAbajo(ejercicioIndex) {
+  if (!rutinaEditando || diaEditando === null) return;
+  
+  const exito = moverEjercicio(rutinaEditandoId, diaEditando, ejercicioIndex, 'abajo');
+  
+  if (exito) {
+    rutinaEditando = loadRutinaUsuario(rutinaEditandoId);
+    renderEditorDia();
+  }
+}
+
+window.moverEjercicioArriba = moverEjercicioArriba;
+window.moverEjercicioAbajo = moverEjercicioAbajo;
+
+// ========================================
+// RESTAURAR RUTINA BASE
+// ========================================
+
+window.restaurarRutinaBaseOriginal = function() {
+  const exito = restaurarRutinaBase();
+  
+  if (exito) {
+    // Si estamos editando la rutina base, recargar
+    if (rutinaEditandoId === RUTINA_BASE_ID) {
+      editarRutina(RUTINA_BASE_ID);
+    }
+    
+    // Actualizar selector
+    renderizarSelectorRutinas();
+  }
+};
+
 window.mostrarPerfil = mostrarPerfil;
+

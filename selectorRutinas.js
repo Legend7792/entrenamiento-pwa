@@ -1,7 +1,7 @@
 // selectorRutinas.js - SELECTOR CON MÚLTIPLES RUTINAS
 import { getAllRutinasUsuario } from "./rutinaUsuario.js";
 
-export const RUTINA_BASE_ID = "RUTINA_BASE";
+export const RUTINA_BASE_ID = "rutina_base";
 
 // Obtener rutina activa
 export function obtenerRutinaActiva() {
@@ -38,10 +38,12 @@ export function renderizarSelectorRutinas() {
   selector.appendChild(optionBase);
   
   // Opciones: Rutinas personalizadas
-  Object.keys(rutinasUsuario).forEach(rutinaId => {
-    const rutina = rutinasUsuario[rutinaId];
-    if (!rutina || !rutina.dias || rutina.dias.length === 0) return;
-    
+Object.keys(rutinasUsuario).forEach(rutinaId => {
+  if (rutinaId === RUTINA_BASE_ID) return; // ← SALTAR RUTINA BASE
+  
+  const rutina = rutinasUsuario[rutinaId];
+  if (!rutina || !rutina.dias || rutina.dias.length === 0) return;
+
     const option = document.createElement("option");
     option.value = rutinaId;
     option.textContent = `✏️ ${rutina.nombre || "Mi Rutina"} (${rutina.dias.length} días)`;
