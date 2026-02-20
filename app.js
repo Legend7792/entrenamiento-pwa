@@ -182,7 +182,50 @@ function recargarConfig() {
 
 window.recargarConfig = recargarConfig; // ← Exportar globalmente
 
+// ✅ AÑADIR ESTA FUNCIÓN DE MIGRACIÓN:
+function migrarPesosAntiguos() {
+  // Mapeo de keys antiguas a nuevas
+  const migracion = {
+    'torso_fuerza': 'Día 1 – Torso Fuerza',
+    'pierna_fuerza': 'Día 2 – Pierna Fuerza',
+    'torso_hipertrofia': 'Día 3 – Torso Hipertrofia',
+    'pierna_hipertrofia': 'Día 4 – Pierna Hipertrofia',
+    'potencia': 'Día 5 – Potencia'
+  };
+  
+  let huboMigracion = false;
+  const nuevoPesos = { ...config.pesos };
+  
+  // Buscar pesos con formato antiguo
+  Object.keys(config.pesos).forEach(key => {
+    // Si la key contiene un nombre antiguo
+    Object.keys(migracion).forEach(viejoNombre => {
+      if (key.startsWith(viejoNombre + '_')) {
+        // Extraer el nombre del ejercicio
+        const nombreEjercicio = key.substring(viejoNombre.length + 1);
+        
+        // Crear nueva key
+        const nuevaKey = `${migracion[viejoNombre]}_${nombreEjercicio}`;
+        
+        // Migrar si no existe ya
+        if (!nuevoPesos[nuevaKey]) {
+          nuevoPesos[nuevaKey] = config.pesos[key];
+          huboMigracion = true;
+          console.log(`📦 Migrando: ${key} → ${nuevaKey}`);
+        }
+      }
+    });
+  });
+  
+  if (huboMigracion) {
+    config.pesos = nuevoPesos;
+    guardarConfig();
+    console.log('✅ Pesos migrados al nuevo formato');
+  }
+}
 
+// Ejecutar migración al cargar
+migrarPesosAntiguos();
 
 /*************************
  * ESTADO CENTRAL
@@ -449,9 +492,9 @@ function cargarEjerciciosDia() {
     return;
   }
   
-  const nombreDia = rutinaActual[diaActual].nombre; // ← UNA SOLA VEZ
-  const base = rutinaActual[diaActual].ejercicios || [];
-  const extra = config.ejerciciosExtra[diaActual] || [];
+ const nombreDia = rutinaActual[diaActual].nombre;
+const base = rutinaActual[diaActual].ejercicios || [];
+const extra = config.ejerciciosExtra[nombreDia] || []; // ← Usar nombreDia
 
   ejerciciosDia = [...base, ...extra].map(ej => {
     const key = `${nombreDia}_${ej.nombre}`;
@@ -506,12 +549,12 @@ function renderDia() {
         <div class="series">${seriesHTML}</div>
 
         <label>Incremento (kg):</label>
-        <input type="number" id="inc-${i}" placeholder="2" value="${ej.incremento}" onchange="ejerciciosDia[${i}].incremento=Number(this.value)">
+        <input type="number" id="inc-${i}" placeholder="2" value="${ej.incremento}" onchange="actualizarIncremento(${i}, this.value)">
 
-        <label>
-          <input type="checkbox" id="noprog-${i}" ${ej.noProgresar ? "checked" : ""} onchange="ejerciciosDia[${i}].noProgresar=this.checked">
-          No progresar
-        </label>
+<label>
+  <input type="checkbox" id="noprog-${i}" ${ej.noProgresar ? "checked" : ""} onchange="actualizarNoProgresar(${i}, this.checked)">
+  No progresar
+</label>
       </div>
     `;
   });
@@ -553,7 +596,18 @@ function guardarPesoBase(nombre, valor) {
 
 // ✅ AÑADIR ESTA FUNCIÓN NUEVA:
 window.actualizarPesoBase = function(ejercicioIndex, nombre, valor) {
-  // Actualizar en memoria
+/// ✅ AÑADIR ESTAS FUNCIONES:
+window.actualizarIncremento = function(ejercicioIndex, valor) {
+  ejerciciosDia[ejercicioIndex].incremento = Number(valor);
+  guardarEstadoApp();
+};
+
+window.actualizarNoProgresar = function(ejercicioIndex, checked) {
+  ejerciciosDia[ejercicioIndex].noProgresar = checked;
+  guardarEstadoApp();
+}; 
+
+ // Actualizar en memoria
   ejerciciosDia[ejercicioIndex].peso = Number(valor);
   
   // Guardar en config
@@ -790,8 +844,9 @@ function añadirEjercicio() {
     reps: []
   };
   
-  if (!config.ejerciciosExtra[diaKey]) config.ejerciciosExtra[diaKey] = [];
-  config.ejerciciosExtra[diaKey].push(nuevo);
+ const nombreDiaKey = rutinaActual[diaKey].nombre;
+if (!config.ejerciciosExtra[nombreDiaKey]) config.ejerciciosExtra[nombreDiaKey] = [];
+config.ejerciciosExtra[nombreDiaKey].push(nuevo);
   guardarConfig();
 
   if (diaActual === diaKey) {
@@ -1175,7 +1230,9 @@ if (saved.pantalla === "dia" && diaActual) {
   
   // AHORA sí renderizar con las reps restauradas
   renderDia();
-  
+ // ✅ AÑADIR ESTO - Renderizar botón de última sesión
+renderBotonesUltimaSesion();
+
   // 👇 NUEVO: Aplicar colores DESPUÉS de renderizar
   if (saved.repsPorEjercicio) {
     saved.repsPorEjercicio.forEach((savedEj, ejIndex) => {

@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v69"; // 👈 Incrementa siempre
+const CACHE_VERSION = "v70"; // 👈 Incrementa siempre
 const CACHE_NAME = `entrenamiento-${CACHE_VERSION}`;
 
 // Archivos críticos (HTML, JS, CSS) - NETWORK FIRST
