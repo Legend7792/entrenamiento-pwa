@@ -2,31 +2,26 @@
 import { supabase } from "./cloud.js";
 import { userState, saveLocal, syncFromCloud, syncToCloud } from "./userState.js";
 
-// Mostrar pantalla de autenticación
 export function mostrarPantallaAuth() {
   document.getElementById("pantalla-auth").classList.remove("oculto");
   document.getElementById("pantalla-perfil").classList.add("oculto");
   document.getElementById("menu").classList.add("oculto");
 }
 
-// Mostrar menú principal
 export function mostrarMenu() {
   document.getElementById("pantalla-auth").classList.add("oculto");
   document.getElementById("pantalla-perfil").classList.add("oculto");
   document.getElementById("menu").classList.remove("oculto");
 }
 
-// Mostrar perfil
 export function mostrarPerfil() {
   history.pushState({ pantalla: 'perfil' }, "");
-
   document.getElementById("pantalla-auth").classList.add("oculto");
   document.getElementById("menu").classList.add("oculto");
   document.getElementById("pantalla-dia").classList.add("oculto");
   document.getElementById("pantalla-historial").classList.add("oculto");
   document.getElementById("pantalla-detalle").classList.add("oculto");
   document.getElementById("pantalla-medidas").classList.add("oculto");
-  
   document.getElementById("pantalla-perfil").classList.remove("oculto");
   document.getElementById("user-email-label").innerText = `Usuario: ${userState.email}`;
 }
@@ -60,9 +55,7 @@ window.register = async function () {
       throw error;
     }
 
-    // Verificar si hay sesión
     if (data.session) {
-      // Verificación desactivada → sesión inmediata
       userState.uid = data.user.id;
       userState.email = email;
       userState.sessionToken = data.session.access_token;
@@ -70,7 +63,6 @@ window.register = async function () {
       
       await syncToCloud();
       
-      // Resetear SOLO la pantalla, mantener datos
       const estadoActual = JSON.parse(localStorage.getItem("estadoApp")) || {};
       estadoActual.pantalla = "menu";
       estadoActual.diaActual = null;
@@ -79,7 +71,6 @@ window.register = async function () {
       alert("✅ Cuenta creada correctamente");
       mostrarMenu();
     } else {
-      // Verificación activada → sin sesión hasta verificar
       alert("✅ Cuenta creada. Revisa tu email (y carpeta spam) para verificar tu cuenta.");
     }
   } catch (error) {
@@ -119,16 +110,28 @@ window.login = async function () {
     userState.sessionToken = data.session.access_token;
     saveLocal();
     
+    // Sincronizar PRIMERO
     await syncFromCloud();
     
-    // Resetear SOLO la pantalla, mantener datos
+    // Recargar config desde localStorage (actualizado por sync)
+    if (typeof window.recargarConfig === 'function') {
+      window.recargarConfig();
+    }
+    
+    // Resetear pantalla
     const estadoActual = JSON.parse(localStorage.getItem("estadoApp")) || {};
     estadoActual.pantalla = "menu";
     estadoActual.diaActual = null;
     localStorage.setItem("estadoApp", JSON.stringify(estadoActual));
     
     mostrarMenu();
-    location.reload();
+    
+    // Renderizar con datos frescos
+    if (typeof window.renderizarBotonesDias === 'function') {
+      window.renderizarBotonesDias();
+    }
+    
+    alert('✅ Sesión iniciada y datos sincronizados');
   } catch (error) {
     alert("❌ Error al iniciar sesión: " + error.message);
   }
@@ -154,7 +157,6 @@ window.logout = async function () {
     } catch (signOutError) {
       console.warn('⚠️ No se pudo cerrar sesión en Supabase:', signOutError);
     }
-    
   } catch (error) {
     console.error("Error durante logout:", error);
   } finally {
@@ -162,7 +164,6 @@ window.logout = async function () {
     userState.email = null;
     userState.sessionToken = null;
     localStorage.removeItem("userState");
-    
     console.log('✅ Estado local limpiado');
     location.reload();
   }
@@ -221,7 +222,7 @@ window.reenviarVerificacion = async function() {
   }
 };
 
-// Enviar email de recuperación
+// Recuperar contraseña
 window.recuperarPassword = async function() {
   const email = document.getElementById("user-email").value.trim();
   
@@ -279,22 +280,16 @@ window.cambiarPassword = async function() {
   }
 };
 
-// ========================================
-// INICIALIZACIÓN Y MANEJO DE SESIÓN
-// ========================================
+// INICIALIZACIÓN
 window.addEventListener("DOMContentLoaded", async () => {
   const hashParams = new URLSearchParams(window.location.hash.substring(1));
   const accessToken = hashParams.get('access_token');
   const type = hashParams.get('type');
   const fullHash = window.location.hash;
   
-  // CASO 1: Hash personalizado de recuperación
   if (fullHash === '#reset-password' || fullHash.includes('reset-password')) {
-    console.log('🔍 Detectado hash personalizado de recuperación');
-    
     try {
       const { data, error } = await supabase.auth.getSession();
-      
       if (error) throw error;
       
       if (data.session) {
@@ -302,20 +297,13 @@ window.addEventListener("DOMContentLoaded", async () => {
         userState.email = data.session.user.email;
         userState.sessionToken = data.session.access_token;
         saveLocal();
-        
         window.location.hash = '';
         mostrarPerfil();
-        
         alert('🔑 Ahora puedes establecer tu nueva contraseña abajo.');
-        
         setTimeout(() => {
-          const inputPassword = document.getElementById('nueva-password');
-          if (inputPassword) {
-            inputPassword.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            inputPassword.focus();
-          }
+          document.getElementById('nueva-password')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          document.getElementById('nueva-password')?.focus();
         }, 500);
-        
         return;
       } else {
         alert('⚠️ No se pudo procesar el link. Intenta solicitar uno nuevo.');
@@ -330,13 +318,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
   
-  // CASO 2: Link de verificación de email
   if (accessToken && type === 'signup') {
-    console.log('🔍 Detectado link de verificación de email');
-    
     try {
       const { data, error } = await supabase.auth.getSession();
-      
       if (error) throw error;
       
       if (data.session) {
@@ -349,7 +333,6 @@ window.addEventListener("DOMContentLoaded", async () => {
         
         window.location.hash = '';
         
-        // Resetear SOLO la pantalla
         const estadoActual = JSON.parse(localStorage.getItem("estadoApp")) || {};
         estadoActual.pantalla = "menu";
         estadoActual.diaActual = null;
@@ -371,13 +354,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
   
-  // CASO 3: Link de recuperación con access_token
   if (accessToken && (type === 'recovery' || type === 'magiclink')) {
-    console.log('🔍 Detectado link de recuperación con access_token');
-    
     try {
       const { data, error } = await supabase.auth.getSession();
-      
       if (error) throw error;
       
       if (data.session) {
@@ -385,20 +364,13 @@ window.addEventListener("DOMContentLoaded", async () => {
         userState.email = data.session.user.email;
         userState.sessionToken = data.session.access_token;
         saveLocal();
-        
         window.location.hash = '';
         mostrarPerfil();
-        
         alert('🔑 Ahora puedes establecer tu nueva contraseña abajo.');
-        
         setTimeout(() => {
-          const inputPassword = document.getElementById('nueva-password');
-          if (inputPassword) {
-            inputPassword.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            inputPassword.focus();
-          }
+          document.getElementById('nueva-password')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          document.getElementById('nueva-password')?.focus();
         }, 500);
-        
         return;
       } else {
         alert('⚠️ No se pudo procesar el link. Intenta solicitar uno nuevo.');
@@ -413,17 +385,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
   
-  // CASO 4: Sesión offline
   if (userState.uid && userState.email) {
     console.log("📱 Sesión offline detectada:", userState.email);
     mostrarMenu();
     return;
   }
   
-  // CASO 5: Sesión online
   try {
     const { data } = await supabase.auth.getSession();
-    
     if (data.session) {
       userState.uid = data.session.user.id;
       userState.email = data.session.user.email;
@@ -439,52 +408,4 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
-// ========================================
-// ORDENAR EJERCICIOS
-// ========================================
-
-function moverEjercicioArriba(ejercicioIndex) {
-  if (!rutinaEditando || diaEditando === null) return;
-  
-  const exito = moverEjercicio(rutinaEditandoId, diaEditando, ejercicioIndex, 'arriba');
-  
-  if (exito) {
-    rutinaEditando = loadRutinaUsuario(rutinaEditandoId);
-    renderEditorDia();
-  }
-}
-
-function moverEjercicioAbajo(ejercicioIndex) {
-  if (!rutinaEditando || diaEditando === null) return;
-  
-  const exito = moverEjercicio(rutinaEditandoId, diaEditando, ejercicioIndex, 'abajo');
-  
-  if (exito) {
-    rutinaEditando = loadRutinaUsuario(rutinaEditandoId);
-    renderEditorDia();
-  }
-}
-
-window.moverEjercicioArriba = moverEjercicioArriba;
-window.moverEjercicioAbajo = moverEjercicioAbajo;
-
-// ========================================
-// RESTAURAR RUTINA BASE
-// ========================================
-
-window.restaurarRutinaBaseOriginal = function() {
-  const exito = restaurarRutinaBase();
-  
-  if (exito) {
-    // Si estamos editando la rutina base, recargar
-    if (rutinaEditandoId === RUTINA_BASE_ID) {
-      editarRutina(RUTINA_BASE_ID);
-    }
-    
-    // Actualizar selector
-    renderizarSelectorRutinas();
-  }
-};
-
 window.mostrarPerfil = mostrarPerfil;
-

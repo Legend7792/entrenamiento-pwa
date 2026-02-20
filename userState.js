@@ -145,10 +145,22 @@ export async function syncToCloud() {
   console.log("✅ Datos sincronizados a la nube");
 }
 
-// Marcar como modificado
+// Marcar como modificado y sincronizar
 export function markDirty() {
   saveLocal();
+  
+  // Sincronizar a la nube si hay sesión activa
+  if (userState.uid && navigator.onLine) {
+    syncToCloud()
+      .then(() => console.log('✅ Sync automático completado'))
+      .catch(e => console.log('⚠️ Sync automático fallido:', e));
+  }
 }
 
 // Cargar al inicio
 loadLocal();
+
+// Exportar globalmente
+if (typeof window !== 'undefined') {
+  window.markDirty = markDirty;
+}

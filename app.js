@@ -4,7 +4,7 @@
 import "./auth.js";
 import "./cloud.js";
 import { loadRutinaUsuario, inicializarRutinaBase, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
-import "./userState.js";
+import { markDirty, userState } from "./userState.js";
 import { renderizarSelectorRutinas, obtenerRutinaActiva, RUTINA_BASE_ID } from "./selectorRutinas.js";
 import "./themes.js";
 import "./editorRutinas.js";
@@ -164,7 +164,25 @@ let config = JSON.parse(localStorage.getItem("config")) || {
 
 function guardarConfig() {
   localStorage.setItem("config", JSON.stringify(config));
+  
+  // Marcar para sincronización
+  if (typeof markDirty === 'function' && userState?.uid) {
+    markDirty();
+  }
 }
+
+// ← AÑADIR AQUÍ:
+function recargarConfig() {
+  config = JSON.parse(localStorage.getItem("config")) || {
+    pesos: {},
+    ejerciciosExtra: {}
+  };
+  console.log('✅ Config recargado desde localStorage');
+}
+
+window.recargarConfig = recargarConfig; // ← Exportar globalmente
+
+
 
 /*************************
  * ESTADO CENTRAL
@@ -431,12 +449,13 @@ function cargarEjerciciosDia() {
     return;
   }
   
+  const nombreDia = rutinaActual[diaActual].nombre; // ← UNA SOLA VEZ
   const base = rutinaActual[diaActual].ejercicios || [];
   const extra = config.ejerciciosExtra[diaActual] || [];
 
-  // Combinar base + extra en un solo array
   ejerciciosDia = [...base, ...extra].map(ej => {
-    const key = `${diaActual}_${ej.nombre}`;
+    const key = `${nombreDia}_${ej.nombre}`;
+    
     return {
       nombre: ej.nombre,
       series: ej.series,
@@ -480,7 +499,7 @@ function renderDia() {
         <h3>${ej.nombre}</h3>
 
         <label>Peso base:</label>
-        <input type="number" value="${ej.peso}" onchange="ejerciciosDia[${i}].peso=Number(this.value); guardarPesoBase('${ej.nombre}', this.value)">
+        <input type="number" value="${ej.peso}" onchange="actualizarPesoBase(${i}, '${ej.nombre}', this.value)">
 
         <p>Objetivo: ${ej.series} × ${ej.repsMin}-${ej.repsMax}</p>
 
@@ -525,11 +544,23 @@ function actualizarSerie(ejIndex, serieIndex, valor, input) {
  * GUARDAR PESO BASE
  *************************/
 function guardarPesoBase(nombre, valor) {
-  const key = `${diaActual}_${nombre}`;
+  const rutinaActual = obtenerRutinaCompleta();
+  const nombreDia = rutinaActual[diaActual]?.nombre || diaActual;
+  const key = `${nombreDia}_${nombre}`;
   config.pesos[key] = Number(valor);
   guardarConfig();
 }
 
+// ✅ AÑADIR ESTA FUNCIÓN NUEVA:
+window.actualizarPesoBase = function(ejercicioIndex, nombre, valor) {
+  // Actualizar en memoria
+  ejerciciosDia[ejercicioIndex].peso = Number(valor);
+  
+  // Guardar en config
+  guardarPesoBase(nombre, valor);
+  
+  console.log(`✅ Peso actualizado: ${nombre} = ${valor}kg`);
+};
 
 /*************************
 HIT – CRONÓMETRO REAL
@@ -590,17 +621,18 @@ function finalizarDia() {
   const rutinaActual = obtenerRutinaCompleta();
   
   // Crear objeto de sesión con fecha completa
-  const sesion = {
-    fecha: new Date().toISOString(),
-    dia: rutinaActual[diaActual]?.nombre || "Día desconocido", // 👈 CORREGIDO
-    ejercicios: ejerciciosDia.map(ej => ({
-      nombre: ej.nombre,
-      peso: ej.peso,
-      reps: [...ej.reps]
-    })),
-    tiempoHIT: diaActual === "potencia" ? obtenerTiempoHIT() : null,
-    tipoHIT: diaActual === "potencia" ? hitTipo : null 
-  };
+const sesion = {
+  fecha: new Date().toISOString(),
+  rutinaId: obtenerRutinaActiva(), // ← AÑADIR
+  dia: rutinaActual[diaActual]?.nombre || "Día desconocido",
+  ejercicios: ejerciciosDia.map(ej => ({
+    nombre: ej.nombre,
+    peso: ej.peso,
+    reps: [...ej.reps]
+  })),
+  tiempoHIT: diaActual === "potencia" ? obtenerTiempoHIT() : null,
+  tipoHIT: diaActual === "potencia" ? hitTipo : null 
+};
 
   // Calcular progresión
   ejerciciosDia.forEach(ej => {
@@ -1067,6 +1099,7 @@ function guardarEstadoApp() {
   localStorage.setItem("estadoApp", JSON.stringify(estadoApp));
 }
 
+
 // Toggle sidebar
 function toggleSidebar() {
   const sidebar = document.getElementById("sidebar");
@@ -1522,17 +1555,24 @@ function renderBotonesUltimaSesion() {
   contenedor.insertAdjacentHTML('afterbegin', botonHTML);
 }
 
-// Obtener la última sesión del día actual
 function obtenerUltimaSesion() {
   const historial = JSON.parse(localStorage.getItem("historial")) || [];
   const rutinaActual = obtenerRutinaCompleta();
   const nombreDiaActual = rutinaActual[diaActual]?.nombre;
+  const rutinaActiva = obtenerRutinaActiva();
   
   if (!nombreDiaActual) return null;
   
-  // Buscar la última sesión de este mismo día (más reciente primero)
+  // Filtrar por rutina Y día
   const sesionesDelDia = historial
-    .filter(s => s.dia === nombreDiaActual)
+    .filter(s => {
+      // Si la sesión tiene rutinaId, comparar
+      if (s.rutinaId) {
+        return s.rutinaId === rutinaActiva && s.dia === nombreDiaActual;
+      }
+      // Sesiones viejas sin rutinaId: solo comparar por nombre
+      return s.dia === nombreDiaActual;
+    })
     .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
   
   return sesionesDelDia[0] || null;

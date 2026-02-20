@@ -92,6 +92,11 @@ export function saveRutinaUsuario(rutina, rutinaId) {
   const rutinas = JSON.parse(localStorage.getItem("rutinas_usuario")) || {};
   rutinas[rutinaId] = rutina;
   localStorage.setItem("rutinas_usuario", JSON.stringify(rutinas));
+  
+  // ✅ AÑADIR ESTO - Sincronizar a la nube
+  if (typeof window !== 'undefined' && window.markDirty) {
+    window.markDirty();
+  }
 }
 
 export function loadRutinaUsuario(rutinaId) {
@@ -111,6 +116,12 @@ export function deleteRutinaUsuario(rutinaId) {
   const rutinas = JSON.parse(localStorage.getItem("rutinas_usuario")) || {};
   delete rutinas[rutinaId];
   localStorage.setItem("rutinas_usuario", JSON.stringify(rutinas));
+  
+  // ✅ Sincronizar después de borrar
+  if (typeof window !== 'undefined' && window.markDirty) {
+    window.markDirty();
+  }
+  
   return true;
 }
 
