@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Entrenamiento</title>
 
-  <link rel="stylesheet" href="./style.css?v=71" />
-  <link rel="manifest" href="./manifest.json?v=71" />
+  <link rel="stylesheet" href="./style.css?v=72" />
+  <link rel="manifest" href="./manifest.json?v=72" />
   <meta name="theme-color" content="#121212" />
 
   <!-- App principal -->
-  <script type="module" src="./app.js?v=71"></script>
+  <script type="module" src="./app.js?v=72"></script>
 </head>
 
 <body>
@@ -120,11 +120,13 @@
         <select id="selector-temas-sidebar"></select>
       </div>
 
+
       <hr />
 
       <button onclick="toggleSidebar(); mostrarPerfil()">👤 Perfil</button>
       <button onclick="toggleSidebar(); abrirMedidas()">📏 Medidas corporales</button>
       <button onclick="toggleSidebar(); abrirHistorial()">📊 Historial</button>
+      <button onclick="toggleSidebar(); abrirConfigAudio()">🔔 Sonido temporizador</button>
 
       <hr />
 
@@ -225,6 +227,57 @@
     <div id="detalle-sesion"></div>
     <button onclick="volverHistorial()">Volver</button>
   </section>
+
+<!-- =====================================================
+     CONFIGURACIÓN DE AUDIO
+===================================================== -->
+<section id="pantalla-audio" class="oculto">
+  <h2>🔔 Sonido del temporizador</h2>
+
+  <div class="config-audio-container">
+    
+    <!-- Audio actual -->
+    <div class="audio-info-card">
+      <h3>Audio actual</h3>
+      <p id="nombre-audio-display">Beep (predeterminado)</p>
+    </div>
+
+    <!-- Selector de archivo -->
+    <input 
+      type="file" 
+      id="selector-audio" 
+      accept="audio/mp3,audio/mpeg,audio/wav,audio/ogg" 
+      style="display: none;"
+      onchange="cargarAudioPersonalizado(this)"
+    />
+
+    <!-- Botones de acción -->
+    <div class="botones-audio">
+      <button onclick="document.getElementById('selector-audio').click()" class="btn-primary">
+        📁 Seleccionar archivo de audio
+      </button>
+      
+      <button onclick="probarSonido()" class="btn-secondary">
+        🔊 Probar sonido actual
+      </button>
+      
+      <button onclick="resetearAudioPorDefecto()" class="btn-secondary">
+        🔄 Restaurar predeterminado
+      </button>
+    </div>
+
+    <!-- Información -->
+    <div class="audio-info">
+      <p><strong>Formatos soportados:</strong> MP3, WAV, OGG</p>
+      <p><strong>Tamaño máximo:</strong> 5MB</p>
+      <p><strong>Nota:</strong> El audio se guardará en tu dispositivo</p>
+    </div>
+
+  </div>
+
+  <button onclick="volverMenu()">← Volver al menú</button>
+</section>
+
 
 <!-- ================= MEDIDAS ================= -->
 <section id="pantalla-medidas" class="oculto">

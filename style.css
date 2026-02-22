@@ -1024,3 +1024,81 @@ label {
 .btn-borrar:active {
   transform: scale(0.98);
 }
+
+
+/* ========================================
+   PANTALLA DE CONFIGURACIÓN DE AUDIO
+======================================== */
+.config-audio-container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.audio-info-card {
+  background: var(--bg-secondary);
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.audio-info-card h3 {
+  margin-top: 0;
+  color: var(--text-secondary);
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.audio-info-card p {
+  margin: 10px 0 0 0;
+  font-size: 1.1em;
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.botones-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 30px;
+}
+
+.botones-audio button {
+  width: 100%;
+  padding: 15px;
+  font-size: 1em;
+}
+
+.audio-info {
+  background: var(--bg-secondary);
+  padding: 15px;
+  border-radius: 8px;
+  border-left: 4px solid var(--primary-color);
+}
+
+.audio-info p {
+  margin: 8px 0;
+  font-size: 0.9em;
+  color: var(--text-secondary);
+}
+
+.audio-info strong {
+  color: var(--text-primary);
+}
+
+/* Estilos de botones */
+.btn-primary {
+  background: var(--primary-color) !important;
+  color: white !important;
+}
+
+.btn-secondary {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+input[type="file"] {
+  display: none;
+}

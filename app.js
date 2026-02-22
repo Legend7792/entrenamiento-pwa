@@ -11,6 +11,8 @@ import "./editorRutinas.js";
 let audioCtx;
 let bufferBeep;
 let sourceBeep;
+let audioPersonalizado = null; // Buffer de audio personalizado
+let audioPersonalizadoNombre = null; // Nombre del archivo
 let estadoApp = JSON.parse(localStorage.getItem("estadoApp")) || {
   pantalla: "menu",
   diaActual: null,
@@ -23,9 +25,13 @@ async function initAudio() {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
 
+  // Cargar beep por defecto
   const resp = await fetch("./beep.mp3");
   const arrayBuffer = await resp.arrayBuffer();
   bufferBeep = await audioCtx.decodeAudioData(arrayBuffer);
+  
+  // Cargar audio personalizado si existe
+  await cargarAudioGuardado();
 }
 
 function desbloquearAudioPorGesto() {
@@ -38,20 +44,23 @@ function desbloquearAudioPorGesto() {
 function playBeep() {
   if (!audioCtx) {
     console.warn("Audio no inicializado");
-    return; // no recursión
+    return;
   }
 
- if (!bufferBeep) {
-  console.warn("Buffer de audio no cargado");
-  return;
-}
+  // Usar audio personalizado si existe, sino usar beep
+  const bufferToUse = audioPersonalizado || bufferBeep;
+  
+  if (!bufferToUse) {
+    console.warn("Buffer de audio no cargado");
+    return;
+  }
 
   if (audioCtx.state === "suspended") {
     audioCtx.resume().catch(e => console.warn("No se pudo reanudar audio", e));
   }
 
   sourceBeep = audioCtx.createBufferSource();
-  sourceBeep.buffer = bufferBeep;
+  sourceBeep.buffer = bufferToUse;
   sourceBeep.loop = true;
   sourceBeep.connect(audioCtx.destination);
   sourceBeep.start();
@@ -66,6 +75,173 @@ function stopBeep() {
     sourceBeep = null;
   }
 }
+
+// ========================================
+// ✅ FUNCIONES DE AUDIO PERSONALIZADO
+// ========================================
+
+async function cargarAudioPersonalizado(input) {
+  const file = input.files[0];
+  
+  if (!file) return;
+  
+  // Validar que sea un archivo de audio
+  if (!file.type.startsWith('audio/')) {
+    alert('❌ Por favor selecciona un archivo de audio válido (.mp3, .wav, .ogg)');
+    input.value = ''; // Limpiar input
+    return;
+  }
+  
+  // Validar tamaño (max 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    alert('❌ El archivo es muy grande. Máximo 5MB.');
+    input.value = ''; // Limpiar input
+    return;
+  }
+  
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    console.log('📁 Cargando audio:', file.name);
+    
+    // Leer archivo como ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer();
+    
+    // Decodificar audio PRIMERO (para validar)
+    audioPersonalizado = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+    audioPersonalizadoNombre = file.name;
+    
+    console.log('✅ Audio decodificado correctamente');
+    
+    // Ahora guardar en localStorage
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const base64Audio = e.target.result;
+        localStorage.setItem('audioPersonalizado', base64Audio);
+        localStorage.setItem('audioPersonalizadoNombre', file.name);
+        
+        console.log('💾 Audio guardado en localStorage');
+        console.log('📊 Tamaño guardado:', (base64Audio.length / 1024).toFixed(2), 'KB');
+        
+        // Actualizar UI
+        actualizarNombreAudio(file.name);
+        
+        alert('✅ Audio personalizado guardado correctamente');
+      } catch (error) {
+        console.error('Error guardando en localStorage:', error);
+        alert('❌ Error al guardar el audio. Intenta con un archivo más pequeño.');
+      }
+    };
+    
+    reader.onerror = function() {
+      alert('❌ Error al leer el archivo');
+    };
+    
+    reader.readAsDataURL(file);
+    
+  } catch (error) {
+    console.error('Error cargando audio:', error);
+    alert('❌ Error al cargar el audio. Intenta con otro archivo.');
+  } finally {
+    input.value = ''; // Limpiar input
+  }
+}
+
+async function cargarAudioGuardado() {
+  const audioGuardado = localStorage.getItem('audioPersonalizado');
+  const nombreGuardado = localStorage.getItem('audioPersonalizadoNombre');
+  
+  if (!audioGuardado || !nombreGuardado) {
+    console.log('ℹ️ No hay audio personalizado guardado');
+    return;
+  }
+  
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    console.log('📂 Cargando audio guardado:', nombreGuardado);
+    
+    // Convertir base64 a blob
+    const response = await fetch(audioGuardado);
+    const blob = await response.blob();
+    const arrayBuffer = await blob.arrayBuffer();
+    
+    // Decodificar audio
+    audioPersonalizado = await audioCtx.decodeAudioData(arrayBuffer);
+    audioPersonalizadoNombre = nombreGuardado;
+    
+    // Actualizar UI
+    actualizarNombreAudio(nombreGuardado);
+    
+    console.log('✅ Audio personalizado cargado:', nombreGuardado);
+    
+  } catch (error) {
+    console.error('❌ Error cargando audio guardado:', error);
+    // Si falla, limpiar localStorage
+    localStorage.removeItem('audioPersonalizado');
+    localStorage.removeItem('audioPersonalizadoNombre');
+    console.log('🗑️ Audio corrupto eliminado');
+  }
+}
+
+// Resetear al audio por defecto
+function resetearAudioPorDefecto() {
+  if (!confirm('¿Volver al sonido predeterminado?')) return;
+  
+  // Limpiar localStorage
+  localStorage.removeItem('audioPersonalizado');
+  localStorage.removeItem('audioPersonalizadoNombre');
+  
+  // Limpiar variables
+  audioPersonalizado = null;
+  audioPersonalizadoNombre = null;
+  
+  // Actualizar UI
+  actualizarNombreAudio('Beep (predeterminado)');
+  
+  alert('✅ Audio restaurado al predeterminado');
+}
+
+// Probar el sonido actual
+function probarSonido() {
+  // Parar cualquier sonido en reproducción
+  stopBeep();
+  
+  // Reproducir el sonido actual
+  playBeep();
+  
+  // Detener después de 2 segundos
+  setTimeout(() => {
+    stopBeep();
+  }, 2000);
+}
+
+// Actualizar nombre del audio en la UI
+function actualizarNombreAudio(nombre) {
+  // Actualizar en sidebar (si existe)
+  const elementoSidebar = document.getElementById('nombre-audio');
+  if (elementoSidebar) {
+    elementoSidebar.textContent = nombre;
+  }
+  
+  // Actualizar en pantalla de audio
+  const elementoPantalla = document.getElementById('nombre-audio-display');
+  if (elementoPantalla) {
+    elementoPantalla.textContent = nombre;
+  }
+  
+  console.log('🔄 UI actualizada:', nombre);
+}
+
+// Exportar funciones
+window.cargarAudioPersonalizado = cargarAudioPersonalizado;
+window.resetearAudioPorDefecto = resetearAudioPorDefecto;
+window.probarSonido = probarSonido;
 
 // AÑADIR ESTA FUNCIÓN NUEVA:
 function obtenerRutinaCompleta() {
@@ -389,20 +565,19 @@ function abrirDia(diaKey) {
   diaActual = diaKey;
   history.pushState({}, "");
 
-  // Pantallas
-  const menu = document.getElementById("menu");
-  const pantallaDia = document.getElementById("pantalla-dia");
-  const pantallaHistorial = document.getElementById("pantalla-historial");
-  const pantallaDetalle = document.getElementById("pantalla-detalle");
-
-  if (!menu || !pantallaDia || !pantallaHistorial || !pantallaDetalle) return;
-
-  menu.classList.add("oculto");
-  pantallaDia.classList.remove("oculto");
-  pantallaHistorial.classList.add("oculto");
-  pantallaDetalle.classList.add("oculto");
-
-  // Obtener rutina actual (base o personalizada)
+  // Ocultar TODAS las pantallas
+  document.getElementById("menu").classList.add("oculto");
+  document.getElementById("pantalla-historial").classList.add("oculto");
+  document.getElementById("pantalla-detalle").classList.add("oculto");
+  document.getElementById("pantalla-medidas").classList.add("oculto");
+  document.getElementById("pantalla-audio").classList.add("oculto");
+  document.getElementById("pantalla-perfil").classList.add("oculto");
+  document.getElementById("pantalla-editor").classList.add("oculto");
+  
+  // Mostrar solo pantalla-dia
+  document.getElementById("pantalla-dia").classList.remove("oculto");
+  
+  // Obtener rutina actual UNA SOLA VEZ
   const rutinaActual = obtenerRutinaCompleta();
   
   // Verificar que el día existe
@@ -421,64 +596,64 @@ function abrirDia(diaKey) {
   renderDia();
   renderBotonesUltimaSesion();
 
- // 👇 CONFIGURACIÓN DINÁMICA DE HIT/Timer (ACTUALIZADA)
-const rutinaActiva = obtenerRutinaActiva();
+  // Configuración dinámica de HIT/Timer
+  const rutinaActiva = obtenerRutinaActiva();
 
-let mostrarCronometro = false;
-let mostrarTimer = true;
+  let mostrarCronometro = false;
+  let mostrarTimer = true;
 
-// Si es rutina personalizada, usar configuración del día
-if (rutinaActiva !== RUTINA_BASE_ID) {
-  const rutinaUsuario = loadRutinaUsuario(rutinaActiva);
-  
-  if (rutinaUsuario && rutinaUsuario.dias) {
-    // Extraer el índice del diaKey (dia_personalizado_0 → 0)
-    const match = diaKey.match(/dia_personalizado_(\d+)/);
-    if (match) {
-      const diaIndex = parseInt(match[1]);
-      const diaConfig = rutinaUsuario.dias[diaIndex];
-      
-      if (diaConfig) {
-        mostrarCronometro = diaConfig.tieneCronometro || false;
-        mostrarTimer = diaConfig.tieneTimer !== false;
+  // Si es rutina personalizada, usar configuración del día
+  if (rutinaActiva !== RUTINA_BASE_ID) {
+    const rutinaUsuario = loadRutinaUsuario(rutinaActiva);
+    
+    if (rutinaUsuario && rutinaUsuario.dias) {
+      // Extraer el índice del diaKey (dia_personalizado_0 → 0)
+      const match = diaKey.match(/dia_personalizado_(\d+)/);
+      if (match) {
+        const diaIndex = parseInt(match[1]);
+        const diaConfig = rutinaUsuario.dias[diaIndex];
+        
+        if (diaConfig) {
+          mostrarCronometro = diaConfig.tieneCronometro || false;
+          mostrarTimer = diaConfig.tieneTimer !== false;
+        }
+      }
+    }
+  } else {
+    // Rutina base: leer tieneCronometro del día
+    const rutinaBase = loadRutinaUsuario(RUTINA_BASE_KEY);
+    if (rutinaBase && rutinaBase.dias) {
+      const match = diaKey.match(/dia_base_(\d+)/);
+      if (match) {
+        const diaIndex = parseInt(match[1]);
+        const diaConfig = rutinaBase.dias[diaIndex];
+        if (diaConfig) {
+          mostrarCronometro = diaConfig.tieneCronometro || false;
+          mostrarTimer = diaConfig.tieneTimer !== false;
+        }
       }
     }
   }
-}  else {
-  // Rutina base: leer tieneCronometro del día
-  const rutinaBase = loadRutinaUsuario(RUTINA_BASE_KEY);
-  if (rutinaBase && rutinaBase.dias) {
-    const match = diaKey.match(/dia_base_(\d+)/);
-    if (match) {
-      const diaIndex = parseInt(match[1]);
-      const diaConfig = rutinaBase.dias[diaIndex];
-      if (diaConfig) {
-        mostrarCronometro = diaConfig.tieneCronometro || false;
-        mostrarTimer = diaConfig.tieneTimer !== false;
-      }
+
+  // Mostrar/ocultar cronómetro HIT
+  const hit = document.getElementById("hit-crono");
+  if (hit) {
+    if (mostrarCronometro) {
+      hit.classList.remove("oculto");
+    } else {
+      hit.classList.add("oculto");
     }
   }
-}
 
-// Mostrar/ocultar cronómetro HIT
-const hit = document.getElementById("hit-crono");
-if (hit) {
-  if (mostrarCronometro) {
-    hit.classList.remove("oculto");
-  } else {
-    hit.classList.add("oculto");
+  // Mostrar/ocultar temporizador
+  const timer = document.getElementById("temporizador");
+  if (timer) {
+    if (mostrarTimer) {
+      timer.classList.remove("oculto");
+    } else {
+      timer.classList.add("oculto");
+    }
   }
-}
-
-// Mostrar/ocultar temporizador
-const timer = document.getElementById("temporizador");
-if (timer) {
-  if (mostrarTimer) {
-    timer.classList.remove("oculto");
-  } else {
-    timer.classList.add("oculto");
-  }
- }
 }
 
 /*************************
@@ -740,6 +915,10 @@ function abrirHistorial() {
   document.getElementById("menu").classList.add("oculto");
   document.getElementById("pantalla-dia").classList.add("oculto");
   document.getElementById("pantalla-detalle").classList.add("oculto");
+  document.getElementById("pantalla-medidas").classList.add("oculto");
+  document.getElementById("pantalla-audio").classList.add("oculto"); // ← AÑADIR
+  document.getElementById("pantalla-perfil").classList.add("oculto"); // ← AÑADIR
+  document.getElementById("pantalla-editor").classList.add("oculto"); // ← AÑADIR
 
   // Mostrar solo historial
   document.getElementById("pantalla-historial").classList.remove("oculto");
@@ -775,17 +954,20 @@ ${s.tiempoHIT !== null ? ` — ${s.tipoHIT} (${formatearTiempo(s.tiempoHIT)})` :
 }
 
 function volverHistorial() {
-  // Actualizar el historial del navegador
   history.pushState({ pantalla: 'historial' }, "");
 
   document.getElementById("pantalla-detalle").classList.add("oculto");
   document.getElementById("pantalla-dia").classList.add("oculto");
+  document.getElementById("pantalla-medidas").classList.add("oculto");
+  document.getElementById("pantalla-audio").classList.add("oculto"); // ← AÑADIR
+  document.getElementById("pantalla-perfil").classList.add("oculto"); // ← AÑADIR
+  document.getElementById("pantalla-editor").classList.add("oculto"); // ← AÑADIR
+  
   document.getElementById("pantalla-historial").classList.remove("oculto");
 }
 
 function verDetalle(index) {
   guardarEstadoApp();
-  // Guardar el estado actual en el historial del navegador
   history.pushState({ pantalla: 'detalle', index }, "");
 
   const historial = JSON.parse(localStorage.getItem("historial")) || [];
@@ -794,6 +976,11 @@ function verDetalle(index) {
 
   document.getElementById("pantalla-historial").classList.add("oculto");
   document.getElementById("pantalla-dia").classList.add("oculto");
+  document.getElementById("pantalla-medidas").classList.add("oculto");
+  document.getElementById("pantalla-audio").classList.add("oculto"); // ← AÑADIR
+  document.getElementById("pantalla-perfil").classList.add("oculto"); // ← AÑADIR
+  document.getElementById("pantalla-editor").classList.add("oculto"); // ← AÑADIR
+  
   document.getElementById("pantalla-detalle").classList.remove("oculto");
 
   const cont = document.getElementById("detalle-sesion");
@@ -904,11 +1091,35 @@ function abrirMedidas() {
   document.getElementById("pantalla-dia").classList.add("oculto");
   document.getElementById("pantalla-historial").classList.add("oculto");
   document.getElementById("pantalla-detalle").classList.add("oculto");
+  document.getElementById("pantalla-audio").classList.add("oculto"); // ← AÑADIR
+  document.getElementById("pantalla-perfil").classList.add("oculto"); // ← AÑADIR
+  document.getElementById("pantalla-editor").classList.add("oculto"); // ← AÑADIR
 
   document.getElementById("pantalla-medidas").classList.remove("oculto");
 
   cargarMedidas();
 }
+
+function abrirConfigAudio() {
+  cerrarSidebar();
+  guardarEstadoApp();
+  history.pushState({}, "");
+
+  document.getElementById("menu").classList.add("oculto");
+  document.getElementById("pantalla-dia").classList.add("oculto");
+  document.getElementById("pantalla-historial").classList.add("oculto");
+  document.getElementById("pantalla-detalle").classList.add("oculto");
+  document.getElementById("pantalla-medidas").classList.add("oculto");
+  document.getElementById("pantalla-perfil").classList.add("oculto");
+
+  document.getElementById("pantalla-audio").classList.remove("oculto");
+  
+  // Actualizar nombre del audio actual
+  const nombreActual = audioPersonalizadoNombre || 'Beep (predeterminado)';
+  actualizarNombreAudio(nombreActual);
+}
+
+window.abrirConfigAudio = abrirConfigAudio;
 
 function guardarMedidas() {
   const nuevaMedida = {
@@ -1086,12 +1297,13 @@ function volverMenu() {
   document.getElementById("pantalla-historial").classList.add("oculto");
   document.getElementById("pantalla-detalle").classList.add("oculto");
   document.getElementById("pantalla-medidas").classList.add("oculto");
+  document.getElementById("pantalla-audio").classList.add("oculto"); // ✅ YA DEBE ESTAR
+  document.getElementById("pantalla-editor").classList.add("oculto"); // ← AÑADIR
   document.getElementById("menu").classList.remove("oculto");
-
-  cerrarSidebarRight(); // ← AÑADIR ESTA LÍNEA
-
-
- guardarEstadoApp();
+  
+  cerrarSidebarRight();
+  
+  guardarEstadoApp();
 }
 
 // Renderizar botones de días según rutina activa
@@ -1204,7 +1416,15 @@ function cerrarSidebarRight() {
 document.addEventListener("DOMContentLoaded", async () => {
   // 👇 AÑADIR ESTO AL INICIO
   inicializarRutinaBase();
-  
+
+  // Debug de audio guardado
+  const audioGuardado = localStorage.getItem('audioPersonalizado');
+  const nombreGuardado = localStorage.getItem('audioPersonalizadoNombre');
+  console.log('🔍 Audio en localStorage:', {
+    existe: !!audioGuardado,
+    nombre: nombreGuardado,
+    tamaño: audioGuardado ? (audioGuardado.length / 1024).toFixed(2) + 'KB' : 'N/A'
+  });
 
   // 1. Render timers
   renderTimers();
@@ -1381,16 +1601,21 @@ window.volverMenu = function() {
   // Guardar estado para historial del navegador
   history.pushState({ pantalla: 'menu' }, "");
   
-  // Ocultar todas las pantallas
+  // Ocultar TODAS las pantallas
   document.getElementById("pantalla-auth").classList.add("oculto");
   document.getElementById("pantalla-perfil").classList.add("oculto");
   document.getElementById("pantalla-dia").classList.add("oculto");
   document.getElementById("pantalla-historial").classList.add("oculto");
   document.getElementById("pantalla-detalle").classList.add("oculto");
   document.getElementById("pantalla-medidas").classList.add("oculto");
+  document.getElementById("pantalla-audio").classList.add("oculto"); // ← AÑADIR
+  document.getElementById("pantalla-editor").classList.add("oculto"); // ← AÑADIR
   
   // Mostrar menú
   document.getElementById("menu").classList.remove("oculto");
+  
+  // Cerrar sidebars
+  cerrarSidebarRight(); // ← AÑADIR
   
   // Actualizar selector por si hay cambios
   renderizarSelectorRutinas();
