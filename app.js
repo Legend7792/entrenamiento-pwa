@@ -504,7 +504,7 @@ const extra = config.ejerciciosExtra[nombreDia] || []; // ← Usar nombreDia
       series: ej.series,
       repsMin: ej.repsMin,
       repsMax: ej.alFallo ? 30 : ej.repsMax,
-      peso: ej.alFallo ? 0 : (config.pesos[key] ?? ej.peso),
+      peso: ej.alFallo ? 0 : (parseFloat(config.pesos[key]) || parseFloat(ej.peso) || 0),
       reps: Array(ej.series).fill(""),
       incremento: ej.alFallo ? 0 : 2,
       noProgresar: ej.alFallo ? true : false,
@@ -542,14 +542,14 @@ function renderDia() {
         <h3>${ej.nombre}</h3>
 
         <label>Peso base:</label>
-        <input type="number" value="${ej.peso}" onchange="actualizarPesoBase(${i}, '${ej.nombre}', this.value)">
+        <input type="number" step="0.1" value="${ej.peso}" onchange="actualizarPesoBase(${i}, '${ej.nombre}', this.value)">
 
         <p>Objetivo: ${ej.series} × ${ej.repsMin}-${ej.repsMax}</p>
 
         <div class="series">${seriesHTML}</div>
 
         <label>Incremento (kg):</label>
-        <input type="number" id="inc-${i}" placeholder="2" value="${ej.incremento}" onchange="actualizarIncremento(${i}, this.value)">
+        <input type="number" step="0.1" id="inc-${i}" placeholder="2" value="${ej.incremento}" onchange="actualizarIncremento(${i}, this.value)">
 
 <label>
   <input type="checkbox" id="noprog-${i}" ${ej.noProgresar ? "checked" : ""} onchange="actualizarNoProgresar(${i}, this.checked)">
@@ -590,30 +590,29 @@ function guardarPesoBase(nombre, valor) {
   const rutinaActual = obtenerRutinaCompleta();
   const nombreDia = rutinaActual[diaActual]?.nombre || diaActual;
   const key = `${nombreDia}_${nombre}`;
-  config.pesos[key] = Number(valor);
+  config.pesos[key] = parseFloat(valor) || 0;
   guardarConfig();
 }
 
-// ✅ AÑADIR ESTA FUNCIÓN NUEVA:
+// ✅ FUNCIONES DE ACTUALIZACIÓN
 window.actualizarPesoBase = function(ejercicioIndex, nombre, valor) {
-/// ✅ AÑADIR ESTAS FUNCIONES:
+  // Actualizar en memoria
+  ejerciciosDia[ejercicioIndex].peso = parseFloat(valor) || 0;
+  
+  // Guardar en config
+  guardarPesoBase(nombre, valor);
+  
+  console.log(`✅ Peso actualizado: ${nombre} = ${valor}kg`);
+};
+
 window.actualizarIncremento = function(ejercicioIndex, valor) {
-  ejerciciosDia[ejercicioIndex].incremento = Number(valor);
+  ejerciciosDia[ejercicioIndex].incremento = parseFloat(valor) || 0;
   guardarEstadoApp();
 };
 
 window.actualizarNoProgresar = function(ejercicioIndex, checked) {
   ejerciciosDia[ejercicioIndex].noProgresar = checked;
   guardarEstadoApp();
-}; 
-
- // Actualizar en memoria
-  ejerciciosDia[ejercicioIndex].peso = Number(valor);
-  
-  // Guardar en config
-  guardarPesoBase(nombre, valor);
-  
-  console.log(`✅ Peso actualizado: ${nombre} = ${valor}kg`);
 };
 
 /*************************
@@ -694,10 +693,11 @@ const sesion = {
 
     // Solo incrementa si NO es al fallo y no está marcado "noProgresar"
     if (!ej.alFallo && completo && !ej.noProgresar) {
-      ej.peso += ej.incremento;
-      guardarPesoBase(ej.nombre, ej.peso);
-      huboProgresion = true;
-      detallesProgreso.push(`${ej.nombre}: PROGRESO +${ej.incremento}kg`);
+  // Usar parseFloat y redondear a 2 decimales
+  ej.peso = parseFloat((ej.peso + ej.incremento).toFixed(2));
+  guardarPesoBase(ej.nombre, ej.peso);
+  huboProgresion = true;
+  detallesProgreso.push(`${ej.nombre}: PROGRESO +${ej.incremento}kg → ${ej.peso}kg`);
     } else if (ej.alFallo) {
       detallesProgreso.push(`${ej.nombre}: Al fallo — repeticiones registradas, SIN incremento`);
     } else {
@@ -755,17 +755,22 @@ function abrirHistorial() {
   .slice()
   .reverse()
   .forEach((s, i) => {
-    cont.innerHTML += `
-      <div class="historial-item">
-        <p>
-  ${new Date(s.fecha).toLocaleString()} — ${s.dia}
-  ${s.tiempoHIT !== null ? ` — ${s.tipoHIT} (${formatearTiempo(s.tiempoHIT)})` : ""}
+   cont.innerHTML += `
+  <div class="historial-item">
+    <p>
+${new Date(s.fecha).toLocaleString()} — ${s.dia}
+${s.tiempoHIT !== null ? ` — ${s.tipoHIT} (${formatearTiempo(s.tiempoHIT)})` : ""}
 </p>
-        <button onclick="verDetalle(${historial.length - 1 - i})">
-          Ver detalles
-        </button>
-      </div>
-    `;
+    <div class="botones-historial">
+      <button onclick="verDetalle(${historial.length - 1 - i})">
+        👁️ Ver detalles
+      </button>
+      <button class="btn-borrar" onclick="borrarSesion(${historial.length - 1 - i})">
+        🗑️ Borrar
+      </button>
+    </div>
+  </div>
+`;
   });
 }
 
@@ -810,58 +815,7 @@ cont.innerHTML = `
   });
 }
 
-/*************************
- * AÑADIR EJERCICIO
- *************************/
-function añadirEjercicio() {
-  const diaKey = document.getElementById("dia-ejercicio").value;
-  const nombre = document.getElementById("nuevo-nombre").value.trim();
-  const peso = Number(document.getElementById("nuevo-peso").value);
-  const series = Number(document.getElementById("nuevo-series").value);
-  const repsMin = Number(document.getElementById("nuevo-reps-min").value);
-  const repsMax = Number(document.getElementById("nuevo-reps-max").value);
 
-  // Validar que el día existe en la rutina actual
-  const rutinaActual = obtenerRutinaCompleta();
-  if (!rutinaActual[diaKey]) { 
-    alert("Día inválido"); 
-    return; 
-  }
-  
-  if (!nombre || series <= 0 || repsMin <= 0 || repsMax <= 0) { 
-    alert("Datos incompletos"); 
-    return; 
-  }
-
-  const nuevo = { 
-    nombre, 
-    peso, 
-    series, 
-    repsMin, 
-    repsMax,
-    alFallo: document.getElementById("nuevo-fallo").checked,
-    noProgresar: document.getElementById("nuevo-no-progresar").checked,
-    reps: []
-  };
-  
- const nombreDiaKey = rutinaActual[diaKey].nombre;
-if (!config.ejerciciosExtra[nombreDiaKey]) config.ejerciciosExtra[nombreDiaKey] = [];
-config.ejerciciosExtra[nombreDiaKey].push(nuevo);
-  guardarConfig();
-
-  if (diaActual === diaKey) {
-    cargarEjerciciosDia();
-    renderDia();
-  }
-
-  document.getElementById("nuevo-nombre").value = "";
-  document.getElementById("nuevo-peso").value = "";
-  document.getElementById("nuevo-series").value = "";
-  document.getElementById("nuevo-reps-min").value = "";
-  document.getElementById("nuevo-reps-max").value = "";
-
-  alert(`Ejercicio añadido a ${rutinaActual[diaKey].nombre}`); // 👈 CORREGIDO
-}
 
 /*************************
  * BORRAR HISTORIAL
@@ -871,6 +825,28 @@ function borrarTodoHistorial() {
   localStorage.removeItem("historial");
   alert("Historial eliminado");
 }
+
+// ✅ AÑADIR ESTA FUNCIÓN:
+window.borrarSesion = function(index) {
+  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const sesion = historial[index];
+  
+  if (!sesion) return;
+  
+  const fecha = new Date(sesion.fecha).toLocaleString();
+  const confirmMsg = `¿Borrar sesión del ${fecha}?\n\n${sesion.dia}`;
+  
+  if (!confirm(confirmMsg)) return;
+  
+  // Eliminar sesión
+  historial.splice(index, 1);
+  localStorage.setItem("historial", JSON.stringify(historial));
+  
+  // Recargar historial
+  abrirHistorial();
+  
+  alert("✅ Sesión eliminada");
+};
 
 function limpiarHistorialDuplicados() {
   let historial = JSON.parse(localStorage.getItem("historial")) || [];
@@ -1111,7 +1087,11 @@ function volverMenu() {
   document.getElementById("pantalla-detalle").classList.add("oculto");
   document.getElementById("pantalla-medidas").classList.add("oculto");
   document.getElementById("menu").classList.remove("oculto");
-  guardarEstadoApp();
+
+  cerrarSidebarRight(); // ← AÑADIR ESTA LÍNEA
+
+
+ guardarEstadoApp();
 }
 
 // Renderizar botones de días según rutina activa
@@ -1175,6 +1155,28 @@ function toggleSidebar() {
   }
 }
 
+// Toggle sidebar derecho (temporizador)
+function toggleSidebarRight() {
+  const sidebar = document.getElementById("sidebar-right");
+  const overlay = document.getElementById("sidebar-right-overlay");
+  
+  if (!sidebar || !overlay) return;
+  
+  const isOpen = sidebar.classList.contains("sidebar-right-open");
+  
+  if (isOpen) {
+    sidebar.classList.remove("sidebar-right-open");
+    sidebar.classList.add("sidebar-right-closed");
+    overlay.classList.add("oculto");
+  } else {
+    sidebar.classList.remove("sidebar-right-closed");
+    sidebar.classList.add("sidebar-right-open");
+    overlay.classList.remove("oculto");
+  }
+}
+
+window.toggleSidebarRight = toggleSidebarRight;
+
 // Cerrar sidebar al navegar
 function cerrarSidebar() {
   const sidebar = document.getElementById("sidebar");
@@ -1183,6 +1185,18 @@ function cerrarSidebar() {
   if (sidebar && overlay) {
     sidebar.classList.remove("sidebar-open");
     sidebar.classList.add("sidebar-closed");
+    overlay.classList.add("oculto");
+  }
+}
+
+// Cerrar sidebar derecho
+function cerrarSidebarRight() {
+  const sidebar = document.getElementById("sidebar-right");
+  const overlay = document.getElementById("sidebar-right-overlay");
+  
+  if (sidebar && overlay) {
+    sidebar.classList.remove("sidebar-right-open");
+    sidebar.classList.add("sidebar-right-closed");
     overlay.classList.add("oculto");
   }
 }
@@ -1338,7 +1352,6 @@ window.iniciarTemporizador = iniciarTemporizador;
 window.pausarTemporizador = pausarTemporizador;
 window.resetTemporizador = resetTemporizador;
 window.añadirTimer = añadirTimer;
-window.añadirEjercicio = añadirEjercicio;
 window.borrarTimer = borrarTimer;
 window.iniciarHIT = iniciarHIT;
 window.pausarHIT = pausarHIT;
@@ -1386,27 +1399,43 @@ window.volverMenu = function() {
 };
 
 // ========================================
-// SWIPE GESTURE PARA SIDEBAR
+// SWIPE GESTURES PARA SIDEBARS (IZQUIERDO Y DERECHO)
 // ========================================
 let touchStartX = 0;
 let touchStartY = 0;
 let touchEndX = 0;
 let touchEndY = 0;
 let isSwiping = false;
+let swipeTarget = null; // 'left' o 'right'
 
 const SWIPE_THRESHOLD = 100; // Píxeles mínimos para considerar swipe
-const EDGE_ZONE = 30; // Zona del borde izquierdo donde funciona el swipe (píxeles)
+const EDGE_ZONE = 30; // Zona del borde donde funciona el swipe (píxeles)
 
+// ========================================
+// DETECTAR INICIO DEL SWIPE
+// ========================================
 document.addEventListener('touchstart', (e) => {
   touchStartX = e.changedTouches[0].screenX;
   touchStartY = e.changedTouches[0].screenY;
   
-  // Solo detectar swipe si empieza desde el borde izquierdo
+  const screenWidth = window.innerWidth;
+  
+  // Detectar swipe desde BORDE IZQUIERDO (para sidebar izquierdo)
   if (touchStartX <= EDGE_ZONE) {
     isSwiping = true;
+    swipeTarget = 'left';
+  }
+  
+  // Detectar swipe desde BORDE DERECHO (para sidebar derecho)
+  if (touchStartX >= screenWidth - EDGE_ZONE) {
+    isSwiping = true;
+    swipeTarget = 'right';
   }
 }, { passive: true });
 
+// ========================================
+// DETECTAR MOVIMIENTO DEL SWIPE
+// ========================================
 document.addEventListener('touchmove', (e) => {
   if (!isSwiping) return;
   
@@ -1416,20 +1445,37 @@ document.addEventListener('touchmove', (e) => {
   const deltaX = touchEndX - touchStartX;
   const deltaY = Math.abs(touchEndY - touchStartY);
   
-  // Si el swipe es más horizontal que vertical y va hacia la derecha
-  if (deltaX > 50 && deltaY < 100) {
+  // Solo procesar si es más horizontal que vertical
+  if (deltaY > 100) return;
+  
+  // SIDEBAR IZQUIERDO - Swipe hacia la DERECHA
+  if (swipeTarget === 'left' && deltaX > 50) {
     const sidebar = document.getElementById("sidebar");
     const overlay = document.getElementById("sidebar-overlay");
     
-    // Abrir sidebar mientras arrastras (opcional, para feedback visual)
     if (sidebar && !sidebar.classList.contains("sidebar-open")) {
       sidebar.classList.remove("sidebar-closed");
       sidebar.classList.add("sidebar-open");
       if (overlay) overlay.classList.remove("oculto");
     }
   }
+  
+  // SIDEBAR DERECHO - Swipe hacia la IZQUIERDA
+  if (swipeTarget === 'right' && deltaX < -50) {
+    const sidebar = document.getElementById("sidebar-right");
+    const overlay = document.getElementById("sidebar-right-overlay");
+    
+    if (sidebar && !sidebar.classList.contains("sidebar-right-open")) {
+      sidebar.classList.remove("sidebar-right-closed");
+      sidebar.classList.add("sidebar-right-open");
+      if (overlay) overlay.classList.remove("oculto");
+    }
+  }
 }, { passive: true });
 
+// ========================================
+// FINALIZAR SWIPE
+// ========================================
 document.addEventListener('touchend', (e) => {
   if (!isSwiping) return;
   
@@ -1439,41 +1485,88 @@ document.addEventListener('touchend', (e) => {
   const deltaX = touchEndX - touchStartX;
   const deltaY = Math.abs(touchEndY - touchStartY);
   
-  // Si el swipe es horizontal y supera el umbral
-  if (deltaX > SWIPE_THRESHOLD && deltaY < 100) {
-    const sidebar = document.getElementById("sidebar");
-    const overlay = document.getElementById("sidebar-overlay");
+  // Solo procesar si es swipe horizontal
+  if (deltaY < 100) {
     
-    if (sidebar && overlay) {
-      sidebar.classList.remove("sidebar-closed");
-      sidebar.classList.add("sidebar-open");
-      overlay.classList.remove("oculto");
+    // SIDEBAR IZQUIERDO - Abrir con swipe derecha
+    if (swipeTarget === 'left' && deltaX > SWIPE_THRESHOLD) {
+      const sidebar = document.getElementById("sidebar");
+      const overlay = document.getElementById("sidebar-overlay");
+      
+      if (sidebar && overlay) {
+        sidebar.classList.remove("sidebar-closed");
+        sidebar.classList.add("sidebar-open");
+        overlay.classList.remove("oculto");
+      }
+    }
+    
+    // SIDEBAR DERECHO - Abrir con swipe izquierda
+    if (swipeTarget === 'right' && deltaX < -SWIPE_THRESHOLD) {
+      const sidebar = document.getElementById("sidebar-right");
+      const overlay = document.getElementById("sidebar-right-overlay");
+      
+      if (sidebar && overlay) {
+        sidebar.classList.remove("sidebar-right-closed");
+        sidebar.classList.add("sidebar-right-open");
+        overlay.classList.remove("oculto");
+      }
     }
   }
   
   isSwiping = false;
+  swipeTarget = null;
 }, { passive: true });
 
-// CERRAR SIDEBAR CON SWIPE HACIA LA IZQUIERDA
+// ========================================
+// CERRAR SIDEBAR IZQUIERDO CON SWIPE HACIA LA IZQUIERDA
+// ========================================
 document.getElementById("sidebar")?.addEventListener('touchstart', (e) => {
   if (!document.getElementById("sidebar").classList.contains("sidebar-open")) return;
   
   touchStartX = e.changedTouches[0].screenX;
   isSwiping = true;
+  swipeTarget = 'left-close';
 }, { passive: true });
 
 document.getElementById("sidebar")?.addEventListener('touchend', (e) => {
-  if (!isSwiping) return;
+  if (!isSwiping || swipeTarget !== 'left-close') return;
   
   touchEndX = e.changedTouches[0].screenX;
   const deltaX = touchEndX - touchStartX;
   
-  // Si el swipe es hacia la izquierda
+  // Swipe hacia la IZQUIERDA para cerrar
   if (deltaX < -SWIPE_THRESHOLD) {
     toggleSidebar();
   }
   
   isSwiping = false;
+  swipeTarget = null;
+}, { passive: true });
+
+// ========================================
+// CERRAR SIDEBAR DERECHO CON SWIPE HACIA LA DERECHA
+// ========================================
+document.getElementById("sidebar-right")?.addEventListener('touchstart', (e) => {
+  if (!document.getElementById("sidebar-right").classList.contains("sidebar-right-open")) return;
+  
+  touchStartX = e.changedTouches[0].screenX;
+  isSwiping = true;
+  swipeTarget = 'right-close';
+}, { passive: true });
+
+document.getElementById("sidebar-right")?.addEventListener('touchend', (e) => {
+  if (!isSwiping || swipeTarget !== 'right-close') return;
+  
+  touchEndX = e.changedTouches[0].screenX;
+  const deltaX = touchEndX - touchStartX;
+  
+  // Swipe hacia la DERECHA para cerrar
+  if (deltaX > SWIPE_THRESHOLD) {
+    toggleSidebarRight();
+  }
+  
+  isSwiping = false;
+  swipeTarget = null;
 }, { passive: true });
 
 // ========================================

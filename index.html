@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Entrenamiento</title>
 
-  <link rel="stylesheet" href="./style.css?v=70" />
-  <link rel="manifest" href="./manifest.json?v=70" />
+  <link rel="stylesheet" href="./style.css?v=71" />
+  <link rel="manifest" href="./manifest.json?v=71" />
   <meta name="theme-color" content="#121212" />
 
   <!-- App principal -->
-  <script type="module" src="./app.js?v=70"></script>
+  <script type="module" src="./app.js?v=71"></script>
 </head>
 
 <body>
@@ -103,7 +103,7 @@
   </section>
 
   <!-- =====================================================
-       SIDEBAR
+       SIDEBAR IZQUIERDO (MENÚ)
   ===================================================== -->
   <div id="sidebar-overlay" class="oculto" onclick="toggleSidebar()"></div>
 
@@ -137,62 +137,72 @@
   ===================================================== -->
   <section id="pantalla-dia" class="oculto">
 
-    <h2 id="titulo-dia"></h2>
+    <!-- Barra superior con botón de temporizador -->
+    <div class="top-bar-dia">
+      <h2 id="titulo-dia"></h2>
+      <button class="btn-timer-toggle" onclick="toggleSidebarRight()">⏱️</button>
+    </div>
 
     <div id="contenido"></div>
-
-    <!-- HIT -->
-    <section id="hit-crono" class="oculto">
-      <h3>HIT</h3>
-
-      <select id="hit-tipo">
-        <option value="HIT 1">HIT 1</option>
-        <option value="HIT 2">HIT 2</option>
-      </select>
-
-      <h1 id="tiempo-hit">0:00</h1>
-
-      <button onclick="iniciarHIT()">Iniciar</button>
-      <button onclick="pausarHIT()">Pausar</button>
-      <button onclick="resetHIT()">Reset</button>
-    </section>
-
-    <!-- TEMPORIZADORES -->
-    <section id="temporizador" class="ejercicio">
-      <h3>Temporizadores</h3>
-      <div id="lista-timers"></div>
-      <button onclick="añadirTimer()">Añadir temporizador</button>
-
-      <h1 id="tiempo">0:00</h1>
-
-      <button onclick="pausarTemporizador()">Pausar</button>
-      <button onclick="resetTemporizador()">Reset</button>
-    </section>
-
-    <!-- AÑADIR EJERCICIO -->
-    <section class="ejercicio">
-      <h3>Añadir ejercicio</h3>
-
-      <select id="dia-ejercicio"></select>
-
-      <input id="nuevo-nombre" placeholder="Ejercicio" />
-      <input id="nuevo-peso" type="number" placeholder="Peso" />
-      <input id="nuevo-series" type="number" placeholder="Series" />
-      <input id="nuevo-reps-min" type="number" placeholder="Reps mín" />
-      <input id="nuevo-reps-max" type="number" placeholder="Reps máx" />
-
-      <label><input type="checkbox" id="nuevo-fallo" /> Al fallo</label>
-      <label><input type="checkbox" id="nuevo-no-progresar" /> No progresar</label>
-
-      <button onclick="añadirEjercicio()">Añadir</button>
-    </section>
 
     <div class="acciones-dia">
       <button onclick="finalizarDia()">Finalizar sesión</button>
       <button onclick="volverMenu()">Volver</button>
-      <button class="danger" onclick="borrarRutinaDia()">Borrar rutina completa</button>
     </div>
   </section>
+
+  <!-- =====================================================
+       SIDEBAR DERECHO (TEMPORIZADOR/CRONÓMETRO)
+  ===================================================== -->
+  <div id="sidebar-right-overlay" class="oculto" onclick="toggleSidebarRight()"></div>
+
+  <aside id="sidebar-right" class="sidebar-right-closed">
+    <div class="sidebar-header">
+      <h2>⏱️ Temporizadores</h2>
+      <button class="close-sidebar" onclick="toggleSidebarRight()">✕</button>
+    </div>
+
+    <div class="sidebar-content">
+      
+      <!-- HIT CRONÓMETRO -->
+      <section id="hit-crono" class="sidebar-section oculto">
+        <h3>⏲️ Cronómetro HIT</h3>
+
+        <select id="hit-tipo" class="select-small">
+          <option value="HIT 1">HIT 1</option>
+          <option value="HIT 2">HIT 2</option>
+        </select>
+
+        <div class="timer-display">
+          <h1 id="tiempo-hit">0:00</h1>
+        </div>
+
+        <div class="timer-controls">
+          <button onclick="iniciarHIT()">▶️ Iniciar</button>
+          <button onclick="pausarHIT()">⏸️ Pausar</button>
+          <button onclick="resetHIT()">🔄 Reset</button>
+        </div>
+      </section>
+
+      <!-- TEMPORIZADOR DE DESCANSO -->
+      <section id="temporizador" class="sidebar-section">
+        <h3>⏱️ Temporizador</h3>
+        
+        <div id="lista-timers"></div>
+        <button onclick="añadirTimer()" class="btn-small">➕ Añadir</button>
+
+        <div class="timer-display">
+          <h1 id="tiempo">0:00</h1>
+        </div>
+
+        <div class="timer-controls">
+          <button onclick="pausarTemporizador()">⏸️ Pausar</button>
+          <button onclick="resetTemporizador()">🔄 Reset</button>
+        </div>
+      </section>
+
+    </div>
+  </aside>
 
   <!-- =====================================================
        HISTORIAL
@@ -286,6 +296,8 @@
     <h2>⏱ Tiempo finalizado</h2>
     <button onclick="resetDesdeModal()">Resetear</button>
   </div>
+</div>
+
 </div>
 
 <!-- =====================================================
