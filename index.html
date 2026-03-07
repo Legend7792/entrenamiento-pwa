@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#121212" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏋️</text></svg>" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>Gym Tracker</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     BANNER OFFLINE
+══════════════════════════════════════ -->
+<div id="banner-offline" class="oculto">📴 Sin conexión — Modo offline activo</div>
+
+<!-- ══════════════════════════════════════
+     SIDEBAR IZQUIERDO
+══════════════════════════════════════ -->
+<div id="sidebar-overlay" class="oculto" onclick="toggleSidebar()"></div>
+<nav id="sidebar" class="sidebar-closed">
+  <div class="sidebar-header">
+    <h2>⚙️ Ajustes</h2>
+    <button onclick="toggleSidebar()" class="btn-close-sidebar">✕</button>
+  </div>
+
+  <div class="sidebar-section">
+    <label class="sidebar-label">🎨 Tema</label>
+    <select id="selector-temas-sidebar"></select>
+  </div>
+
+  <div class="sidebar-section">
+    <label class="sidebar-label">📋 Rutina activa</label>
+    <select id="selector-rutina"></select>
+  </div>
+
+  <div class="sidebar-section sidebar-btns">
+    <button onclick="toggleSidebar(); abrirEditorRutinas()">✏️ Editar rutinas</button>
+    <button onclick="toggleSidebar(); abrirPantallaImport()">🤖 Importar con IA</button>
+    <button onclick="toggleSidebar(); abrirHistorial()">📊 Historial</button>
+    <button onclick="toggleSidebar(); abrirEstadisticas()">🏆 Estadísticas</button>
+    <button onclick="toggleSidebar(); abrirProgreso()">📈 Progreso ejercicios</button>
+    <button onclick="toggleSidebar(); abrirMedidas()">📏 Medidas corporales</button>
+    <button onclick="toggleSidebar(); abrirConfigAudio()">🔔 Sonido temporizador</button>
+    <button onclick="toggleSidebar(); abrirGuiaTempo()">📖 Guía y Conceptos</button>
+    <button onclick="toggleSidebar(); abrirNotasProgresion()">📋 Notas de progresión</button>
+    <button onclick="toggleSidebar(); forzarActualizacion()">🔄 Actualizar app</button>
+  </div>
+
+  <div class="sidebar-perfil" id="sidebar-perfil-info"></div>
+</nav>
+
+<!-- ══════════════════════════════════════
+     SIDEBAR DERECHO — TEMPORIZADOR
+══════════════════════════════════════ -->
+<div id="sidebar-right-overlay" class="oculto" onclick="toggleSidebarRight()"></div>
+<nav id="sidebar-right" class="sidebar-right-closed">
+  <div class="sidebar-header">
+    <h2>⏱️ Temporizador</h2>
+    <button onclick="toggleSidebarRight()" class="btn-close-sidebar">✕</button>
+  </div>
+
+  <section id="temporizador">
+    <!-- Timer circular SVG -->
+    <div class="timer-circular-wrap">
+      <svg class="timer-svg" viewBox="0 0 120 120" width="160" height="160">
+        <!-- Pista de fondo -->
+        <circle class="timer-track" cx="60" cy="60" r="52" />
+        <!-- Arco de progreso -->
+        <circle id="timer-arc" class="timer-arc" cx="60" cy="60" r="52"
+          stroke-dasharray="326.73"
+          stroke-dashoffset="0"
+          transform="rotate(-90 60 60)" />
+      </svg>
+      <div class="timer-display-inner">
+        <span id="tiempo" class="timer-digital">0:00</span>
+        <span id="timer-estado" class="timer-estado-label">Listo</span>
+      </div>
+    </div>
+
+    <div class="timer-btns">
+      <button class="btn-pausar" onclick="pausarTemporizador()">⏸️ Pausar</button>
+      <button onclick="resetTemporizador()">⏹️ Reset</button>
+    </div>
+    <div id="lista-timers"></div>
+    <button onclick="añadirTimer()" class="btn-secondary">➕ Añadir timer</button>
+  </section>
+</nav>
+
+<!-- ══════════════════════════════════════
+     PANTALLA AUTH
+══════════════════════════════════════ -->
+<section id="pantalla-auth">
+  <div class="auth-logo">🏋️</div>
+  <h1>Gym Tracker</h1>
+  <p class="auth-subtitle">Seguimiento de rutinas de entrenamiento</p>
+
+  <div id="auth-login" class="auth-form">
+    <h2>Iniciar sesión</h2>
+    <input id="login-email" type="email" placeholder="Email" autocomplete="email" />
+    <input id="login-pass" type="password" placeholder="Contraseña" autocomplete="current-password" />
+    <button onclick="login()">Entrar</button>
+    <div class="auth-links">
+      <button class="btn-link" onclick="mostrarFormRegistro()">¿Sin cuenta? Regístrate</button>
+      <button class="btn-link" onclick="mostrarFormRecuperar()">Olvidé mi contraseña</button>
+      <button class="btn-link" onclick="reenviarVerificacion()" style="font-size:12px;opacity:0.7;">Reenviar email de verificación</button>
+    </div>
+  </div>
+
+  <div id="auth-registro" class="auth-form oculto">
+    <h2>Crear cuenta</h2>
+    <input id="reg-email" type="email" placeholder="Email" autocomplete="email" />
+    <input id="reg-pass" type="password" placeholder="Contraseña (mín. 6 caracteres)" autocomplete="new-password" />
+    <button onclick="register()">Crear cuenta</button>
+    <button class="btn-secondary" onclick="mostrarFormLogin()">← Volver</button>
+  </div>
+
+  <div id="auth-recuperar" class="auth-form oculto">
+    <h2>Recuperar contraseña</h2>
+    <input id="rec-email" type="email" placeholder="Tu email" />
+    <button onclick="recuperarPassword()">Enviar enlace</button>
+    <button class="btn-secondary" onclick="mostrarFormLogin()">← Volver</button>
+  </div>
+
+  <button onclick="usarSinCuenta()" class="btn-link" style="margin-top:16px;">Usar sin cuenta (solo local)</button>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA PERFIL
+══════════════════════════════════════ -->
+<section id="pantalla-perfil" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back">←</button>
+    <h2>👤 Perfil</h2>
+  </div>
+  <div id="perfil-contenido"></div>
+</section>
+
+<!-- ══════════════════════════════════════
+     MENÚ PRINCIPAL
+══════════════════════════════════════ -->
+<section id="menu" class="oculto">
+  <div class="menu-topbar">
+    <button onclick="toggleSidebar()" class="btn-icon-top" title="Ajustes">☰</button>
+    <h1>🏋️ Gym Tracker</h1>
+    <button onclick="toggleSidebarRight()" class="btn-icon-top" title="Temporizador">⏱️</button>
+  </div>
+
+  <div id="botones-dias" class="botones-dias"></div>
+
+  <div class="menu-footer">
+    <button onclick="abrirHistorial()" class="btn-secondary">📊 Historial</button>
+    <button onclick="abrirEstadisticas()" class="btn-secondary">🏆 Stats</button>
+    <button onclick="abrirMedidas()" class="btn-secondary">📏 Medidas</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA DÍA
+══════════════════════════════════════ -->
+<section id="pantalla-dia" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back">←</button>
+    <h2 id="titulo-dia">Entrenamiento</h2>
+    <button onclick="toggleSidebarRight()" class="btn-icon-top">⏱️</button>
+  </div>
+
+  <!-- Modo 2 personas y notas de sesión -->
+  <div class="dia-controles">
+    <button id="btn-modo-personas" onclick="toggleModoDosPersonas()" class="btn-modo" title="Cambiar entre modo 1 y 2 personas">👤 1 persona</button>
+    <input id="notas-sesion-input" type="text" placeholder="📝 Nota de la sesión..." oninput="actualizarNotasSesion(this.value)" />
+  </div>
+
+  <div id="contenido" class="contenido-dia"></div>
+
+  <!-- HIT Cronómetro -->
+  <div id="hit-crono" class="oculto">
+    <h3>⏲️ Cronómetro HIT</h3>
+    <select id="hit-tipo">
+      <option value="HIT 1">HIT 1</option>
+      <option value="HIT 2">HIT 2</option>
+      <option value="HIT 3">HIT 3</option>
+    </select>
+    <p id="tiempo-hit">0:00</p>
+    <div class="hit-btns">
+      <button onclick="iniciarHIT()">▶️</button>
+      <button onclick="pausarHIT()">⏸️</button>
+      <button onclick="resetHIT()">⏹️</button>
+    </div>
+  </div>
+
+  <div class="acciones-dia">
+    <button onclick="finalizarDia()" class="btn-finalizar">✅ Finalizar sesión</button>
+    <button onclick="borrarRutinaDia()" class="btn-danger-sm">🗑️ Limpiar día</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA RESUMEN SESIÓN
+══════════════════════════════════════ -->
+<section id="pantalla-resumen" class="oculto">
+  <div class="pantalla-header">
+    <h2>📊 Resumen</h2>
+  </div>
+  <div id="resumen-contenido"></div>
+  <button onclick="cerrarResumen()" class="btn-primary" style="margin-top:16px;">🏠 Volver al menú</button>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA HISTORIAL
+══════════════════════════════════════ -->
+<section id="pantalla-historial" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back">←</button>
+    <h2>📊 Historial</h2>
+  </div>
+  <div class="historial-search">
+    <input id="historial-buscar" type="text" placeholder="🔍 Buscar por día, fecha..." oninput="filtrarHistorial(this.value)" />
+    <button onclick="exportarHistorialCSV()" title="Exportar CSV" style="width:auto!important;padding:10px 12px!important;margin:0!important;font-size:13px;">📥 CSV</button>
+  </div>
+  <div id="lista-historial"></div>
+  <div class="historial-footer">
+    <button onclick="limpiarHistorialDuplicados()" class="btn-secondary">🧹 Limpiar duplicados</button>
+    <button onclick="borrarTodoHistorial()" class="btn-danger-sm">🗑️ Borrar todo</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA DETALLE SESIÓN
+══════════════════════════════════════ -->
+<section id="pantalla-detalle" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverHistorial()" class="btn-back">←</button>
+    <h2>📋 Detalle sesión</h2>
+  </div>
+  <div id="detalle-sesion"></div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA MEDIDAS
+══════════════════════════════════════ -->
+<section id="pantalla-medidas" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back">←</button>
+    <h2>📏 Medidas corporales</h2>
+  </div>
+
+  <div class="medidas-form">
+    <h3>Registrar medidas</h3>
+    <div class="medidas-grid">
+      <div class="medida-input-group">
+        <label>Peso (kg)</label>
+        <input id="peso" type="number" step="0.1" placeholder="75.5" />
+      </div>
+      <div class="medida-input-group">
+        <label>Altura (cm)</label>
+        <input id="altura" type="number" placeholder="175" />
+      </div>
+      <div class="medida-input-group">
+        <label>Cintura (cm)</label>
+        <input id="cintura" type="number" step="0.5" placeholder="80" />
+      </div>
+      <div class="medida-input-group">
+        <label>Cadera (cm)</label>
+        <input id="cadera" type="number" step="0.5" placeholder="95" />
+      </div>
+      <div class="medida-input-group">
+        <label>Pecho (cm)</label>
+        <input id="pecho" type="number" step="0.5" placeholder="100" />
+      </div>
+      <div class="medida-input-group">
+        <label>Brazo relajado (cm)</label>
+        <input id="brazo_relajado" type="number" step="0.5" placeholder="35" />
+      </div>
+      <div class="medida-input-group">
+        <label>Brazo contraído (cm)</label>
+        <input id="brazo_contraido" type="number" step="0.5" placeholder="38" />
+      </div>
+      <div class="medida-input-group">
+        <label>Muslo (cm)</label>
+        <input id="muslo" type="number" step="0.5" placeholder="58" />
+      </div>
+    </div>
+    <button onclick="guardarMedidas()" class="btn-primary">💾 Guardar medidas</button>
+  </div>
+
+  <h3>Historial</h3>
+  <div id="lista-medidas"></div>
+  <button onclick="borrarTodoHistorialMedidas()" class="btn-danger-sm">🗑️ Borrar historial medidas</button>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA AUDIO
+══════════════════════════════════════ -->
+<section id="pantalla-audio" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back">←</button>
+    <h2>🔔 Sonido temporizador</h2>
+  </div>
+
+  <div class="audio-card">
+    <p class="audio-label">Sonido actual:</p>
+    <p id="nombre-audio-display" class="audio-nombre">Beep (predeterminado)</p>
+  </div>
+
+  <div class="audio-acciones">
+    <label class="btn-primary" style="display:block; text-align:center; cursor:pointer;">
+      📁 Cargar audio personalizado
+      <input type="file" accept="audio/*" onchange="cargarAudioPersonalizado(this)" style="display:none" />
+    </label>
+    <button onclick="probarSonido()" class="btn-secondary">▶️ Probar sonido</button>
+    <button onclick="resetearAudioPorDefecto()" class="btn-secondary">↩️ Restaurar beep</button>
+    <button onclick="volverMenu()" class="btn-secondary">← Volver</button>
+  </div>
+
+  <div class="audio-info">
+    <p>📌 Formatos: MP3, WAV, OGG · Máximo 5MB</p>
+    <p>El audio se reproduce en bucle hasta que pares el temporizador.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA EDITOR RUTINAS
+══════════════════════════════════════ -->
+<section id="pantalla-editor" class="oculto">
+  <div class="pantalla-header">
+    <h2>✏️ Editor de rutinas</h2>
+  </div>
+  <div id="contenido-editor"></div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA IMPORTAR CON IA
+══════════════════════════════════════ -->
+<section id="pantalla-ai-import" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back">←</button>
+    <h2>🤖 Importar rutina con IA</h2>
+  </div>
+
+  <div class="import-field">
+    <label>Nombre de la rutina</label>
+    <input id="ai-import-nombre" placeholder="ej: Torso/Pierna 4 días" />
+  </div>
+
+  <div class="import-hint" style="margin-bottom:8px;">
+    Formato por ejercicio (línea en blanco entre ejercicios):<br>
+    <code>Press banca con barra
+4x6-8 · 3 min · 3-1-1
+Escápulas retraídas. Barra toca pecho bajo.</code>
+  </div>
+
+  <!-- Lista dinámica de días -->
+  <div id="ai-dias-lista"></div>
+
+  <button onclick="aiAñadirDia()" class="btn-secondary" style="margin-bottom:12px;">➕ Añadir otro día</button>
+
+  <details class="import-ia-section">
+    <summary>🔑 Usar IA de Claude (para texto libre o formato complejo)</summary>
+    <div class="import-field" style="margin-top:12px;">
+      <label>API Key de Anthropic</label>
+      <input id="ai-import-apikey" type="password" placeholder="sk-ant-..." />
+      <p class="import-hint">Se guarda solo en tu dispositivo. Con IA puedes pegar texto libre en cualquier formato y detecta múltiples días automáticamente.</p>
+    </div>
+  </details>
+
+  <button id="btn-importar" onclick="importarRutina()" class="btn-primary">🚀 Importar rutina</button>
+  <button onclick="volverMenu()" class="btn-secondary">← Cancelar</button>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA GUÍA — CONCEPTOS Y PROGRESIÓN
+══════════════════════════════════════ -->
+<section id="pantalla-guia-tempo" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back">←</button>
+    <h2>📖 Guía de Entrenamiento</h2>
+  </div>
+
+  <!-- TEMPO -->
+  <div class="guia-section">
+    <h3>⏱️ Tempo</h3>
+    <p>Define la <strong>velocidad de cada fase del movimiento</strong>. Formato: <strong>Excéntrica – Pausa baja – Concéntrica – Pausa alta</strong></p>
+
+    <div class="tempo-ejemplo-box">
+      <div class="tempo-ejemplo-num">3 – 1 – 1 – 0</div>
+      <div class="tempo-fases-desc">
+        <div class="tempo-fase-item"><span class="tempo-n">3</span><div><strong>Excéntrica</strong><br>Segundos bajando (alargar el músculo). Controla la bajada — aquí ocurre gran parte del estímulo.</div></div>
+        <div class="tempo-fase-item"><span class="tempo-n">1</span><div><strong>Pausa abajo</strong><br>Pausa en la posición más baja. Elimina el rebote, aumenta tensión.</div></div>
+        <div class="tempo-fase-item"><span class="tempo-n">1</span><div><strong>Concéntrica</strong><br>Segundos subiendo (contraer el músculo). Puede ser explosivo (1) o controlado (2).</div></div>
+        <div class="tempo-fase-item"><span class="tempo-n">0</span><div><strong>Pausa arriba</strong><br>Pausa en contracción máxima. 0 = sin pausa. Útil en curl bíceps, jalones.</div></div>
+      </div>
+    </div>
+
+    <div class="guia-nota">
+      💡 La excéntrica no tiene que ser siempre 3. Puede ser 2 si así está programado. Lo importante es que sea <strong>controlada</strong>, no que sea un número fijo.
+    </div>
+
+    <div class="guia-section-sub">
+      <h4>Tempos comunes</h4>
+      <div class="tempo-tabla">
+        <div class="tempo-fila encabezado"><span>Tempo</span><span>Cuándo usarlo</span></div>
+        <div class="tempo-fila"><span><strong>3-1-1-0</strong></span><span>Fuerza/hipertrofia. Eccéntrica controlada + pausa = máximo estímulo.</span></div>
+        <div class="tempo-fila"><span><strong>2-0-1-0</strong></span><span>Hipertrofia general. Fluido, sin pausas. El más habitual.</span></div>
+        <div class="tempo-fila"><span><strong>2-1-1-1</strong></span><span>Hipertrofia con contracción consciente. Pausa arriba activa.</span></div>
+        <div class="tempo-fila"><span><strong>3-0-1-0</strong></span><span>Hipertrofia. Eccéntrica lenta, subida rápida. Sin perder energía.</span></div>
+        <div class="tempo-fila"><span><strong>2-0-2-0</strong></span><span>Tensión continua. Aislamiento (curl, extensión tríceps). Sin bloquear.</span></div>
+        <div class="tempo-fila"><span><strong>1-0-1-0</strong></span><span>Potencia. Movimientos explosivos, olímpicos, pliometría.</span></div>
+        <div class="tempo-fila"><span><strong>4-2-1-0</strong></span><span>TUT máximo. Avanzado. Para fases de acumulación de volumen.</span></div>
+        <div class="tempo-fila"><span><strong>X-0-1-0</strong></span><span>X = explosivo. Eccéntrica lo más rápida posible (pero controlada).</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROGRESIÓN -->
+  <div class="guia-section">
+    <h3>📈 Progresión</h3>
+    <p>Sin progresión no hay adaptación. El músculo se adapta cuando le exiges <strong>más que la última vez</strong>. Hay varias formas de progresar:</p>
+
+    <div class="guia-item">
+      <h4>⬆️ Progresión lineal</h4>
+      <p>La más sencilla. Cada sesión añades peso fijo (+2,5kg, +2kg…). Funciona muy bien en principiantes e intermedios. Cuando fallas la semana siguiente → no sumas peso hasta completar el objetivo.</p>
+      <div class="guia-ejemplo">Semana 1: 60kg → Semana 2: 62,5kg → Semana 3: 65kg</div>
+    </div>
+
+    <div class="guia-item">
+      <h4>🔁 Doble progresión (la más recomendada para hipertrofia)</h4>
+      <p>Trabajas en un rango de reps (ej. 6–10). Cuando alcanzas el máximo en <strong>todas las series</strong>, subes peso la próxima sesión y vuelves al mínimo.</p>
+      <div class="guia-ejemplo">
+        Objetivo: 4×6-10 a 80kg<br>
+        Sesión 1: 8 / 7 / 6 / 6 → no progreso<br>
+        Sesión 2: 10 / 9 / 8 / 7 → no progreso<br>
+        Sesión 3: 10 / 10 / 10 / 10 → ✅ subir a 82,5kg
+      </div>
+    </div>
+
+    <div class="guia-item">
+      <h4>🌊 Periodización ondulante (DUP)</h4>
+      <p>Diferentes rangos de reps en cada sesión de la semana. Permite trabajar fuerza, hipertrofia y resistencia muscular en la misma semana.</p>
+      <div class="guia-ejemplo">
+        Lunes: 4×4-6 (fuerza, más peso)<br>
+        Miércoles: 4×8-12 (hipertrofia)<br>
+        Viernes: 3×15-20 (resistencia muscular, menos peso)
+      </div>
+    </div>
+
+    <div class="guia-item">
+      <h4>🪜 Progresión por series</h4>
+      <p>Mantienes el peso y añades una serie cada semana hasta llegar al máximo. Luego subes peso y reduces series al mínimo.</p>
+      <div class="guia-ejemplo">S1: 3×8 → S2: 4×8 → S3: 5×8 → S4: sube peso, vuelve a 3×8</div>
+    </div>
+
+    <div class="guia-item">
+      <h4>📉 Deload</h4>
+      <p>Semana de descarga cada 4–8 semanas. Reduce peso al 50–60%, mantén series/reps. Permite recuperar el sistema nervioso y articulaciones. <strong>No es opcional si entrenas serio.</strong></p>
+    </div>
+  </div>
+
+  <!-- RIR / RPE -->
+  <div class="guia-section">
+    <h3>🎯 RIR y RPE</h3>
+
+    <div class="guia-item">
+      <h4>RIR — Reps In Reserve (reps en reserva)</h4>
+      <p>Cuántas reps te quedan al acabar la serie antes de llegar al fallo técnico.</p>
+      <div class="tempo-tabla">
+        <div class="tempo-fila encabezado"><span>RIR</span><span>Significado</span></div>
+        <div class="tempo-fila"><span><strong>RIR 0</strong></span><span>Fallo técnico. Siguiente rep implicaría mala técnica.</span></div>
+        <div class="tempo-fila"><span><strong>RIR 1</strong></span><span>Podría hacer 1 rep más. Muy cerca del fallo.</span></div>
+        <div class="tempo-fila"><span><strong>RIR 2</strong></span><span>2 reps en reserva. Zona óptima para hipertrofia.</span></div>
+        <div class="tempo-fila"><span><strong>RIR 3-4</strong></span><span>Moderado. Útil en series de calentamiento o volumen acumulativo.</span></div>
+      </div>
+      <div class="guia-nota">💡 Para hipertrofia, la mayoría de series deberían estar en RIR 0–2. Más de RIR 3 en series de trabajo es poco estímulo.</div>
+    </div>
+
+    <div class="guia-item">
+      <h4>RPE — Rate of Perceived Exertion (esfuerzo percibido)</h4>
+      <p>Escala del 1 al 10 que indica cuánto te ha costado la serie.</p>
+      <div class="tempo-tabla">
+        <div class="tempo-fila encabezado"><span>RPE</span><span>Descripción</span></div>
+        <div class="tempo-fila"><span><strong>RPE 6–7</strong></span><span>Esfuerzo moderado. Series de calentamiento o técnica.</span></div>
+        <div class="tempo-fila"><span><strong>RPE 8</strong></span><span>Duro pero controlado. 2 reps en reserva.</span></div>
+        <div class="tempo-fila"><span><strong>RPE 9</strong></span><span>Muy duro. 1 rep en reserva. Zona de trabajo principal.</span></div>
+        <div class="tempo-fila"><span><strong>RPE 10</strong></span><span>Fallo total. Usar con precaución y solo en accesorios.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VOLUMEN E INTENSIDAD -->
+  <div class="guia-section">
+    <h3>📊 Volumen, Intensidad y Frecuencia</h3>
+
+    <div class="guia-item">
+      <h4>Volumen</h4>
+      <p>Total de trabajo: series × reps × peso. También se mide en <strong>series efectivas por grupo muscular por semana</strong>.</p>
+      <div class="guia-nota">Rango general para hipertrofia: 10–20 series semanales por grupo. Principiantes responden bien con 6–10.</div>
+    </div>
+
+    <div class="guia-item">
+      <h4>Intensidad relativa</h4>
+      <p>El porcentaje de tu 1RM (máximo una repetición) que usas. Fuerza: 80–95% 1RM (1–6 reps). Hipertrofia: 65–85% 1RM (6–15 reps). Resistencia muscular: &lt;65% (15+ reps).</p>
+    </div>
+
+    <div class="guia-item">
+      <h4>Frecuencia</h4>
+      <p>Veces por semana que trabajas un grupo muscular. La evidencia apunta a que <strong>2× por semana es óptimo</strong> para hipertrofia frente a 1×. Más no siempre es mejor si no hay recuperación.</p>
+    </div>
+  </div>
+
+  <!-- TIPOS DE SERIES -->
+  <div class="guia-section">
+    <h3>🔧 Tipos de series especiales</h3>
+
+    <div class="guia-item">
+      <h4>Drop set</h4>
+      <p>Al llegar al fallo, reduces el peso inmediatamente (sin descanso) y continúas. Máximo 1–2 por sesión. Solo en el último ejercicio del grupo.</p>
+    </div>
+    <div class="guia-item">
+      <h4>Rest-pause</h4>
+      <p>Llegas al fallo, descansas 10–15 seg, haces más reps. Repites 2–3 veces. Aumenta el volumen efectivo sin añadir series completas.</p>
+    </div>
+    <div class="guia-item">
+      <h4>Superserie</h4>
+      <p>Dos ejercicios de músculos <strong>antagonistas</strong> seguidos sin descanso (bíceps + tríceps, press + remo). Ahorra tiempo y puede aumentar el rendimiento por efecto de inhibición recíproca.</p>
+    </div>
+    <div class="guia-item">
+      <h4>Series mecánicas (mechanical drop set)</h4>
+      <p>Mismo ejercicio, variación más fácil al llegar al fallo. Ej: dominadas pronadas → supinas → asistidas.</p>
+    </div>
+    <div class="guia-item">
+      <h4>Rango parcial en estiramiento (lengthened partials)</h4>
+      <p>Al llegar al fallo completo, continúas con reps parciales en la posición de mayor estiramiento. Evidencia reciente muestra alto estímulo hipertrófico.</p>
+    </div>
+  </div>
+
+  <!-- AL FALLO -->
+  <div class="guia-section">
+    <h3>⚠️ Entrenamiento al fallo</h3>
+    <p>Hacer reps hasta no poder completar una más con técnica correcta. <strong>No es lo mismo que romper la técnica</strong>, es parar justo antes.</p>
+    <div class="guia-nota">
+      🔴 <strong>No usar al fallo</strong> en: sentadilla, peso muerto, press militar cargado, cualquier movimiento donde el fallo implique riesgo de lesión.<br>
+      🟡 <strong>Usar con moderación</strong> en: press banca con seguro o compañero, dominadas.<br>
+      🟢 <strong>Puede usarse al fallo</strong> en: curl, extensión, máquinas, cables — ejercicios accesorios de aislamiento.
+    </div>
+  </div>
+
+  <button onclick="abrirNotasProgresion()" class="btn-secondary" style="margin-top:4px;">📋 Mis notas de progresión por rutina →</button>
+  <button onclick="volverMenu()" class="btn-secondary" style="margin-top:8px;">← Volver al menú</button>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA NOTAS DE PROGRESIÓN POR RUTINA
+══════════════════════════════════════ -->
+<section id="pantalla-progresion-rutina" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back">←</button>
+    <h2>📋 Progresión por rutina</h2>
+  </div>
+  <div id="progresion-rutina-contenido"></div>
+</section>
+
+<!-- ══════════════════════════════════════
+     MODAL TEMPORIZADOR TERMINADO
+══════════════════════════════════════ -->
+<div id="modal-timer" class="modal-overlay oculto">
+  <div class="modal-box">
+    <p style="font-size:36px; text-align:center; margin-bottom:8px;">⏰</p>
+    <p style="text-align:center; font-size:18px; font-weight:700;">¡Descanso terminado!</p>
+    <div class="modal-btns" style="margin-top:16px;">
+      <button onclick="resetDesdeModal()" class="btn-primary">✅ Continuar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL TEMPO (popup al tocar el badge)
+══════════════════════════════════════ -->
+<div id="modal-tempo-overlay" class="modal-overlay oculto" onclick="cerrarModalTempo()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div id="modal-tempo-contenido"></div>
+    <button onclick="cerrarModalTempo()" class="btn-primary" style="margin-top:12px;">Entendido</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL CONFIRM
+══════════════════════════════════════ -->
+<div id="modal-confirm-overlay" class="modal-overlay oculto">
+  <div class="modal-box">
+    <p id="modal-confirm-msg"></p>
+    <div class="modal-btns">
+      <button id="modal-confirm-no" class="btn-secondary">Cancelar</button>
+      <button id="modal-confirm-si" class="btn-danger">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL PROMPT
+══════════════════════════════════════ -->
+<div id="modal-prompt-overlay" class="modal-overlay oculto">
+  <div class="modal-box">
+    <p id="modal-prompt-msg"></p>
+    <input id="modal-prompt-input" class="modal-input" />
+    <div class="modal-btns">
+      <button id="modal-prompt-cancel" class="btn-secondary">Cancelar</button>
+      <button id="modal-prompt-ok" class="btn-primary">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL ALERT
+══════════════════════════════════════ -->
+<div id="modal-alert-overlay" class="modal-overlay oculto">
+  <div class="modal-box">
+    <p id="modal-alert-msg"></p>
+    <div class="modal-btns">
+      <button id="modal-alert-ok" class="btn-primary">Entendido</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     TOAST CONTAINER
+══════════════════════════════════════ -->
+<!-- ══════════════════════════════════════
+     PANTALLA ESTADÍSTICAS
+══════════════════════════════════════ -->
+<section id="pantalla-estadisticas" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back">←</button>
+    <h2>📊 Estadísticas</h2>
+  </div>
+  <div id="stats-contenido"></div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA PROGRESO POR EJERCICIO
+══════════════════════════════════════ -->
+<section id="pantalla-progreso" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back">←</button>
+    <h2>📈 Progreso por ejercicio</h2>
+  </div>
+  <div class="progreso-selector">
+    <select id="progreso-ejercicio-select" onchange="renderGraficaProgreso()">
+      <option value="">Selecciona ejercicio...</option>
+    </select>
+  </div>
+  <div id="progreso-grafica"></div>
+</section>
+
+<!-- ══════════════════════════════════════
+     MODAL EDITAR DESCANSO (durante entrenamiento)
+══════════════════════════════════════ -->
+<div id="modal-descanso-overlay" class="modal-overlay oculto" onclick="cerrarModalDescanso()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div id="modal-descanso-contenido"></div>
+    <button onclick="cerrarModalDescanso()" class="btn-secondary" style="margin-top:8px;">Cancelar</button>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<!-- ══════════════════════════════════════
+     SCRIPTS
+══════════════════════════════════════ -->
+<script type="module" src="./app.js"></script>
+
+<!-- SW se registra en app.js con lógica completa (updatefound, mensajes, etc.) -->
+</body>
+</html>
