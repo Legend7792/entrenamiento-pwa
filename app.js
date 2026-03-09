@@ -1,4 +1,4 @@
-// app.js — Gym Tracker v89 — Versión completa
+// app.js — Gym Tracker v90 — Versión completa
 import "./auth.js";
 import "./cloud.js";
 import { loadRutinaUsuario, inicializarRutinaBase, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
@@ -1273,10 +1273,10 @@ function renderizarBotonesDias() {
   Object.keys(rutinaActual).forEach((diaKey, idx) => {
     const dia = rutinaActual[diaKey];
     // Buscar última sesión de este día en historial
-    const ultimaSesion = historial.filter(s => s.dia === dia.nombre).sort((a,b) => b.fecha - a.fecha)[0];
+    const ultimaSesion = historial.filter(s => s.dia === dia.nombre).sort((a,b) => new Date(b.fecha) - new Date(a.fecha))[0];
     let subtexto = '';
     if (ultimaSesion) {
-      const dias = Math.floor((Date.now() - ultimaSesion.fecha) / 86400000);
+      const dias = Math.floor((Date.now() - new Date(ultimaSesion.fecha).getTime()) / 86400000);
       subtexto = dias === 0 ? 'Hoy' : dias === 1 ? 'Ayer' : `Hace ${dias} días`;
     }
     const btn = document.createElement("button");
@@ -1358,15 +1358,14 @@ function mostrarGuiaUltimaSesion() {
 // ══════════════════════════════════════════════════════
 function borrarRutinaDia() {
   if (!diaActual) return;
-  showConfirm("¿Borrar TODA la rutina de este día?", () => {
+  showConfirm("¿Limpiar los ejercicios añadidos manualmente en este día?", () => {
     const ra = obtenerRutinaCompleta();
-    if (ra[diaActual]) ra[diaActual].ejercicios = [];
     const nombreDiaBorrar = ra[diaActual]?.nombre || diaActual;
     delete config.ejerciciosExtra[nombreDiaBorrar];
     guardarConfig();
     cargarEjerciciosDia();
     renderDia();
-    showToast("Rutina del día eliminada", "info");
+    showToast("Ejercicios extra eliminados", "info");
   });
 }
 
@@ -1841,7 +1840,6 @@ function cargarNotasProgresion() {
 function guardarNotasProgresion(datos) {
   localStorage.setItem('notasProgresion', JSON.stringify(datos));
   if (typeof markDirty === 'function' && userState?.uid) markDirty();
-  showToast('Nota guardada', 'success', 1800);
 }
 
 function abrirNotasProgresion() {
@@ -2004,10 +2002,12 @@ function renderNotasProgresion() {
       if (btnVer) btnVer.style.display = largo ? '' : 'none';
       // Si antes estaba vacío, refrescar para mostrar la tarjeta
       if (val.trim() && viewDiv.querySelector('.nota-vacia')) {
+        showToast('Nota guardada', 'success', 1800);
         renderNotasProgresion();
         return;
       }
       viewDiv.classList.remove('oculto');
+      showToast('Nota guardada', 'success', 1800);
     });
   });
 }
