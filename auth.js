@@ -15,14 +15,17 @@ export function mostrarMenu() {
   ['pantalla-auth','pantalla-perfil','pantalla-dia','pantalla-historial',
    'pantalla-detalle','pantalla-medidas','pantalla-audio','pantalla-editor',
    'pantalla-resumen','pantalla-ai-import','pantalla-guia-tempo',
-   'pantalla-estadisticas','pantalla-progreso'
+   'pantalla-estadisticas','pantalla-progreso','pantalla-progresion-rutina'
   ].forEach(id => document.getElementById(id)?.classList.add('oculto'));
   document.getElementById("menu")?.classList.remove("oculto");
 }
 
 export function mostrarPerfil() {
   history.pushState({ pantalla: "perfil" }, "");
-  ["pantalla-auth","menu","pantalla-dia","pantalla-historial","pantalla-detalle","pantalla-medidas"]
+  ["pantalla-auth","menu","pantalla-dia","pantalla-historial","pantalla-detalle",
+   "pantalla-medidas","pantalla-audio","pantalla-editor","pantalla-resumen",
+   "pantalla-ai-import","pantalla-guia-tempo","pantalla-estadisticas",
+   "pantalla-progreso","pantalla-progresion-rutina"]
     .forEach(id => document.getElementById(id)?.classList.add("oculto"));
   document.getElementById("pantalla-perfil")?.classList.remove("oculto");
 

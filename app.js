@@ -1268,11 +1268,21 @@ function renderizarBotonesDias() {
   const contenedor = document.getElementById("botones-dias");
   if (!contenedor) return;
   const rutinaActual = obtenerRutinaCompleta();
+  const historial = JSON.parse(localStorage.getItem("historial")) || [];
   contenedor.innerHTML = "";
   Object.keys(rutinaActual).forEach((diaKey, idx) => {
     const dia = rutinaActual[diaKey];
+    // Buscar última sesión de este día en historial
+    const ultimaSesion = historial.filter(s => s.dia === dia.nombre).sort((a,b) => b.fecha - a.fecha)[0];
+    let subtexto = '';
+    if (ultimaSesion) {
+      const dias = Math.floor((Date.now() - ultimaSesion.fecha) / 86400000);
+      subtexto = dias === 0 ? 'Hoy' : dias === 1 ? 'Ayer' : `Hace ${dias} días`;
+    }
     const btn = document.createElement("button");
-    btn.textContent = dia.nombre;
+    btn.innerHTML = subtexto
+      ? `<span class="dia-btn-nombre">${dia.nombre}</span><span class="dia-btn-fecha">${subtexto}</span>`
+      : `<span class="dia-btn-nombre">${dia.nombre}</span><span class="dia-btn-fecha dia-btn-nueva">Sin sesiones</span>`;
     btn.onclick = () => abrirDia(diaKey);
     contenedor.appendChild(btn);
   });
@@ -1351,7 +1361,8 @@ function borrarRutinaDia() {
   showConfirm("¿Borrar TODA la rutina de este día?", () => {
     const ra = obtenerRutinaCompleta();
     if (ra[diaActual]) ra[diaActual].ejercicios = [];
-    delete config.ejerciciosExtra[diaActual];
+    const nombreDiaBorrar = ra[diaActual]?.nombre || diaActual;
+    delete config.ejerciciosExtra[nombreDiaBorrar];
     guardarConfig();
     cargarEjerciciosDia();
     renderDia();
@@ -1830,6 +1841,7 @@ function cargarNotasProgresion() {
 function guardarNotasProgresion(datos) {
   localStorage.setItem('notasProgresion', JSON.stringify(datos));
   if (typeof markDirty === 'function' && userState?.uid) markDirty();
+  showToast('Nota guardada', 'success', 1800);
 }
 
 function abrirNotasProgresion() {
@@ -1845,50 +1857,166 @@ function renderNotasProgresion() {
   const cont = document.getElementById('progresion-rutina-contenido');
   if (!cont) return;
 
-  const notas    = cargarNotasProgresion();
-  const rutinaId = obtenerRutinaActiva();
+  const notas     = cargarNotasProgresion();
+  const rutinaId  = obtenerRutinaActiva();
   const rutinaData = loadRutinaUsuario(rutinaId);
   if (!rutinaData) {
-    cont.innerHTML = `<p class="texto-vacio">No hay rutina activa.</p>`; return;
+    cont.innerHTML = '<p class="texto-vacio">No hay rutina activa.</p>'; return;
   }
 
   const notasRutina  = notas[rutinaId] || { general: '', dias: {} };
   const nombreRutina = rutinaData.nombre || 'Rutina';
   const dias         = rutinaData.dias   || [];
 
-  cont.innerHTML = `
-    <div class="progresion-header">
-      <h3>🏋️ ${nombreRutina}</h3>
-      <p style="font-size:12px;color:var(--text-secondary);margin:0;">
-        Anota aquí la estrategia de progresión: cómo subir peso, cuándo, qué hacer cuando te estancas.
-      </p>
-    </div>
+  // Construir HTML de cada sección de notas
+  function htmlSeccion(id, valor) {
+    const tieneTexto = valor && valor.trim().length > 0;
+    const PREVIEW = 180;
+    const largo = tieneTexto && valor.length > PREVIEW;
+    const preview = largo ? valor.substring(0, PREVIEW).trimEnd() + '...' : (valor || '');
 
-    <div class="progresion-seccion">
-      <h4>📌 Estrategia general de la rutina</h4>
-      <textarea id="prog-general" rows="5"
-        placeholder="Ej: Doble progresión en todos los básicos. Cuando completo todas las series en el rango máximo, subo 2,5kg la siguiente sesión. En accesorios subo cuando completo el rango máximo 2 semanas seguidas..."
-        oninput="guardarNotaProg('general', this.value)">${notasRutina.general || ''}</textarea>
-    </div>
+    return (
+      '<div id="nota-view-' + id + '">' +
+        (tieneTexto
+          ? '<div class="nota-card">' +
+              '<div class="nota-texto-preview" id="nota-preview-' + id + '">' +
+                preview.replace(/\n/g, '<br>') +
+              '</div>' +
+              (largo
+                ? '<button class="btn-nota-ver" id="btn-ver-' + id + '" data-exp="0" data-id="' + id + '">📖 Ver completo</button>'
+                : '') +
+            '</div>'
+          : '<p class="nota-vacia">Sin nota — toca Editar para añadir</p>'
+        ) +
+        '<div class="nota-acciones">' +
+          '<button class="btn-nota-editar" data-notaid="' + id + '">✏️ Editar</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="nota-edit-' + id + '" class="oculto">' +
+        '<textarea class="nota-textarea-auto" id="nota-ta-' + id + '" data-notaid="' + id + '"></textarea>' +
+        '<button class="btn-nota-listo" data-notaid="' + id + '">✅ Listo</button>' +
+      '</div>'
+    );
+  }
 
-    ${dias.map((dia, i) => `
-    <div class="progresion-seccion">
-      <h4>📅 ${dia.nombre}</h4>
-      <div class="progresion-ejercicios-lista">
-        ${(dia.ejercicios || []).map(ej => `
-          <div class="prog-ej-ref">
-            <span class="prog-ej-nombre">${ej.nombre}</span>
-            <span class="prog-ej-config">${ej.series}×${ej.repsMin}–${ej.repsMax} · ${ej.peso}kg · ${ej.descanso ? Math.floor(ej.descanso/60)+'m'+(ej.descanso%60?String(ej.descanso%60).padStart(2,'0')+'s':'') : '?'}</span>
-          </div>`).join('')}
-      </div>
-      <textarea id="prog-dia-${i}" rows="4"
-        placeholder="Ej: Press banca → doble progresión 6-10. Peso muerto → lineal +2,5kg/semana. Si fallo → repetir mismo peso hasta completar todas las series..."
-        oninput="guardarNotaProg('dia', this.value, '${dia.nombre.replace(/'/g,"\\'")}' )">${(notasRutina.dias || {})[dia.nombre] || ''}</textarea>
-    </div>`).join('')}
+  let html = '<div class="progresion-header">' +
+    '<h3>🏋️ ' + nombreRutina + '</h3>' +
+    '<p style="font-size:12px;color:var(--text-secondary);margin:4px 0 0;">' +
+      'Estrategia de progresión: cómo subir peso, cuándo y qué hacer al estancarte.' +
+    '</p></div>';
 
-    <button onclick="volverMenu()" class="btn-secondary" style="margin-top:8px;">← Volver al menú</button>
-  `;
+  html += '<div class="progresion-seccion">' +
+    '<h4>📌 Estrategia general de la rutina</h4>' +
+    htmlSeccion('general', notasRutina.general || '') +
+    '</div>';
+
+  dias.forEach((dia, i) => {
+    const ejHTML = (dia.ejercicios || []).map(ej =>
+      '<div class="prog-ej-ref">' +
+        '<span class="prog-ej-nombre">' + ej.nombre + '</span>' +
+        '<span class="prog-ej-config">' +
+          ej.series + '×' + ej.repsMin + '–' + ej.repsMax + ' · ' +
+          (ej.peso > 0 ? ej.peso + 'kg' : 'Peso corporal') + ' · ' +
+          (ej.descanso
+            ? Math.floor(ej.descanso / 60) + 'm' + (ej.descanso % 60 ? String(ej.descanso % 60).padStart(2, '0') + 's' : '')
+            : '?') +
+        '</span>' +
+      '</div>'
+    ).join('');
+
+    html += '<div class="progresion-seccion">' +
+      '<h4>📅 ' + dia.nombre + '</h4>' +
+      '<div class="progresion-ejercicios-lista">' + ejHTML + '</div>' +
+      htmlSeccion('dia-' + i, (notasRutina.dias || {})[dia.nombre] || '') +
+      '</div>';
+  });
+
+  html += '<button onclick="volverMenu()" class="btn-secondary" style="margin-top:8px;">← Volver al menú</button>';
+
+  cont.innerHTML = html;
+
+  // Rellenar y auto-crecer textareas con su valor
+  cont.querySelectorAll('.nota-textarea-auto').forEach(ta => {
+    const id = ta.dataset.notaid;
+    // Recuperar el valor según el id
+    if (id === 'general') {
+      ta.value = notasRutina.general || '';
+      ta.placeholder = 'Ej: Doble progresión en básicos. Subo 2,5kg cuando completo el rango máximo en todas las series.';
+      ta.oninput = () => { autoGrowTA(ta); guardarNotaProg('general', ta.value, ''); };
+    } else {
+      const diaIdx = parseInt(id.replace('dia-', ''));
+      const diaNombre = dias[diaIdx] ? dias[diaIdx].nombre : '';
+      ta.value = (notasRutina.dias || {})[diaNombre] || '';
+      ta.placeholder = 'Ej: Press banca → doble progresión 6-10. Si fallo → repetir mismo peso hasta completar todas las series.';
+      ta.oninput = () => { autoGrowTA(ta); guardarNotaProg('dia', ta.value, diaNombre); };
+    }
+  });
+
+  // Ver completo / Ver menos
+  cont.querySelectorAll('.btn-nota-ver').forEach(btn => {
+    const id = btn.dataset.id;
+    btn.addEventListener('click', () => {
+      const prevEl = document.getElementById('nota-preview-' + id);
+      const ta     = document.getElementById('nota-ta-' + id);
+      if (!prevEl || !ta) return;
+      if (btn.dataset.exp === '1') {
+        const PREVIEW = 180;
+        prevEl.innerHTML = ta.value.substring(0, PREVIEW).trimEnd().replace(/\n/g, '<br>') + '...';
+        btn.textContent  = '📖 Ver completo';
+        btn.dataset.exp  = '0';
+      } else {
+        prevEl.innerHTML = ta.value.replace(/\n/g, '<br>');
+        btn.textContent  = '🔼 Ver menos';
+        btn.dataset.exp  = '1';
+      }
+    });
+  });
+
+  // Editar
+  cont.querySelectorAll('.btn-nota-editar').forEach(btn => {
+    const id = btn.dataset.notaid;
+    btn.addEventListener('click', () => {
+      document.getElementById('nota-view-' + id)?.classList.add('oculto');
+      const editDiv = document.getElementById('nota-edit-' + id);
+      if (editDiv) {
+        editDiv.classList.remove('oculto');
+        const ta = document.getElementById('nota-ta-' + id);
+        if (ta) { autoGrowTA(ta); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+      }
+    });
+  });
+
+  // Listo (cerrar edición)
+  cont.querySelectorAll('.btn-nota-listo').forEach(btn => {
+    const id = btn.dataset.notaid;
+    btn.addEventListener('click', () => {
+      document.getElementById('nota-edit-' + id)?.classList.add('oculto');
+      const viewDiv = document.getElementById('nota-view-' + id);
+      const ta      = document.getElementById('nota-ta-' + id);
+      if (!viewDiv || !ta) return;
+      const val     = ta.value;
+      const PREVIEW = 180;
+      const largo   = val.length > PREVIEW;
+      const preview = largo ? val.substring(0, PREVIEW).trimEnd() + '...' : val;
+      const prevEl  = document.getElementById('nota-preview-' + id);
+      const btnVer  = document.getElementById('btn-ver-' + id);
+      if (prevEl) prevEl.innerHTML = preview.replace(/\n/g, '<br>');
+      if (btnVer) btnVer.style.display = largo ? '' : 'none';
+      // Si antes estaba vacío, refrescar para mostrar la tarjeta
+      if (val.trim() && viewDiv.querySelector('.nota-vacia')) {
+        renderNotasProgresion();
+        return;
+      }
+      viewDiv.classList.remove('oculto');
+    });
+  });
 }
+
+window.autoGrowTA = function(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = ta.scrollHeight + 'px';
+};
+
 
 window.guardarNotaProg = function (tipo, valor, diaNombre = '') {
   const notas    = cargarNotasProgresion();

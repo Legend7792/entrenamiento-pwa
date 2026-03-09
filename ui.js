@@ -88,10 +88,36 @@ export function showAlert(mensaje, tipo = 'info') {
 export function initOfflineBanner() {
   const banner = document.getElementById('banner-offline');
   if (!banner) return;
-  const update = () => banner.classList.toggle('oculto', navigator.onLine);
-  update();
-  window.addEventListener('online', update);
-  window.addEventListener('offline', update);
+
+  let timer = null;
+  let eraOffline = false;
+
+  const mostrar = (texto, duracion) => {
+    banner.textContent = texto;
+    banner.classList.remove('oculto');
+    clearTimeout(timer);
+    timer = setTimeout(() => banner.classList.add('oculto'), duracion);
+  };
+
+  // Al perder conexión: mostrar 6 segundos y ocultar
+  window.addEventListener('offline', () => {
+    eraOffline = true;
+    mostrar('📴 Sin conexión — Modo offline activo', 6000);
+  });
+
+  // Al recuperar conexión: mostrar confirmación breve solo si estuvo offline
+  window.addEventListener('online', () => {
+    if (eraOffline) {
+      eraOffline = false;
+      mostrar('✅ Conexión restaurada', 3000);
+    }
+  });
+
+  // Si arranca sin conexión, avisar una sola vez
+  if (!navigator.onLine) {
+    eraOffline = true;
+    mostrar('📴 Sin conexión — Modo offline activo', 6000);
+  }
 }
 
 // Exportar globalmente para uso en HTML inline
