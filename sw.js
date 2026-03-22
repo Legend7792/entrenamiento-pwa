@@ -1,5 +1,5 @@
-const CACHE_VERSION = "v90";
-const CACHE_NAME    = "gym-tracker-v90";
+const CACHE_VERSION = "v91";
+const CACHE_NAME    = "gym-tracker-v91";
 
 // BASE calculado dinámicamente — funciona desde cualquier ruta de despliegue
 const BASE = new URL("./", self.location.href).pathname;

@@ -8,6 +8,14 @@ import {
 } from "./rutinaUsuario.js";
 import { renderizarSelectorRutinas } from "./selectorRutinas.js";
 
+// Escapado XSS local (misma función que app.js)
+function esc(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = String(text);
+  return div.innerHTML;
+}
+
 let rutinaEditando   = null;
 let rutinaEditandoId = null;
 let diaEditando      = null;
@@ -34,7 +42,7 @@ function renderListaRutinas() {
         : Object.keys(rutinas).map(id => {
             const r = rutinas[id]; const esBase = id === RUTINA_BASE_ID;
             return `<div class="rutina-card">
-              <div class="rutina-card-info"><h4>${esBase?'📋':'✏️'} ${r.nombre}</h4><p>${r.dias.length} día(s)</p></div>
+              <div class="rutina-card-info"><h4>${esBase?'📋':'✏️'} ${esc(r.nombre)}</h4><p>${r.dias.length} día(s)</p></div>
               <div class="acciones-rutina-card">
                 <button onclick="editarRutina('${id}')">✏️ Editar</button>
                 <button onclick="exportarRutina('${id}')" title="JSON">📤</button>
@@ -83,15 +91,30 @@ window.editarRutina = (id) => { rutinaEditandoId=id; rutinaEditando=loadRutinaUs
 
 function renderEditorRutina() {
   const cont=document.getElementById("contenido-editor"); const esBase=rutinaEditandoId===RUTINA_BASE_ID;
+  const tieneDeload = rutinaEditando.tieneDeload === true;
   cont.innerHTML = `<div class="editor-header">
-    <h3>${rutinaEditando.nombre}</h3>
+    <h3>${esc(rutinaEditando.nombre)}</h3>
     ${!esBase?`<button onclick="cambiarNombreRutina()" class="btn-icon">✏️</button>`:''}
     <button onclick="volverListaRutinas()" class="btn-secondary">← Volver</button></div>
+
+  <div class="config-rutina-deload">
+    <label class="deload-toggle-label">
+      <input type="checkbox" id="rutina-tiene-deload" ${tieneDeload ? 'checked' : ''}
+        onchange="toggleDeloadRutina(this.checked)">
+      💤 Usar Deload con esta rutina
+    </label>
+    <small class="deload-toggle-hint">
+      ${tieneDeload
+        ? 'Deload habilitado. El contador de semanas y el estado son independientes por rutina.'
+        : 'Sin deload: no aparecerá el banner ni se aplicarán reducciones de carga.'}
+    </small>
+  </div>
+
   <div class="lista-dias">
     ${rutinaEditando.dias.length===0
       ? `<p class="texto-vacio">Sin días. Añade uno abajo.</p>`
       : rutinaEditando.dias.map((d,i)=>`<div class="dia-card">
-          <div class="dia-card-info"><h4>📅 ${d.nombre}</h4><p>${d.ejercicios.length} ejercicio(s)</p></div>
+          <div class="dia-card-info"><h4>📅 ${esc(d.nombre)}</h4><p>${d.ejercicios.length} ejercicio(s)</p></div>
           <div class="acciones-dia-card">
             <button onclick="editarDia(${i})">✏️ Editar</button>
             <button class="btn-danger" onclick="borrarDia(${i})">🗑️</button>
@@ -102,6 +125,14 @@ function renderEditorRutina() {
 window.cambiarNombreRutina = function() {
   const fn=(n)=>{ rutinaEditando.nombre=n.trim(); saveRutinaUsuario(rutinaEditando,rutinaEditandoId); dispararCambioRutina(); renderEditorRutina(); };
   showPrompt("Nuevo nombre:", "", fn, rutinaEditando.nombre);
+};
+
+window.toggleDeloadRutina = function(activo) {
+  rutinaEditando.tieneDeload = activo;
+  saveRutinaUsuario(rutinaEditando, rutinaEditandoId);
+  dispararCambioRutina();
+  renderEditorRutina();
+  showToast(activo ? '💤 Deload habilitado para esta rutina' : 'Deload desactivado para esta rutina', 'success');
 };
 
 window.borrarRutinaCompleta = function(id) {
@@ -137,7 +168,9 @@ function formatDescEj(ej) {
   const desc = ej.descanso
     ? `⏱ ${Math.floor(ej.descanso/60)}:${String(ej.descanso%60).padStart(2,'0')}`
     : `<span class="sin-descanso">⚠️ sin descanso</span>`;
-  return `${ej.series}×${ej.repsMin}-${ej.repsMax} — ${ej.peso}kg &nbsp;${desc}${ej.tempo?` · ${ej.tempo}`:''}${ej.alFallo?' · <em>Al fallo</em>':''}`;
+  return ej.alFallo
+    ? `${ej.series}×Al fallo &nbsp;${desc}${ej.tempo?` · ${esc(ej.tempo)}`:''}${ej.notas?' · 📋':''}`
+    : `${ej.series}×${ej.repsMin}-${ej.repsMax} — ${ej.peso}kg &nbsp;${desc}${ej.tempo?` · ${esc(ej.tempo)}`:''}`;
 }
 
 function renderFormularioDia() {
@@ -148,7 +181,7 @@ function renderFormularioDia() {
 
   cont.innerHTML = `<div class="editor-dia">
     <div class="editor-dia-header">
-      <h3>📅 ${dia.nombre}</h3>
+      <h3>📅 ${esc(dia.nombre)}</h3>
       <button onclick="cambiarNombreDia()" class="btn-icon" title="Renombrar">✏️</button>
     </div>
     <div class="config-dia">
@@ -167,9 +200,9 @@ function renderFormularioDia() {
             <button onclick="moverEjercicioEditor(${idx},'abajo')" ${idx===total-1?'disabled':''}>⬇️</button>
           </div>
           <div class="ej-editor-info">
-            <strong>${ej.nombre}</strong>
+            <strong>${esc(ej.nombre)}</strong>
             <span class="ej-editor-sub">${formatDescEj(ej)}</span>
-            ${ej.notas?`<span class="ej-editor-notas">${ej.notas.substring(0,65)}${ej.notas.length>65?'…':''}</span>`:''}
+            ${ej.notas?`<span class="ej-editor-notas">${esc(ej.notas.substring(0,65))}${ej.notas.length>65?'…':''}</span>`:''}
           </div>
           <div class="ej-editor-acciones">
             <button class="btn-icon btn-edit-ej" onclick="abrirFormEditarEj(${idx})" title="Editar">✏️</button>
@@ -177,8 +210,8 @@ function renderFormularioDia() {
           </div>
         </div>
         ${ejEditandoIdx===idx?`<div class="form-edit-ejercicio" id="form-editar-${idx}">
-          <h5>✏️ Editando: ${ej.nombre}</h5>
-          <input id="edit-nombre-${idx}" placeholder="Nombre *" value="${ej.nombre}" />
+          <h5>✏️ Editando: ${esc(ej.nombre)}</h5>
+          <input id="edit-nombre-${idx}" placeholder="Nombre *" value="${esc(ej.nombre)}" />
           <div class="form-row">
             <div class="form-col"><label class="form-label">Peso (kg)*</label><input id="edit-peso-${idx}" type="number" min="0" step="0.5" value="${ej.peso}" /></div>
             <div class="form-col"><label class="form-label">Series*</label><input id="edit-series-${idx}" type="number" min="1" value="${ej.series}" /></div>
@@ -189,10 +222,10 @@ function renderFormularioDia() {
           </div>
           <div class="form-row">
             <div class="form-col"><label class="form-label">⏱ Descanso (seg)</label><input id="edit-desc-${idx}" type="number" min="0" value="${ej.descanso||''}" placeholder="90" /></div>
-            <div class="form-col"><label class="form-label">Tempo</label><input id="edit-tempo-${idx}" placeholder="3-1-1" value="${ej.tempo||''}" /></div>
+            <div class="form-col"><label class="form-label">Tempo</label><input id="edit-tempo-${idx}" placeholder="3-1-1" value="${esc(ej.tempo||'')}" /></div>
           </div>
           <label class="form-label">Notas técnicas</label>
-          <textarea id="edit-notas-${idx}" rows="2">${ej.notas||''}</textarea>
+          <textarea id="edit-notas-${idx}" rows="2">${esc(ej.notas||'')}</textarea>
           <label class="form-label-check"><input type="checkbox" id="edit-fallo-${idx}" ${ej.alFallo?'checked':''}> Al fallo</label>
           <div class="form-edit-btns">
             <button onclick="guardarEjercicioEditado(${idx})" class="btn-primary">💾 Guardar</button>
@@ -244,10 +277,11 @@ window.guardarEjercicioEditado = function(idx) {
   const notasV  = get(`edit-notas-${idx}`)?.value.trim();
   const alFallo = get(`edit-fallo-${idx}`)?.checked;
 
-  if(!nombre||peso===''||peso===undefined||!series||!repsMin||!repsMax){ showToast('Completa los campos obligatorios','warning'); return; }
-  if(Number(repsMin)>Number(repsMax)){ showToast('Reps mín no puede superar reps máx','warning'); return; }
+  if(!nombre||!series){ showToast('Completa los campos obligatorios (nombre y series)','warning'); return; }
+  if(!alFallo && (peso===''||peso===undefined||!repsMin||!repsMax)){ showToast('Completa los campos obligatorios','warning'); return; }
+  if(Number(repsMin)>Number(repsMax) && !alFallo){ showToast('Reps mín no puede superar reps máx','warning'); return; }
 
-  const rm=Number(repsMax);
+  const rm = alFallo ? (Number(repsMax)||30) : Number(repsMax);
   rutinaEditando.dias[diaEditando].ejercicios[idx]={
     ...rutinaEditando.dias[diaEditando].ejercicios[idx],
     nombre, peso:alFallo?0:(Number(peso)||0),
@@ -279,9 +313,10 @@ window.añadirEjercicioADia = function() {
   const descV=get("ej-descanso"); const tempoV=get("ej-tempo")?.trim();
   const notasV=document.getElementById("ej-notas")?.value.trim();
   const alFallo=document.getElementById("ej-fallo")?.checked;
-  if(!nombre||pesoV===''||pesoV===undefined||!seriesV||!rminV||!rmaxV){ showToast('Completa los campos obligatorios (*)','warning'); return; }
-  if(Number(rminV)>Number(rmaxV)){ showToast('Reps mín no puede superar reps máx','warning'); return; }
-  const rm=Number(rmaxV);
+  if(!nombre||!seriesV){ showToast('Completa los campos obligatorios: nombre y series (*)','warning'); return; }
+  if(!alFallo && (pesoV===''||pesoV===undefined||!rminV||!rmaxV)){ showToast('Completa todos los campos obligatorios (*)','warning'); return; }
+  if(!alFallo && Number(rminV)>Number(rmaxV)){ showToast('Reps mín no puede superar reps máx','warning'); return; }
+  const rm = alFallo ? (Number(rmaxV)||30) : Number(rmaxV);
   rutinaEditando.dias[diaEditando].ejercicios.push({
     nombre, peso:alFallo?0:(Number(pesoV)||0), series:Number(seriesV),
     repsMin:Number(rminV), repsMax:rm,

@@ -24,11 +24,15 @@ export function loadLocal() {
 
 // Guardar estado en localStorage
 export function saveLocal() {
-  localStorage.setItem("userState", JSON.stringify({
-    uid: userState.uid,
-    email: userState.email,
-    sessionToken: userState.sessionToken
-  }));
+  try {
+    localStorage.setItem("userState", JSON.stringify({
+      uid: userState.uid,
+      email: userState.email,
+      sessionToken: userState.sessionToken
+    }));
+  } catch (e) {
+    console.warn("saveLocal: no se pudo guardar en localStorage:", e);
+  }
 }
 
 // Sincronizar desde la nube

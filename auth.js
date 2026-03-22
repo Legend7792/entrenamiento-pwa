@@ -3,6 +3,30 @@ import { supabase } from "./cloud.js";
 import { userState, saveLocal, syncFromCloud, syncToCloud } from "./userState.js";
 import { showToast, showConfirm } from "./ui.js";
 
+// Flag para distinguir logout manual del automático
+let _logoutManual = false;
+
+// ── Listener de cambios de sesión Supabase ──────────
+// Se activa cuando Supabase renueva el token, expira la sesión, etc.
+// REGLA: nunca redirigir a auth automáticamente; solo actualizar el token local.
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+    // Token renovado: actualizar solo el token local, no tocar la pantalla
+    if (session) {
+      userState.sessionToken = session.access_token;
+      saveLocal();
+    }
+  } else if (event === "SIGNED_OUT") {
+    if (_logoutManual) {
+      // Logout manual: ya gestionado en window.logout → location.reload()
+      _logoutManual = false;
+    }
+    // Si NO fue manual (token expirado, error de red, etc.):
+    // NO redirigir al auth. El usuario sigue en su pantalla.
+    // La próxima vez que intente sincronizar verá un toast de error.
+  }
+});
+
 // ── Helpers de pantalla ─────────────────────────────
 export function mostrarPantallaAuth() {
   document.getElementById("pantalla-auth")?.classList.remove("oculto");
@@ -166,6 +190,7 @@ window.login = async function () {
 window.logout = async function () {
   showConfirm("¿Cerrar sesión? Los datos locales se mantendrán.", async () => {
     try {
+      _logoutManual = true; // marcar como logout intencional
       if (userState.uid && navigator.onLine) {
         await syncToCloud().catch(e => console.warn("Sync pre-logout:", e));
       }
@@ -323,13 +348,27 @@ window.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // Sesión guardada localmente
+  // ── PRIORIDAD MÁXIMA: si hay sesión local guardada → mostrar menú siempre ──
+  // Nunca redirigir a auth automáticamente si ya hubo un login previo.
   if (userState.uid && userState.email) {
     mostrarMenu();
+    // Refrescar sesión Supabase en segundo plano (sin bloquear la UI)
+    supabase.auth.getSession().then(({ data }) => {
+      if (data?.session) {
+        // Actualizar token silenciosamente
+        userState.sessionToken = data.session.access_token;
+        saveLocal();
+      }
+      // Si no hay sesión Supabase (offline, token expirado, etc.):
+      // El usuario sigue en el menú. Los datos locales están intactos.
+      // La sincronización fallará con toast cuando la intente manualmente.
+    }).catch(() => {
+      // Error de red u otro — ignorar, el usuario sigue en el menú
+    });
     return;
   }
 
-  // Recuperar sesión de Supabase
+  // Sin sesión local → intentar recuperar de Supabase
   try {
     const { data } = await supabase.auth.getSession();
     if (data && data.session) {

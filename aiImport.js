@@ -204,13 +204,22 @@ ${texto}`;
     .replace(/```\n?/gi, '')
     .trim();
 
-  return JSON.parse(clean);
+  try {
+    return JSON.parse(clean);
+  } catch {
+    throw new Error('La IA devolvió un formato JSON inválido. Inténtalo de nuevo.');
+  }
 }
 
 // ============================================================
 // UI MULTI-DÍA — lógica para añadir/quitar días en la pantalla de import
 // ============================================================
 let _aiDias = []; // [{id, nombre, texto}]
+// Exponer a window porque los atributos oninput= del HTML no acceden a variables de módulo ES
+Object.defineProperty(window, '_aiDias', {
+  get: () => _aiDias,
+  set: (v) => { _aiDias = v; }
+});
 
 function _aiRenderDias() {
   const cont = document.getElementById('ai-dias-lista');
@@ -224,7 +233,7 @@ function _aiRenderDias() {
           : ''}
       </div>
       <input class="ai-dia-nombre" placeholder="Nombre del día (ej: Día 1 – Torso Fuerza)"
-        value="${d.nombre}" oninput="_aiDias[${i}].nombre = this.value" />
+        value="${(d.nombre||'').replace(/"/g,'&quot;').replace(/</g,'&lt;')}" oninput="_aiDias[${i}].nombre = this.value" />
       <textarea class="ai-dia-texto" rows="8"
         placeholder="Press banca con barra&#10;4x6-8 · 3 min · 3-1-1&#10;Escápulas retraídas.&#10;&#10;Dominadas pronadas&#10;4x6-8 · 3 min · 3-0-1"
         oninput="_aiDias[${i}].texto = this.value">${d.texto}</textarea>

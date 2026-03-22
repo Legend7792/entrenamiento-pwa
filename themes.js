@@ -173,7 +173,11 @@ export function aplicarTema(idTema) {
     root.style.setProperty(variable, valor);
   });
 
-  localStorage.setItem("tema", idTema);
+  try {
+    localStorage.setItem("tema", idTema);
+  } catch (e) {
+    console.warn("No se pudo guardar el tema:", e);
+  }
   markDirty(); // Marcar para sincronizar
 }
 
