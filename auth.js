@@ -214,8 +214,15 @@ window.syncNow = async function (e) {
   const btn = e && e.target;
   if (btn) { btn.disabled = true; btn.innerText = "Sincronizando..."; }
   try {
+    // 1. Primero bajar datos de la nube (para recibir cambios de otros dispositivos)
+    await syncFromCloud();
+    // 2. Refrescar UI con los datos descargados
+    if (typeof window.recargarConfig === 'function') window.recargarConfig();
+    if (typeof window.renderizarBotonesDias === 'function') window.renderizarBotonesDias();
+    if (typeof window.renderizarBannerDeload === 'function') window.renderizarBannerDeload();
+    // 3. Subir datos locales a la nube (consolidar todo)
     await syncToCloud();
-    showToast("Sincronización completada", "success");
+    showToast("✅ Sincronización completada", "success");
   } catch (err) {
     showToast("Error en sincronización: " + err.message, "error");
   } finally {
@@ -352,18 +359,28 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Nunca redirigir a auth automáticamente si ya hubo un login previo.
   if (userState.uid && userState.email) {
     mostrarMenu();
-    // Refrescar sesión Supabase en segundo plano (sin bloquear la UI)
-    supabase.auth.getSession().then(({ data }) => {
+    // Sincronizar desde la nube en segundo plano para recibir datos de otros dispositivos
+    supabase.auth.getSession().then(async ({ data }) => {
       if (data?.session) {
         // Actualizar token silenciosamente
         userState.sessionToken = data.session.access_token;
         saveLocal();
+        // Descargar datos de la nube (otro dispositivo pudo haber subido cambios)
+        try {
+          await syncFromCloud();
+          // Refrescar UI con los nuevos datos sin recargar la página
+          if (typeof window.recargarConfig === 'function') window.recargarConfig();
+          if (typeof window.renderizarBotonesDias === 'function') window.renderizarBotonesDias();
+          if (typeof window.renderizarBannerDeload === 'function') window.renderizarBannerDeload();
+        } catch (e) {
+          // Sin conexión o error — seguir con datos locales, sin avisar al usuario
+          console.log('⚠️ Sync al arrancar fallido (sin conexión):', e.message);
+        }
       }
-      // Si no hay sesión Supabase (offline, token expirado, etc.):
-      // El usuario sigue en el menú. Los datos locales están intactos.
-      // La sincronización fallará con toast cuando la intente manualmente.
+      // Si no hay sesión Supabase (offline, token expirado):
+      // El usuario sigue en el menú con sus datos locales.
     }).catch(() => {
-      // Error de red u otro — ignorar, el usuario sigue en el menú
+      // Error de red — ignorar, el usuario sigue en el menú
     });
     return;
   }

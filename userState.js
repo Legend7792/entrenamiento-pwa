@@ -70,10 +70,21 @@ export async function syncFromCloud() {
       ? JSON.parse(data.data) 
       : data.data;
     
+    // Pausar auto-sync durante la restauración para evitar que un markDirty
+    // pendiente sobreescriba la nube con datos locales más viejos
+    if (_syncTimeout) {
+      clearTimeout(_syncTimeout);
+      _syncTimeout = null;
+    }
+
     // Restaurar datos en localStorage
     Object.keys(cloudData).forEach(key => {
       if (key !== "userState") {
-        localStorage.setItem(key, cloudData[key]);
+        try {
+          localStorage.setItem(key, cloudData[key]);
+        } catch (e) {
+          console.warn("No se pudo restaurar clave:", key, e);
+        }
       }
     });
     
