@@ -1,7 +1,7 @@
-const CACHE_VERSION = "v91";
-const CACHE_NAME    = "gym-tracker-v91";
+// sw.js corregido
+const CACHE_VERSION = "v92"; // Incrementamos versión
+const CACHE_NAME    = "gym-tracker-" + CACHE_VERSION;
 
-// BASE calculado dinámicamente — funciona desde cualquier ruta de despliegue
 const BASE = new URL("./", self.location.href).pathname;
 
 const ASSETS = [
@@ -24,31 +24,42 @@ const ASSETS = [
   BASE + "icons/icon-512.png"
 ];
 
+// Instalación: Cacheamos todo de golpe
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(ASSETS))
+      .then(cache => {
+        console.log("[SW] Cacheando assets críticos");
+        return cache.addAll(ASSETS);
+      })
       .then(() => self.skipWaiting())
-      .catch(err => console.warn("[SW] Cache install parcial:", err))
   );
 });
 
+// Activación: Limpieza de cachés antiguos
 self.addEventListener("activate", event => {
   event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.map(k => k !== CACHE_NAME ? caches.delete(k) : null)))
-      .then(() => self.clients.claim())
-      .then(() => self.clients.matchAll().then(clients =>
-        clients.forEach(c => c.postMessage({ type: "SW_UPDATED", version: CACHE_VERSION }))
-      ))
+    caches.keys().then(keys => {
+      return Promise.all(
+        keys.map(key => {
+          if (key !== CACHE_NAME) {
+            console.log("[SW] Borrando caché antiguo:", key);
+            return caches.delete(key);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
   );
 });
 
+// EVENTO FETCH CORREGIDO
 self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
+
+  // 1. Ignorar peticiones externas (Supabase, API, etc.) - Ir a red siempre
   if (url.hostname.includes("supabase") || url.hostname.includes("anthropic.com")) {
     event.respondWith(
-      fetch(event.request).catch(() =>
+      fetch(event.request).catch(() => 
         new Response(JSON.stringify({ error: "offline" }), {
           status: 503, headers: { "Content-Type": "application/json" }
         })
@@ -56,29 +67,31 @@ self.addEventListener("fetch", event => {
     );
     return;
   }
-  if (url.origin !== self.location.origin) {
-    event.respondWith(fetch(event.request));
-    return;
-  }
+
+  // 2. Estrategia para archivos locales: CACHE FIRST (Rapidez total)
+  // Esto evita la pantalla negra porque primero busca en el teléfono.
   event.respondWith(
-    fetch(event.request).then(response => {
-      if (response && response.status === 200 && event.request.method === "GET") {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+    caches.match(event.request).then(cachedResponse => {
+      if (cachedResponse) {
+        // Devolvemos lo que hay en caché PERO actualizamos el caché en segundo plano
+        // (Stale-while-revalidate)
+        fetch(event.request).then(networkResponse => {
+          if (networkResponse && networkResponse.status === 200) {
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, networkResponse));
+          }
+        }).catch(() => {}); // Fallo silencioso de red
+        
+        return cachedResponse;
       }
-      return response;
-    }).catch(() =>
-      caches.match(event.request).then(cached => {
-        if (cached) return cached;
-        if (event.request.mode === "navigate") return caches.match(BASE + "index.html");
-      })
-    )
+
+      // Si no está en caché, vamos a la red
+      return fetch(event.request).catch(() => {
+        // Si falla la red y es una navegación, devolver el index.html
+        if (event.request.mode === "navigate") {
+          return caches.match(BASE + "index.html");
+        }
+      });
+    })
   );
 });
 
-self.addEventListener("message", event => {
-  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
-  if (event.data && event.data.type === "CLEAR_CACHE") {
-    event.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))));
-  }
-});
