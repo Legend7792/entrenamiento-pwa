@@ -65,7 +65,18 @@ export function mostrarPerfil() {
       ${!esSinCuenta ? `
       <div class="perfil-seccion">
         <h3>🔄 Sincronización</h3>
-        <button onclick="syncNow(event)" class="btn-secondary">Sincronizar datos</button>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;">
+          Usa <strong>Bajar de la nube</strong> para recibir datos de otro dispositivo.<br>
+          Usa <strong>Subir a la nube</strong> para guardar los datos de este dispositivo.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="btn-bajar-nube" onclick="syncBajar(this)" class="btn-secondary" style="flex:1;">
+            ⬇️ Bajar de la nube
+          </button>
+          <button id="btn-subir-nube" onclick="syncSubir(this)" class="btn-secondary" style="flex:1;">
+            ⬆️ Subir a la nube
+          </button>
+        </div>
       </div>
       <div class="perfil-seccion">
         <h3>🔑 Cambiar contraseña</h3>
@@ -205,28 +216,34 @@ window.logout = async function () {
   });
 };
 
-// ── Sincronizar manualmente ──────────────────────────
-window.syncNow = async function (e) {
-  if (!userState.uid) {
-    showToast("No hay sesión activa", "info");
-    return;
-  }
-  const btn = e && e.target;
-  if (btn) { btn.disabled = true; btn.innerText = "Sincronizando..."; }
+// ── Bajar datos de la nube ───────────────────────────
+window.syncBajar = async function (btn) {
+  if (!userState.uid) { showToast("No hay sesión activa", "info"); return; }
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Bajando..."; }
   try {
-    // 1. Primero bajar datos de la nube (para recibir cambios de otros dispositivos)
     await syncFromCloud();
-    // 2. Refrescar UI con los datos descargados
     if (typeof window.recargarConfig === 'function') window.recargarConfig();
     if (typeof window.renderizarBotonesDias === 'function') window.renderizarBotonesDias();
     if (typeof window.renderizarBannerDeload === 'function') window.renderizarBannerDeload();
-    // 3. Subir datos locales a la nube (consolidar todo)
-    await syncToCloud();
-    showToast("✅ Sincronización completada", "success");
+    showToast("⬇️ Datos descargados de la nube correctamente", "success");
   } catch (err) {
-    showToast("Error en sincronización: " + err.message, "error");
+    showToast("Error al bajar datos: " + err.message, "error");
   } finally {
-    if (btn) { btn.disabled = false; btn.innerText = "Sincronizar"; }
+    if (btn) { btn.disabled = false; btn.textContent = "⬇️ Bajar de la nube"; }
+  }
+};
+
+// ── Subir datos a la nube ────────────────────────────
+window.syncSubir = async function (btn) {
+  if (!userState.uid) { showToast("No hay sesión activa", "info"); return; }
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Subiendo..."; }
+  try {
+    await syncToCloud();
+    showToast("⬆️ Datos subidos a la nube correctamente", "success");
+  } catch (err) {
+    showToast("Error al subir datos: " + err.message, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "⬆️ Subir a la nube"; }
   }
 };
 

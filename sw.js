@@ -1,6 +1,5 @@
-// sw.js corregido
-const CACHE_VERSION = "v92"; // Incrementamos versión
-const CACHE_NAME    = "gym-tracker-" + CACHE_VERSION;
+const CACHE_VERSION = "v95";
+const CACHE_NAME    = "gym-tracker-v92";
 
 const BASE = new URL("./", self.location.href).pathname;
 
@@ -24,74 +23,109 @@ const ASSETS = [
   BASE + "icons/icon-512.png"
 ];
 
-// Instalación: Cacheamos todo de golpe
+// ── Install: precargar todos los assets ──────────────
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log("[SW] Cacheando assets críticos");
-        return cache.addAll(ASSETS);
-      })
+      .then(cache => cache.addAll(ASSETS))
       .then(() => self.skipWaiting())
+      .catch(err => console.warn("[SW] Cache install parcial:", err))
   );
 });
 
-// Activación: Limpieza de cachés antiguos
+// ── Activate: limpiar cachés viejos ─────────────────
 self.addEventListener("activate", event => {
   event.waitUntil(
-    caches.keys().then(keys => {
-      return Promise.all(
-        keys.map(key => {
-          if (key !== CACHE_NAME) {
-            console.log("[SW] Borrando caché antiguo:", key);
-            return caches.delete(key);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches.keys()
+      .then(keys => Promise.all(
+        keys.map(k => k !== CACHE_NAME ? caches.delete(k) : null)
+      ))
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll().then(clients =>
+        clients.forEach(c => c.postMessage({ type: "SW_UPDATED", version: CACHE_VERSION }))
+      ))
   );
 });
 
-// EVENTO FETCH CORREGIDO
+// ── Fetch: estrategia según tipo de recurso ──────────
 self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
 
-  // 1. Ignorar peticiones externas (Supabase, API, etc.) - Ir a red siempre
+  // APIs externas (Supabase, Anthropic) → siempre red, nunca caché
   if (url.hostname.includes("supabase") || url.hostname.includes("anthropic.com")) {
     event.respondWith(
-      fetch(event.request).catch(() => 
+      fetch(event.request).catch(() =>
         new Response(JSON.stringify({ error: "offline" }), {
-          status: 503, headers: { "Content-Type": "application/json" }
+          status: 503,
+          headers: { "Content-Type": "application/json" }
         })
       )
     );
     return;
   }
 
-  // 2. Estrategia para archivos locales: CACHE FIRST (Rapidez total)
-  // Esto evita la pantalla negra porque primero busca en el teléfono.
+  // Recursos de otros orígenes (CDN jsDelivr para Supabase SDK) → solo red
+  if (url.origin !== self.location.origin) {
+    event.respondWith(
+      fetch(event.request).catch(() =>
+        new Response("", { status: 503 })
+      )
+    );
+    return;
+  }
+
+  // ── Recursos propios de la app: Cache-First ──────────────────────────────
+  // MOTIVO: Con network-first, si la red tarda o falla parcialmente,
+  // el fetch puede devolver undefined → pantalla negra.
+  // Cache-first garantiza respuesta inmediata y confiable siempre.
   event.respondWith(
-    caches.match(event.request).then(cachedResponse => {
-      if (cachedResponse) {
-        // Devolvemos lo que hay en caché PERO actualizamos el caché en segundo plano
-        // (Stale-while-revalidate)
-        fetch(event.request).then(networkResponse => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, networkResponse));
-          }
-        }).catch(() => {}); // Fallo silencioso de red
-        
-        return cachedResponse;
+    caches.match(event.request).then(cached => {
+      if (cached) {
+        // Tenemos el recurso en caché → servir de inmediato
+        // Y actualizar en background si hay conexión (stale-while-revalidate)
+        fetch(event.request)
+          .then(response => {
+            if (response && response.status === 200 && event.request.method === "GET") {
+              caches.open(CACHE_NAME).then(cache => cache.put(event.request, response));
+            }
+          })
+          .catch(() => {}); // offline, no pasa nada
+        return cached;
       }
 
-      // Si no está en caché, vamos a la red
-      return fetch(event.request).catch(() => {
-        // Si falla la red y es una navegación, devolver el index.html
-        if (event.request.mode === "navigate") {
-          return caches.match(BASE + "index.html");
-        }
-      });
+      // No está en caché → intentar red
+      return fetch(event.request)
+        .then(response => {
+          if (response && response.status === 200 && event.request.method === "GET") {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => {
+          // Offline y no está en caché
+          // Para navegación: devolver index.html cacheado
+          if (event.request.mode === "navigate") {
+            return caches.match(BASE + "index.html").then(r =>
+              r || new Response("<h1>Sin conexión</h1>", {
+                status: 200,
+                headers: { "Content-Type": "text/html" }
+              })
+            );
+          }
+          // Para otros recursos: respuesta vacía pero válida (no undefined)
+          return new Response("", { status: 503 });
+        });
     })
   );
 });
 
+// ── Mensajes desde la app ────────────────────────────
+self.addEventListener("message", event => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+  if (event.data?.type === "CLEAR_CACHE") {
+    event.waitUntil(
+      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+    );
+  }
+});
