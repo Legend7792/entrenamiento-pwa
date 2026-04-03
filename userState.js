@@ -1,4 +1,4 @@
-// userState.js - VERSIÓN FINAL CORREGIDA
+// userState.js
 import { supabase } from "./cloud.js";
 
 export const userState = {
@@ -7,13 +7,13 @@ export const userState = {
   sessionToken: null
 };
 
-// Cargar estado desde localStorage
+// ── Cargar sesión desde localStorage ────────────────
 export function loadLocal() {
   const saved = localStorage.getItem("userState");
   if (saved) {
     try {
       const data = JSON.parse(saved);
-      userState.uid = data.uid;
+      userState.uid   = data.uid;
       userState.email = data.email;
       userState.sessionToken = data.sessionToken;
     } catch (e) {
@@ -22,33 +22,68 @@ export function loadLocal() {
   }
 }
 
-// Guardar estado en localStorage
+// ── Guardar sesión en localStorage ──────────────────
 export function saveLocal() {
   try {
     localStorage.setItem("userState", JSON.stringify({
-      uid: userState.uid,
-      email: userState.email,
+      uid:          userState.uid,
+      email:        userState.email,
       sessionToken: userState.sessionToken
     }));
   } catch (e) {
-    console.warn("saveLocal: no se pudo guardar en localStorage:", e);
+    console.warn("saveLocal: no se pudo guardar:", e);
   }
 }
 
-// Sincronizar desde la nube
-export async function syncFromCloud() {
-  if (!userState.uid) {
-    console.log("No hay UID, saltando sync desde nube");
-    return;
-  }
-  
-  // Obtener sesión activa
+// ── Subir datos a la nube ────────────────────────────
+// Solo sube. Nunca baja. Seguro de llamar en cualquier momento.
+export async function syncToCloud() {
+  if (!userState.uid) throw new Error("No hay usuario autenticado");
+
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-  
-  if (sessionError || !sessionData.session) {
-    console.log("No hay sesión activa para sincronizar desde nube");
-    return;
+  if (sessionError) throw new Error("Error de autenticación. Inicia sesión de nuevo.");
+  if (!sessionData.session) throw new Error("No hay sesión activa. Inicia sesión de nuevo.");
+
+  // Actualizar UID local si no coincide
+  if (sessionData.session.user.id !== userState.uid) {
+    userState.uid   = sessionData.session.user.id;
+    userState.email = sessionData.session.user.email;
+    userState.sessionToken = sessionData.session.access_token;
+    saveLocal();
   }
+
+  // Recopilar datos de localStorage
+  const localData = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key !== "userState" && !key.startsWith("supabase.")) {
+      localData[key] = localStorage.getItem(key);
+    }
+  }
+
+  // Añadir timestamp de esta subida para que el otro dispositivo sepa cuándo es
+  localData["_syncedAt"] = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("usuarios")
+    .upsert({ id: sessionData.session.user.id, data: localData }, { onConflict: "id" });
+
+  if (error) throw error;
+
+  // Guardar localmente también el timestamp de última subida
+  try { localStorage.setItem("_syncedAt", localData["_syncedAt"]); } catch {}
+  console.log("✅ Datos subidos a la nube:", localData["_syncedAt"]);
+}
+
+// ── Bajar datos de la nube ────────────────────────────
+// Sobreescribe localStorage con los datos de la nube.
+// PELIGROSO si los datos locales son más nuevos.
+// Llamar SOLO cuando el usuario lo pide explícitamente.
+export async function syncFromCloud() {
+  if (!userState.uid) throw new Error("No hay usuario autenticado");
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !sessionData.session) throw new Error("No hay sesión activa");
 
   const { data, error } = await supabase
     .from("usuarios")
@@ -57,130 +92,78 @@ export async function syncFromCloud() {
     .single();
 
   if (error) {
-    if (error.code === 'PGRST116') {
-      console.log("Primera vez, no hay datos en la nube");
-    } else {
-      console.error("Error cargando desde nube:", error);
+    if (error.code === "PGRST116") {
+      throw new Error("No hay datos guardados en la nube todavía.");
     }
-    return;
-  }
-
-  if (data && data.data) {
-    const cloudData = typeof data.data === 'string' 
-      ? JSON.parse(data.data) 
-      : data.data;
-    
-    // Pausar auto-sync durante la restauración para evitar que un markDirty
-    // pendiente sobreescriba la nube con datos locales más viejos
-    if (_syncTimeout) {
-      clearTimeout(_syncTimeout);
-      _syncTimeout = null;
-    }
-
-    // Restaurar datos en localStorage
-    Object.keys(cloudData).forEach(key => {
-      if (key !== "userState") {
-        try {
-          localStorage.setItem(key, cloudData[key]);
-        } catch (e) {
-          console.warn("No se pudo restaurar clave:", key, e);
-        }
-      }
-    });
-    
-    console.log("✅ Datos sincronizados desde la nube");
-  }
-}
-
-// Sincronizar a la nube
-export async function syncToCloud() {
-  if (!userState.uid) {
-    throw new Error("No hay usuario autenticado");
-  }
-
-  // Obtener sesión activa
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-  
-  if (sessionError) {
-    console.error("Error obteniendo sesión:", sessionError);
-    throw new Error("Error de autenticación. Inicia sesión de nuevo.");
-  }
-  
-  if (!sessionData.session) {
-    throw new Error("No hay sesión activa. Inicia sesión de nuevo.");
-  }
-  
-  // Verificar que el UID coincida
-  if (sessionData.session.user.id !== userState.uid) {
-    console.warn("UID mismatch, actualizando local", {
-      local: userState.uid,
-      session: sessionData.session.user.id
-    });
-    
-    // Actualizar UID local con el de la sesión
-    userState.uid = sessionData.session.user.id;
-    userState.email = sessionData.session.user.email;
-    userState.sessionToken = sessionData.session.access_token;
-    saveLocal();
-  }
-
-  // Recopilar todos los datos de localStorage
-  const localData = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    // Excluir claves de sistema
-    if (key !== "userState" && !key.startsWith("supabase.")) {
-      localData[key] = localStorage.getItem(key);
-    }
-  }
-
-  console.log("📤 Sincronizando a nube...", {
-    uid: sessionData.session.user.id,
-    keysCount: Object.keys(localData).length
-  });
-
-  // Usar el UID de la sesión activa
-  const { error } = await supabase
-    .from("usuarios")
-    .upsert(
-      {
-        id: sessionData.session.user.id,
-        data: localData
-      },
-      { 
-        onConflict: 'id'
-      }
-    );
-
-  if (error) {
-    console.error("❌ Error sincronizando:", error);
     throw error;
   }
-  
-  console.log("✅ Datos sincronizados a la nube");
+
+  if (!data?.data) throw new Error("La nube no tiene datos para esta cuenta.");
+
+  const cloudData = typeof data.data === "string" ? JSON.parse(data.data) : data.data;
+
+  // Cancelar cualquier auto-sync pendiente para no sobreescribir nube con datos viejos
+  if (_syncTimeout) { clearTimeout(_syncTimeout); _syncTimeout = null; }
+
+  // Escribir en localStorage
+  Object.keys(cloudData).forEach(key => {
+    if (key !== "userState") {
+      try { localStorage.setItem(key, cloudData[key]); } catch {}
+    }
+  });
+
+  console.log("✅ Datos bajados de la nube:", cloudData["_syncedAt"] || "sin fecha");
+  return cloudData["_syncedAt"] || null; // devolver timestamp para mostrarlo en UI
 }
 
-// Debounce para evitar sync en cada pulsación de tecla
+// ── Obtener info de la nube SIN bajar datos ──────────
+// Solo lee el timestamp para informar al usuario antes de confirmar.
+export async function obtenerInfoNube() {
+  if (!userState.uid) return null;
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData?.session) return null;
+
+  const { data, error } = await supabase
+    .from("usuarios")
+    .select("data")
+    .eq("id", sessionData.session.user.id)
+    .single();
+
+  if (error || !data?.data) return null;
+
+  const cloudData = typeof data.data === "string" ? JSON.parse(data.data) : data.data;
+
+  // Contar sesiones en la nube para dar info útil
+  let numSesiones = 0;
+  try {
+    const historial = JSON.parse(cloudData["historial"] || "[]");
+    numSesiones = historial.length;
+  } catch {}
+
+  return {
+    syncedAt:    cloudData["_syncedAt"] || null,
+    numSesiones
+  };
+}
+
+// ── Auto-sync (solo sube, nunca baja) ───────────────
 let _syncTimeout = null;
 
-// Marcar como modificado y sincronizar
 export function markDirty() {
   saveLocal();
-  
   if (userState.uid && navigator.onLine) {
     clearTimeout(_syncTimeout);
     _syncTimeout = setTimeout(() => {
       syncToCloud()
-        .then(() => console.log('✅ Sync automático completado'))
-        .catch(e => console.log('⚠️ Sync automático fallido:', e));
-    }, 3000); // esperar 3 seg de inactividad antes de sincronizar
+        .then(() => console.log("✅ Auto-sync completado"))
+        .catch(e => console.log("⚠️ Auto-sync fallido:", e.message));
+    }, 3000);
   }
 }
 
-// Cargar al inicio
+// ── Cargar al inicio ────────────────────────────────
 loadLocal();
 
-// Exportar globalmente
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   window.markDirty = markDirty;
 }

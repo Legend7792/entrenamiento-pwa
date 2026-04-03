@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v95";
+const CACHE_VERSION = "v96";
 const CACHE_NAME    = "gym-tracker-v92";
 
 const BASE = new URL("./", self.location.href).pathname;
