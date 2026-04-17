@@ -1,5 +1,5 @@
-const CACHE_VERSION = "v97";
-const CACHE_NAME    = "gym-tracker-v92";
+const CACHE_VERSION = "v93";
+const CACHE_NAME    = "gym-tracker-v93";
 
 const BASE = new URL("./", self.location.href).pathname;
 
@@ -23,17 +23,21 @@ const ASSETS = [
   BASE + "icons/icon-512.png"
 ];
 
-// ── Install: precargar todos los assets ──────────────
+// ── Install ──────────────────────────────────────────
+// NO usar skipWaiting() aquí.
+// skipWaiting() reemplaza el SW activo de inmediato mientras la app está corriendo,
+// lo que puede causar que las peticiones fetch fallen durante la transición → pantalla negra.
+// El SW nuevo tomará control en el siguiente arranque limpio de la app,
+// o cuando el usuario confirme la actualización.
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
       .catch(err => console.warn("[SW] Cache install parcial:", err))
   );
 });
 
-// ── Activate: limpiar cachés viejos ─────────────────
+// ── Activate ─────────────────────────────────────────
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys()
@@ -41,17 +45,17 @@ self.addEventListener("activate", event => {
         keys.map(k => k !== CACHE_NAME ? caches.delete(k) : null)
       ))
       .then(() => self.clients.claim())
-      .then(() => self.clients.matchAll().then(clients =>
-        clients.forEach(c => c.postMessage({ type: "SW_UPDATED", version: CACHE_VERSION }))
-      ))
   );
 });
 
-// ── Fetch: estrategia según tipo de recurso ──────────
+// ── Fetch: Cache-First para recursos propios ─────────
+// Garantiza que la app funcione SIEMPRE offline sin pantallas negras.
+// Los recursos sirven desde caché inmediatamente.
+// La red se consulta en background para mantener caché actualizada (stale-while-revalidate).
 self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
 
-  // APIs externas (Supabase, Anthropic) → siempre red, nunca caché
+  // APIs externas → solo red, fallback offline
   if (url.hostname.includes("supabase") || url.hostname.includes("anthropic.com")) {
     event.respondWith(
       fetch(event.request).catch(() =>
@@ -64,65 +68,54 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  // Recursos de otros orígenes (CDN jsDelivr para Supabase SDK) → solo red
+  // Otros orígenes externos (CDN) → solo red, sin caché
   if (url.origin !== self.location.origin) {
-    event.respondWith(
-      fetch(event.request).catch(() =>
-        new Response("", { status: 503 })
-      )
-    );
+    event.respondWith(fetch(event.request).catch(() => new Response("", { status: 503 })));
     return;
   }
 
-  // ── Recursos propios de la app: Cache-First ──────────────────────────────
-  // MOTIVO: Con network-first, si la red tarda o falla parcialmente,
-  // el fetch puede devolver undefined → pantalla negra.
-  // Cache-first garantiza respuesta inmediata y confiable siempre.
+  // Recursos propios → Cache-First + background refresh
   event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) {
-        // Tenemos el recurso en caché → servir de inmediato
-        // Y actualizar en background si hay conexión (stale-while-revalidate)
-        fetch(event.request)
-          .then(response => {
-            if (response && response.status === 200 && event.request.method === "GET") {
-              caches.open(CACHE_NAME).then(cache => cache.put(event.request, response));
-            }
-          })
-          .catch(() => {}); // offline, no pasa nada
-        return cached;
-      }
-
-      // No está en caché → intentar red
-      return fetch(event.request)
-        .then(response => {
+    caches.open(CACHE_NAME).then(cache =>
+      cache.match(event.request).then(cached => {
+        // Background refresh (no bloqueante)
+        const fetchPromise = fetch(event.request).then(response => {
           if (response && response.status === 200 && event.request.method === "GET") {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+            cache.put(event.request, response.clone());
           }
           return response;
-        })
-        .catch(() => {
-          // Offline y no está en caché
-          // Para navegación: devolver index.html cacheado
+        }).catch(() => null);
+
+        if (cached) {
+          // Servir caché inmediatamente, actualizar en background
+          return cached;
+        }
+
+        // No está en caché: esperar la red
+        return fetchPromise.then(response => {
+          if (response) return response;
+          // Offline y no en caché
           if (event.request.mode === "navigate") {
-            return caches.match(BASE + "index.html").then(r =>
-              r || new Response("<h1>Sin conexión</h1>", {
-                status: 200,
-                headers: { "Content-Type": "text/html" }
-              })
+            return cache.match(BASE + "index.html").then(r =>
+              r || new Response(
+                "<!DOCTYPE html><html><body style='background:#121212;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center'><div><h2>📴 Sin conexión</h2><p>Abre la app con conexión al menos una vez para poder usarla offline.</p></div></body></html>",
+                { status: 200, headers: { "Content-Type": "text/html" } }
+              )
             );
           }
-          // Para otros recursos: respuesta vacía pero válida (no undefined)
           return new Response("", { status: 503 });
         });
-    })
+      })
+    )
   );
 });
 
 // ── Mensajes desde la app ────────────────────────────
 self.addEventListener("message", event => {
-  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+  if (event.data?.type === "SKIP_WAITING") {
+    // Solo activar cuando el usuario lo confirma explícitamente
+    self.skipWaiting();
+  }
   if (event.data?.type === "CLEAR_CACHE") {
     event.waitUntil(
       caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))

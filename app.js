@@ -666,7 +666,9 @@ function cargarEjerciciosDia() {
 let lastEjerciciosDiaHash = null;
 
 function calcularHashEjercicios() {
-  return ejerciciosDia.map(e => `${e.nombre}-${e.series}-${e.repsMin}-${e.repsMax}-${e.peso}-${e.descanso}-${e.alFallo}`).join('|');
+  // Incluir modoDosPersonas para que cambiar de modo fuerce re-renderizado de los timers
+  const modoPrefix = modoDosPersonas ? '2p' : '1p';
+  return modoPrefix + '|' + ejerciciosDia.map(e => `${e.nombre}-${e.series}-${e.repsMin}-${e.repsMax}-${e.peso}-${e.descanso}-${e.alFallo}`).join('|');
 }
 
 function renderDia() {
@@ -2281,14 +2283,24 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js')
     .then(reg => {
       swRegistration = reg;
-      setInterval(() => reg.update(), 60000);
+
+      // NO hacer reg.update() automático periódico.
+      // El update automático puede desencadenar skipWaiting + reload en background
+      // mientras el usuario usa la app offline → pantalla negra.
+      // Solo verificar actualizaciones cuando el usuario lo pida explícitamente
+      // (botón "Actualizar app") o al volver online con conexión real.
+
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
+        if (!nw) return;
         nw.addEventListener('statechange', () => {
-          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+          // Solo ofrecer actualización si hay un controller activo (no primera instalación)
+          // y el usuario tiene conexión (no está offline)
+          if (nw.state === 'installed' && navigator.serviceWorker.controller && navigator.onLine) {
             showConfirm('🎉 Nueva versión disponible. ¿Actualizar ahora?', () => {
               nw.postMessage({ type: 'SKIP_WAITING' });
-              window.location.reload();
+              // Esperar un tick antes de recargar para que el SW nuevo tome control
+              setTimeout(() => window.location.reload(), 200);
             });
           }
         });
@@ -2302,8 +2314,9 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-window.addEventListener('online', async () => {
-  if (swRegistration) await swRegistration.update();
+// Al volver online: intentar sync pero NO forzar update del SW
+// (el update del SW puede causar reload inesperado)
+window.addEventListener('online', () => {
   if (userState.uid) {
     import('./userState.js').then(m => m.syncToCloud?.().catch(() => { }));
   }
