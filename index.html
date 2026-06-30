@@ -14,6 +14,51 @@
 <body>
 
 <!-- ══════════════════════════════════════
+     SPLASH DE CARGA
+     Visible mientras el JS se descarga/evalúa.
+     app.js lo elimina en DOMContentLoaded.
+     El timeout inline evita pantalla negra eterna
+     si el JS falla o tarda demasiado.
+══════════════════════════════════════ -->
+<div id="app-splash" style="
+  position:fixed;inset:0;z-index:9999;
+  background:#121212;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+">
+  <div style="font-size:56px;margin-bottom:14px;line-height:1">🏋️</div>
+  <div style="color:#ffffff;font-size:19px;font-weight:700;margin-bottom:6px">Gym Tracker</div>
+  <div style="color:#4a9eff;font-size:13px;margin-bottom:22px">Cargando...</div>
+  <div style="
+    width:38px;height:38px;
+    border:3px solid #2a2a2a;
+    border-top-color:#4a9eff;
+    border-radius:50%;
+    animation:gt-spin 0.75s linear infinite;
+  "></div>
+  <style>@keyframes gt-spin{to{transform:rotate(360deg)}}</style>
+</div>
+<script>
+  // Fallback: si app.js no quitó el splash en 8 s, mostramos mensaje de error
+  // (evita quedarse con pantalla negra si el JS no carga)
+  setTimeout(function(){
+    var s = document.getElementById('app-splash');
+    if (!s) return;
+    s.innerHTML =
+      '<div style="max-width:300px;text-align:center;padding:20px">' +
+      '<div style="font-size:40px;margin-bottom:14px">⚠️</div>' +
+      '<div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:10px">Error al cargar</div>' +
+      '<div style="color:#aaa;font-size:13px;line-height:1.5;margin-bottom:18px">' +
+      'No se pudo iniciar la app.<br>Comprueba tu conexión y vuelve a intentarlo.</div>' +
+      '<button onclick="location.reload()" style="' +
+      'background:#4a9eff;color:#fff;border:none;padding:11px 26px;' +
+      'border-radius:8px;font-size:14px;cursor:pointer;font-weight:600">' +
+      '🔄 Reintentar</button></div>';
+  }, 8000);
+</script>
+
+<!-- ══════════════════════════════════════
      BANNER OFFLINE
 ══════════════════════════════════════ -->
 <div id="banner-offline" class="oculto">📴 Sin conexión — Modo offline activo</div>

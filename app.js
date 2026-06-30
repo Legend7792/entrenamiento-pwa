@@ -2336,8 +2336,22 @@ if ('serviceWorker' in navigator) {
     }).catch(err => console.error('SW error:', err));
 
   navigator.serviceWorker.addEventListener('message', event => {
+    // Sync de datos a la nube
     if (event.data?.type === 'SYNC_DATA' && userState.uid) {
       import('./userState.js').then(m => m.syncToCloud?.().catch(() => { }));
+    }
+    // El SW detectó que el cache estaba dañado y lo reparó
+    if (event.data?.type === 'HEALTH_RESULT' && event.data.repaired) {
+      showToast('🔧 Cache reparado. La app recargará en 2s...', 'info');
+      setTimeout(() => window.location.reload(), 2000);
+    }
+    // Cache reconstruido bajo demanda (desde "Actualizar app")
+    if (event.data?.type === 'CACHE_REBUILT') {
+      showToast('✅ Cache reconstruido correctamente', 'success');
+    }
+    // El SW reparó el cache durante su activación
+    if (event.data?.type === 'CACHE_REPAIRED') {
+      console.log('[App] SW reparó el cache automáticamente — versión:', event.data.version);
     }
   });
 }
@@ -2346,9 +2360,45 @@ window.addEventListener('online', () => {
   if (userState.uid) {
     import('./userState.js').then(m => m.syncToCloud?.().catch(() => { }));
   }
+  // Al volver online, pedir al SW que reconstruya el cache si hace falta
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'HEALTH_CHECK' });
+  }
+});
+
+// ── Verificación de salud del SW al volver al primer plano ───────────────────
+// Previene la pantalla negra cuando Android restaura la app tras 1-2 días
+let _swHealthCheckTimer = null;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  // Debounce: no lanzar múltiples checks seguidos
+  clearTimeout(_swHealthCheckTimer);
+  _swHealthCheckTimer = setTimeout(() => {
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'HEALTH_CHECK' });
+    } else if ('serviceWorker' in navigator) {
+      // No hay SW controlador → registrar de nuevo
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  }, 1500);
+});
+
+// ── Detectar restauración desde bfcache (iOS / Android) ─────────────────────
+window.addEventListener('pageshow', async (evt) => {
+  if (!evt.persisted) return; // Solo si viene de bfcache
+  if (!('serviceWorker' in navigator)) return;
+  const reg = await navigator.serviceWorker.getRegistration().catch(() => null);
+  if (!reg?.active) {
+    // SW perdido — recargar para intentar reinstalarlo
+    window.location.reload();
+  }
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
+  // Ocultar splash de carga tan pronto como el JS está listo
+  const splash = document.getElementById('app-splash');
+  if (splash) splash.remove();
+
   inicializarRutinaBase();
   initOfflineBanner();
   renderTimers();
