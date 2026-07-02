@@ -55,7 +55,7 @@
       'background:#4a9eff;color:#fff;border:none;padding:11px 26px;' +
       'border-radius:8px;font-size:14px;cursor:pointer;font-weight:600">' +
       '🔄 Reintentar</button></div>';
-  }, 8000);
+  }, 60000);
 </script>
 
 <!-- ══════════════════════════════════════
@@ -94,6 +94,12 @@
     <button onclick="toggleSidebar(); abrirGuiaTempo()">📖 Guía y Conceptos</button>
     <button onclick="toggleSidebar(); abrirNotasProgresion()">📋 Notas de progresión</button>
     <button onclick="toggleSidebar(); forzarActualizacion()">🔄 Actualizar app</button>
+    <button onclick="toggleSidebar(); exportarBackupJSON()">💾 Exportar backup</button>
+    <label class="sidebar-file-btn" onclick="toggleSidebar()">
+      📂 Importar backup
+      <input type="file" accept=".json" onchange="importarBackupJSON(this)" style="display:none">
+    </label>
+    <button id="btn-instalar-app" onclick="instalarApp()" style="display:none">📲 Instalar app</button>
   </div>
 
   <div class="sidebar-perfil" id="sidebar-perfil-info"></div>
@@ -253,7 +259,8 @@
     <h2>📊 Resumen</h2>
   </div>
   <div id="resumen-contenido"></div>
-  <button onclick="cerrarResumen()" class="btn-primary" style="margin-top:16px;">🏠 Volver al menú</button>
+  <button onclick="compartirResumen()" class="btn-secondary" style="margin-top:16px;">📤 Compartir</button>
+  <button onclick="cerrarResumen()" class="btn-primary" style="margin-top:8px;">🏠 Volver al menú</button>
 </section>
 
 <!-- ══════════════════════════════════════
@@ -361,6 +368,14 @@
     <button onclick="probarSonido()" class="btn-secondary">▶️ Probar sonido</button>
     <button onclick="resetearAudioPorDefecto()" class="btn-secondary">↩️ Restaurar beep</button>
     <button onclick="volverMenu()" class="btn-secondary">← Volver</button>
+  </div>
+
+  <div class="audio-vibracion">
+    <label class="audio-toggle-label">
+      <input type="checkbox" id="toggle-vibracion" onchange="toggleVibracion(this.checked)">
+      <span class="audio-toggle-text">📳 Vibrar al terminar el timer</span>
+    </label>
+    <p class="audio-toggle-hint">Vibra al acabar cada descanso. Solo funciona en móvil.</p>
   </div>
 
   <div class="audio-info">

@@ -23,6 +23,299 @@ if (navigator.storage && navigator.storage.persist) {
 }
 
 // ══════════════════════════════════════════════════════
+// WAKE LOCK — Pantalla activa durante el entrenamiento
+// ══════════════════════════════════════════════════════
+let _wakeLock = null;
+
+async function activarWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    _wakeLock = await navigator.wakeLock.request('screen');
+    _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+  } catch (e) {
+    console.warn('[WakeLock]', e.message);
+  }
+}
+
+async function liberarWakeLock() {
+  if (_wakeLock) { await _wakeLock.release().catch(() => {}); _wakeLock = null; }
+}
+
+// Re-adquirir wake lock si la pantalla se durmió y el usuario volvió al día activo
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' &&
+      !document.getElementById('pantalla-dia')?.classList.contains('oculto')) {
+    await activarWakeLock();
+  }
+});
+
+// ══════════════════════════════════════════════════════
+// ESTIMADOR 1RM (Fórmula de Epley)
+// ══════════════════════════════════════════════════════
+function calcular1RM(peso, reps) {
+  if (!peso || peso <= 0 || !reps || reps <= 0) return null;
+  return Math.round(peso * (1 + reps / 30) * 10) / 10;
+}
+
+// ══════════════════════════════════════════════════════
+// VIBRACIÓN AL TERMINAR TIMER
+// ══════════════════════════════════════════════════════
+function vibrarSiActivo() {
+  if (localStorage.getItem('vibrarAlTerminar') !== 'true') return;
+  if (!navigator.vibrate) return;
+  navigator.vibrate([200, 100, 200]);
+}
+
+window.toggleVibracion = function (activo) {
+  localStorage.setItem('vibrarAlTerminar', activo ? 'true' : 'false');
+  showToast(activo ? '📳 Vibración activada' : '🔕 Vibración desactivada', 'info');
+};
+
+// ══════════════════════════════════════════════════════
+// MAPA DE GRUPOS MUSCULARES
+// ══════════════════════════════════════════════════════
+const MUSCULOS_MAP = {
+  pectoral:   '🫀 Pectoral',
+  espalda:    '🔙 Espalda',
+  hombro:     '💪 Hombro',
+  bicep:      '💪 Bícep',
+  tricep:     '💪 Trícep',
+  cuadricep:  '🦵 Cuádr.',
+  isquio:     '🦵 Isquio.',
+  gluteo:     '🍑 Glúteo',
+  gemelo:     '🦶 Gemelo',
+  core:       '🎯 Core'
+};
+
+// ══════════════════════════════════════════════════════
+// A2HS — Prompt de instalación (Add to Home Screen)
+// ══════════════════════════════════════════════════════
+let _installPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _installPrompt = e;
+  const btn = document.getElementById('btn-instalar-app');
+  if (btn) btn.style.display = '';
+});
+
+window.addEventListener('appinstalled', () => {
+  _installPrompt = null;
+  const btn = document.getElementById('btn-instalar-app');
+  if (btn) btn.style.display = 'none';
+  showToast('✅ App instalada en tu pantalla de inicio', 'success');
+});
+
+window.instalarApp = async function () {
+  if (!_installPrompt) {
+    showToast('La app ya está instalada o tu navegador no lo soporta', 'info');
+    return;
+  }
+  _installPrompt.prompt();
+  const { outcome } = await _installPrompt.userChoice;
+  if (outcome === 'accepted') _installPrompt = null;
+};
+
+// ══════════════════════════════════════════════════════
+// EXPORTAR BACKUP COMPLETO JSON
+// ══════════════════════════════════════════════════════
+window.exportarBackupJSON = function () {
+  try {
+    const backup = { _version: 'gym-tracker-backup-v1', _exportedAt: new Date().toISOString() };
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      backup[key] = localStorage.getItem(key);
+    }
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `gym-backup-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('💾 Backup exportado correctamente', 'success');
+  } catch (e) {
+    showToast('Error al exportar: ' + e.message, 'error');
+  }
+};
+
+// ══════════════════════════════════════════════════════
+// IMPORTAR BACKUP JSON
+// ══════════════════════════════════════════════════════
+window.importarBackupJSON = function (input) {
+  const archivo = input?.files?.[0];
+  if (!archivo) return;
+  input.value = ''; // reset para permitir re-seleccionar el mismo archivo
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+
+      // Validación mínima: debe tener la marca de versión
+      if (!data._version || !data._version.startsWith('gym-tracker-backup')) {
+        showToast('❌ Archivo no válido. Debe ser un backup de Gym Tracker.', 'error');
+        return;
+      }
+
+      const totalClaves = Object.keys(data).filter(k => !k.startsWith('_')).length;
+
+      showConfirm(
+        `📂 ¿Restaurar backup?\n\nEsto REEMPLAZARÁ todos tus datos locales con los del backup.\n\nBackup del: ${data._exportedAt ? new Date(data._exportedAt).toLocaleString('es-ES') : 'fecha desconocida'}\nClaves: ${totalClaves}\n\n⚠️ Esta acción no se puede deshacer.`,
+        () => {
+          // Restaurar claves (saltarse las meta-claves internas)
+          const META_KEYS = new Set(['_version', '_exportedAt']);
+          let restauradas = 0;
+          for (const [key, val] of Object.entries(data)) {
+            if (META_KEYS.has(key)) continue;
+            try {
+              localStorage.setItem(key, val);
+              restauradas++;
+            } catch (err) {
+              console.warn('[Backup] No se pudo restaurar clave:', key, err.message);
+            }
+          }
+          showToast(`✅ Backup restaurado: ${restauradas} claves. Recargando...`, 'success');
+          setTimeout(() => window.location.reload(), 1800);
+        },
+        () => {}
+      );
+    } catch (err) {
+      showToast('❌ Error al leer el archivo: ' + err.message, 'error');
+    }
+  };
+  reader.readAsText(archivo);
+};
+
+// ══════════════════════════════════════════════════════
+// AUTO-GUARDADO PARCIAL DE SESIÓN
+// Guarda los pesos y reps introducidos cada 30s
+// para recuperarlos si la app se cierra accidentalmente
+// ══════════════════════════════════════════════════════
+const AUTO_SAVE_KEY  = 'gym_sesion_parcial';
+const AUTO_SAVE_SECS = 30;
+let   _autoSaveTimer = null;
+
+function iniciarAutoGuardado() {
+  detenerAutoGuardado();
+  _autoSaveTimer = setInterval(() => {
+    if (!diaActual || !ejerciciosDia.length) return;
+    const parcial = {
+      savedAt:      Date.now(),
+      diaActual,
+      rutinaId:     (typeof obtenerRutinaActiva === 'function') ? obtenerRutinaActiva() : null,
+      ejerciciosDia: ejerciciosDia.map(ej => ({
+        nombre: ej.nombre,
+        peso:   ej.peso,
+        reps:   [...ej.reps]
+      }))
+    };
+    try { localStorage.setItem(AUTO_SAVE_KEY, JSON.stringify(parcial)); }
+    catch (e) { /* localStorage lleno */ }
+  }, AUTO_SAVE_SECS * 1000);
+}
+
+function detenerAutoGuardado() {
+  if (_autoSaveTimer) { clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
+}
+
+function limpiarAutoGuardado() {
+  localStorage.removeItem(AUTO_SAVE_KEY);
+}
+
+// Ofrecer restauración si hay un guardado parcial reciente (<4 horas)
+function verificarSesionParcial() {
+  try {
+    const raw = localStorage.getItem(AUTO_SAVE_KEY);
+    if (!raw) return;
+    const parcial = JSON.parse(raw);
+    if (!parcial?.savedAt || !parcial.ejerciciosDia?.length) return;
+
+    const hace = Date.now() - parcial.savedAt;
+    const horasMax = 4 * 3600 * 1000; // 4 horas
+    if (hace > horasMax) { limpiarAutoGuardado(); return; }
+
+    const mins = Math.round(hace / 60000);
+    const cuandoStr = mins < 2 ? 'hace un momento' : `hace ${mins} min`;
+
+    showConfirm(
+      `⚠️ Sesión interrumpida detectada\n\nSe encontró una sesión guardada automáticamente ${cuandoStr} con ${parcial.ejerciciosDia.length} ejercicios.\n\n¿Deseas restaurar los datos introducidos?`,
+      () => {
+        // Restaurar datos en ejerciciosDia si el día sigue activo
+        if (parcial.ejerciciosDia && ejerciciosDia.length) {
+          parcial.ejerciciosDia.forEach((pej, idx) => {
+            if (ejerciciosDia[idx]?.nombre === pej.nombre) {
+              ejerciciosDia[idx].peso = pej.peso;
+              ejerciciosDia[idx].reps = [...pej.reps];
+            }
+          });
+          renderDia();
+          showToast('✅ Sesión restaurada', 'success');
+        }
+        limpiarAutoGuardado();
+      },
+      () => limpiarAutoGuardado()
+    );
+  } catch (e) { limpiarAutoGuardado(); }
+}
+
+// ══════════════════════════════════════════════════════
+// SCREEN ORIENTATION LOCK — Fijar portrait durante el entrenamiento
+// ══════════════════════════════════════════════════════
+async function fijarOrientacionPortrait() {
+  try {
+    if (screen.orientation?.lock) {
+      await screen.orientation.lock('portrait');
+    }
+  } catch (e) {
+    // Silencioso: no todos los dispositivos lo soportan
+  }
+}
+
+async function liberarOrientacion() {
+  try {
+    if (screen.orientation?.unlock) {
+      screen.orientation.unlock();
+    }
+  } catch (e) { /* silencioso */ }
+}
+
+// ══════════════════════════════════════════════════════
+// SHARE API — Compartir resumen de sesión
+// ══════════════════════════════════════════════════════
+window.compartirResumen = async function () {
+  const historial = JSON.parse(localStorage.getItem('historial')) || [];
+  const sesion = historial[historial.length - 1];
+  if (!sesion) { showToast('Sin sesión para compartir', 'info'); return; }
+
+  const fecha  = new Date(sesion.fecha).toLocaleDateString('es-ES');
+  const dur    = sesion.duracionMin ? ` · ⏱️ ${sesion.duracionMin} min` : '';
+  const ejList = sesion.ejercicios
+    .map(ej => `  • ${ej.nombre}: ${ej.peso > 0 ? ej.peso + 'kg' : 'Al fallo'} (${ej.reps.filter(r=>r!=='').join('/')} reps)`)
+    .join('\n');
+
+  const texto = `🏋️ Gym Tracker — ${sesion.dia}\n📅 ${fecha}${dur}\n\n${ejList}\n\n💪 ¡Sesión completada!`;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Gym Tracker', text: texto });
+    } catch (e) {
+      if (e.name !== 'AbortError') showToast('Error al compartir: ' + e.message, 'error');
+    }
+  } else {
+    // Fallback: copiar al portapapeles
+    try {
+      await navigator.clipboard.writeText(texto);
+      showToast('📋 Resumen copiado al portapapeles', 'success');
+    } catch {
+      showToast('Tu navegador no soporta compartir ni copiar', 'info');
+    }
+  }
+};
+
+// ══════════════════════════════════════════════════════
 // AUDIO - Sistema modular con instancias independientes
 // ══════════════════════════════════════════════════════
 class AudioManager {
@@ -188,6 +481,7 @@ let estadoApp = JSON.parse(localStorage.getItem("estadoApp")) || {
 let diaActual = null;
 let ejerciciosDia = [];
 let notasSesion = "";
+let sesionStartTime = null; // Para calcular duración de la sesión
 
 // ══════════════════════════════════════════════════════
 // MODO 2 PERSONAS — TIMERS INDEPENDIENTES POR EJERCICIO
@@ -237,6 +531,7 @@ function iniciarTimerEjercicio(ejIndex, persona = 0) {
       clearInterval(intervalId);
       ejercicioTimers[ejIndex][persona] = { ...ejercicioTimers[ejIndex][persona], intervalId: null };
       audioManager.play(timerId);
+      vibrarSiActivo();
       const card = document.querySelector(`.ejercicio[data-ej-index="${ejIndex}"]`);
       if (card) {
         card.classList.add('timer-ej-flash');
@@ -611,6 +906,10 @@ function abrirDia(diaKey) {
   }
 
   notasSesion = "";
+  sesionStartTime = Date.now();
+  activarWakeLock();
+  fijarOrientacionPortrait();
+  iniciarAutoGuardado();
   const notasEl = document.getElementById('notas-sesion-input');
   if (notasEl) notasEl.value = "";
 
@@ -618,6 +917,7 @@ function abrirDia(diaKey) {
   resetTemporizador();
   renderDia();
   renderBotonesUltimaSesion();
+  setTimeout(verificarSesionParcial, 600); // leve delay para que renderDia esté listo
 
   const rutinaActiva = obtenerRutinaActiva();
   let mostrarCrono = false, mostrarTimer = true;
@@ -671,7 +971,8 @@ function cargarEjerciciosDia() {
       alFallo: ej.alFallo || false,
       descanso,
       tempo: ej.tempo || "",
-      notas: ej.notas || ""
+      notas: ej.notas || "",
+      musculo: ej.musculo || ""
     };
   });
 
@@ -745,6 +1046,7 @@ function renderDia() {
           <div class="ejercicio-badges">
             ${ej.tempo ? `<span class="badge-tempo" onclick="mostrarGuiaTempo('${escapeHtml(ej.tempo)}')" title="Ver guía de tempo">${escapeHtml(ej.tempo)} ❓</span>` : ''}
             ${ej.alFallo ? `<span class="badge-fallo">Al fallo</span>` : ''}
+            ${ej.musculo ? `<span class="badge-musculo">${MUSCULOS_MAP[ej.musculo] || ej.musculo}</span>` : ''}
           </div>
         </div>
 
@@ -763,6 +1065,7 @@ function renderDia() {
           <div class="ejercicio-col">
             <label class="col-label">Objetivo</label>
             <p class="objetivo-texto">${ej.alFallo ? `${ej.series}×Al fallo` : `${ej.series}×${ej.repsMin}${ej.repsMax !== ej.repsMin ? '-' + ej.repsMax : ''}`}</p>
+            ${!ej.alFallo && ej.peso > 0 ? `<p class="rm-estimado">1RM ≈ ${calcular1RM(ej.peso, ej.repsMax)}kg</p>` : ''}
           </div>
         </div>
 
@@ -955,6 +1258,8 @@ function finalizarDia() {
 function _doFinalizarDia() {
   Object.keys(ejercicioTimers).forEach(i => cancelarTodosTimersEjercicio(Number(i)));
   audioManager.stopAll();
+  detenerAutoGuardado();
+  limpiarAutoGuardado();
 
   const rutinaActual = obtenerRutinaCompleta();
   const sesion = {
@@ -962,6 +1267,7 @@ function _doFinalizarDia() {
     rutinaId: obtenerRutinaActiva(),
     dia: rutinaActual[diaActual]?.nombre || "Día desconocido",
     notas: notasSesion,
+    duracionMin: sesionStartTime ? Math.max(1, Math.round((Date.now() - sesionStartTime) / 60000)) : null,
     ejercicios: ejerciciosDia.map(ej => ({ nombre: ej.nombre, peso: ej.peso, reps: [...ej.reps] })),
     tiempoHIT: obtenerTiempoHIT() || null,
     tipoHIT: hitTipo || null
@@ -996,6 +1302,29 @@ function _doFinalizarDia() {
   const historial = JSON.parse(localStorage.getItem("historial")) || [];
   historial.push(sesion);
   localStorage.setItem("historial", JSON.stringify(historial));
+
+  // ── Detección automática de Récords Personales ─────────────────────
+  const historialPrevio = historial.slice(0, -1); // todo excepto esta sesión
+  const prsNuevos = [];
+  sesion.ejercicios.forEach(ej => {
+    if (!ej.peso || ej.peso <= 0) return;
+    const tienePrevio = historialPrevio.some(s => s.ejercicios.some(e => e.nombre === ej.nombre && e.peso > 0));
+    if (!tienePrevio) return; // Primera vez — no es PR porque no hay referencia
+    const maxPrevio = Math.max(...historialPrevio
+      .flatMap(s => s.ejercicios)
+      .filter(e => e.nombre === ej.nombre && e.peso > 0)
+      .map(e => e.peso));
+    if (ej.peso > maxPrevio) {
+      prsNuevos.push({ nombre: ej.nombre, peso: ej.peso, previo: maxPrevio });
+    }
+  });
+  if (prsNuevos.length > 0) {
+    setTimeout(() => {
+      prsNuevos.forEach(pr => {
+        showToast(`🏆 ¡NUEVO RÉCORD! ${pr.nombre}: ${pr.peso}kg (+${(pr.peso - pr.previo).toFixed(1)}kg)`, 'success', 5000);
+      });
+    }, 600);
+  }
   guardarConfig();
 
   ejerciciosDia.forEach(ej => { ej.reps = Array(ej.series).fill(""); ej.incremento = 2; ej.noProgresar = false; });
@@ -1031,6 +1360,7 @@ function mostrarPantallaResumen(sesion, huboProgresion, detalles, enDeload = fal
       <div class="stat-card"><span class="stat-num">${sesion.ejercicios.length}</span><span class="stat-label">Ejercicios</span></div>
       <div class="stat-card stat-success"><span class="stat-num">${progresaron.length}</span><span class="stat-label">Progresaron 📈</span></div>
       <div class="stat-card"><span class="stat-num">${noProgresaron.length + alFallo.length}</span><span class="stat-label">Sin cambio</span></div>
+      ${sesion.duracionMin ? `<div class="stat-card"><span class="stat-num">${sesion.duracionMin}'</span><span class="stat-label">Duración</span></div>` : ''}
     </div>
 
     ${enDeload ? `<div class="deload-dia-notice" style="margin:12px 0;">💤 Sesión de <strong>Deload</strong> — pesos al 70%, sin progresión registrada</div>` : ''}
@@ -1113,6 +1443,7 @@ function verDetalle(index) {
     <div class="detalle-header">
       <p>${new Date(s.fecha).toLocaleString('es-ES')}</p>
       <p class="resumen-dia">${escapeHtml(s.dia)}</p>
+      ${s.duracionMin ? `<p style="color:var(--text-secondary);font-size:13px;">⏱️ Duración: <strong>${s.duracionMin} min</strong></p>` : ''}
       ${s.notas ? `<p class="resumen-notas">"${escapeHtml(s.notas)}"</p>` : ''}
       ${s.tiempoHIT ? `<p class="detalle-hit">⏲️ HIT (${escapeHtml(s.tipoHIT || 'Cardio')}): ${formatearTiempo(s.tiempoHIT)}</p>` : ''}
     </div>
@@ -1319,6 +1650,10 @@ function _doVolverMenu() {
   guardarEstadoApp();
   Object.keys(ejercicioTimers).forEach(i => cancelarTodosTimersEjercicio(Number(i)));
   audioManager.stopAll();
+  liberarWakeLock();
+  liberarOrientacion();
+  detenerAutoGuardado();
+  limpiarAutoGuardado();
 }
 
 function toggleSidebar() {
@@ -1942,6 +2277,12 @@ function renderEstadisticas() {
   historial.forEach(s => { diasCount[s.dia] = (diasCount[s.dia] || 0) + 1; });
   const diaFav = Object.entries(diasCount).sort((a, b) => b[1] - a[1])[0];
 
+  // Duración promedio (solo sesiones que la tengan registrada)
+  const conDuracion = historial.filter(s => s.duracionMin > 0);
+  const durPromedio = conDuracion.length
+    ? Math.round(conDuracion.reduce((a, s) => a + s.duracionMin, 0) / conDuracion.length)
+    : null;
+
   cont.innerHTML = `
     <div class="stats-grid">
       <div class="stat-box highlight">
@@ -1968,6 +2309,10 @@ function renderEstadisticas() {
         <span class="stat-val">${diaFav ? diaFav[1] : 0}x</span>
         <span class="stat-lbl">${diaFav ? diaFav[0].split('–')[1]?.trim() || diaFav[0] : '-'}</span>
       </div>
+      ${durPromedio ? `<div class="stat-box">
+        <span class="stat-val">${durPromedio}'</span>
+        <span class="stat-lbl">Duración promedio</span>
+      </div>` : ''}
     </div>
 
     ${topRecords.length > 0 ? `
@@ -2405,6 +2750,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderizarBotonesDias();
   renderizarBannerDeload();
 
+  // Inicializar toggle de vibración con el valor guardado
+  const chkVib = document.getElementById('toggle-vibracion');
+  if (chkVib) chkVib.checked = localStorage.getItem('vibrarAlTerminar') === 'true';
+
   try { await initAudio(); } catch (e) { console.warn("Audio:", e); }
 
   const saved = JSON.parse(localStorage.getItem("estadoApp"));
@@ -2454,6 +2803,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                   clearInterval(intervalId);
                   delete ejercicioTimers[idx][persona];
                   audioManager.play(timerId);
+                  vibrarSiActivo();
                   const card = document.querySelector(`.ejercicio[data-ej-index="${idx}"]`);
                   if (card) { card.classList.add('timer-ej-flash'); setTimeout(() => card.classList.remove('timer-ej-flash'), 2000); }
                 }

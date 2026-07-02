@@ -224,6 +224,23 @@ function renderFormularioDia() {
             <div class="form-col"><label class="form-label">⏱ Descanso (seg)</label><input id="edit-desc-${idx}" type="number" min="0" value="${ej.descanso||''}" placeholder="90" /></div>
             <div class="form-col"><label class="form-label">Tempo</label><input id="edit-tempo-${idx}" placeholder="3-1-1" value="${esc(ej.tempo||'')}" /></div>
           </div>
+          <div class="form-row">
+            <div class="form-col"><label class="form-label">Grupo muscular</label>
+              <select id="edit-musculo-${idx}">
+                <option value="">— Sin especificar —</option>
+                <option value="pectoral"  ${ej.musculo==='pectoral'  ?'selected':''}>🫀 Pectoral</option>
+                <option value="espalda"   ${ej.musculo==='espalda'   ?'selected':''}>🔙 Espalda</option>
+                <option value="hombro"    ${ej.musculo==='hombro'    ?'selected':''}>💪 Hombro</option>
+                <option value="bicep"     ${ej.musculo==='bicep'     ?'selected':''}>💪 Bícep</option>
+                <option value="tricep"    ${ej.musculo==='tricep'    ?'selected':''}>💪 Trícep</option>
+                <option value="cuadricep" ${ej.musculo==='cuadricep' ?'selected':''}>🦵 Cuádricep</option>
+                <option value="isquio"    ${ej.musculo==='isquio'    ?'selected':''}>🦵 Isquiotibial</option>
+                <option value="gluteo"    ${ej.musculo==='gluteo'    ?'selected':''}>🍑 Glúteo</option>
+                <option value="gemelo"    ${ej.musculo==='gemelo'    ?'selected':''}>🦶 Gemelo</option>
+                <option value="core"      ${ej.musculo==='core'      ?'selected':''}>🎯 Core/Abdomen</option>
+              </select>
+            </div>
+          </div>
           <label class="form-label">Notas técnicas</label>
           <textarea id="edit-notas-${idx}" rows="2">${esc(ej.notas||'')}</textarea>
           <label class="form-label-check"><input type="checkbox" id="edit-fallo-${idx}" ${ej.alFallo?'checked':''}> Al fallo</label>
@@ -248,6 +265,23 @@ function renderFormularioDia() {
       <div class="form-row">
         <div class="form-col"><label class="form-label">⏱ Descanso (seg)</label><input id="ej-descanso" type="number" min="0" placeholder="90" /></div>
         <div class="form-col"><label class="form-label">Tempo</label><input id="ej-tempo" placeholder="3-1-1" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-col"><label class="form-label">Grupo muscular</label>
+          <select id="ej-musculo">
+            <option value="">— Sin especificar —</option>
+            <option value="pectoral">🫀 Pectoral</option>
+            <option value="espalda">🔙 Espalda</option>
+            <option value="hombro">💪 Hombro</option>
+            <option value="bicep">💪 Bícep</option>
+            <option value="tricep">💪 Trícep</option>
+            <option value="cuadricep">🦵 Cuádricep</option>
+            <option value="isquio">🦵 Isquiotibial</option>
+            <option value="gluteo">🍑 Glúteo</option>
+            <option value="gemelo">🦶 Gemelo</option>
+            <option value="core">🎯 Core/Abdomen</option>
+          </select>
+        </div>
       </div>
       <label class="form-label">Notas técnicas</label>
       <textarea id="ej-notas" rows="2" placeholder="Indicaciones de ejecución..."></textarea>
@@ -282,12 +316,13 @@ window.guardarEjercicioEditado = function(idx) {
   if(Number(repsMin)>Number(repsMax) && !alFallo){ showToast('Reps mín no puede superar reps máx','warning'); return; }
 
   const rm = alFallo ? (Number(repsMax)||30) : Number(repsMax);
+  const musculoV = get(`edit-musculo-${idx}`)?.value || '';
   rutinaEditando.dias[diaEditando].ejercicios[idx]={
     ...rutinaEditando.dias[diaEditando].ejercicios[idx],
     nombre, peso:alFallo?0:(Number(peso)||0),
     series:Number(series), repsMin:Number(repsMin), repsMax:rm,
     descanso: descV ? Number(descV) : (rutinaEditando.dias[diaEditando].ejercicios[idx].descanso||descansoInteligente(rm)),
-    tempo:tempoV, notas:notasV, alFallo
+    tempo:tempoV, notas:notasV, alFallo, musculo:musculoV
   };
   saveRutinaUsuario(rutinaEditando,rutinaEditandoId);
   dispararCambioRutina();
@@ -313,6 +348,7 @@ window.añadirEjercicioADia = function() {
   const descV=get("ej-descanso"); const tempoV=get("ej-tempo")?.trim();
   const notasV=document.getElementById("ej-notas")?.value.trim();
   const alFallo=document.getElementById("ej-fallo")?.checked;
+  const musculoV=document.getElementById("ej-musculo")?.value || '';
   if(!nombre||!seriesV){ showToast('Completa los campos obligatorios: nombre y series (*)','warning'); return; }
   if(!alFallo && (pesoV===''||pesoV===undefined||!rminV||!rmaxV)){ showToast('Completa todos los campos obligatorios (*)','warning'); return; }
   if(!alFallo && Number(rminV)>Number(rmaxV)){ showToast('Reps mín no puede superar reps máx','warning'); return; }
@@ -321,7 +357,7 @@ window.añadirEjercicioADia = function() {
     nombre, peso:alFallo?0:(Number(pesoV)||0), series:Number(seriesV),
     repsMin:Number(rminV), repsMax:rm,
     descanso:descV?Number(descV):descansoInteligente(rm),
-    tempo:tempoV||'', notas:notasV||'', alFallo:alFallo||false
+    tempo:tempoV||'', notas:notasV||'', alFallo:alFallo||false, musculo:musculoV
   });
   saveRutinaUsuario(rutinaEditando,rutinaEditandoId);
   dispararCambioRutina();
