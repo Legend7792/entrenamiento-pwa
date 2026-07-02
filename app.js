@@ -321,6 +321,8 @@ window.compartirResumen = async function () {
 class AudioManager {
   constructor() {
     this.ctx = null;
+    this.gainNode = null;
+    this.gainValue = parseFloat(localStorage.getItem('audioGain') || '1.0');
     this.bufferBeep = null;
     this.bufferPersonalizado = null;
     this.nombrePersonalizado = null;
@@ -330,6 +332,12 @@ class AudioManager {
   async init() {
     if (!this.ctx) {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    // GainNode para amplificación configurable
+    if (!this.gainNode) {
+      this.gainNode = this.ctx.createGain();
+      this.gainNode.gain.value = this.gainValue;
+      this.gainNode.connect(this.ctx.destination);
     }
     if (!this.bufferBeep) {
       const resp = await fetch("./beep.mp3");
@@ -352,9 +360,16 @@ class AudioManager {
     const source = this.ctx.createBufferSource();
     source.buffer = buf;
     source.loop = true;
-    source.connect(this.ctx.destination);
+    // Rutear a través del GainNode para amplificación configurable
+    source.connect(this.gainNode || this.ctx.destination);
     source.start();
     this.activeSources.set(timerId, source);
+  }
+
+  setGain(value) {
+    this.gainValue = Math.max(0.1, Math.min(3.0, parseFloat(value)));
+    if (this.gainNode) this.gainNode.gain.value = this.gainValue;
+    localStorage.setItem('audioGain', String(this.gainValue));
   }
 
   stop(timerId) {
@@ -470,6 +485,31 @@ window.cargarAudioPersonalizado = cargarAudioPersonalizado;
 window.resetearAudioPorDefecto = resetearAudioPorDefecto;
 window.probarSonido = probarSonido;
 
+// ── Control de amplificación (GainNode) ──────────────────
+window.ajustarGainAudio = function (value) {
+  const v = parseFloat(value);
+  audioManager.setGain(v);
+  const label = document.getElementById('audio-gain-val');
+  if (label) label.textContent = v.toFixed(1) + '×';
+};
+
+// ── Notificación SW cuando el timer termina en background ─
+// Usa el canal de notificaciones (distinto del volumen de medios)
+function notificarTimerTerminado(texto = '¡Descanso terminado! Siguiente serie') {
+  if (!document.hidden) return; // Solo si la app está en segundo plano
+  if (Notification.permission !== 'granted') return;
+  navigator.serviceWorker.ready
+    .then(reg => reg.showNotification('⏱️ Gym Tracker', {
+      body: texto,
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      vibrate: [200, 100, 200],
+      requireInteraction: false,
+      tag: 'gym-timer' // reemplaza notificaciones anteriores del mismo tag
+    }))
+    .catch(() => {}); // silencioso si falla
+}
+
 // ══════════════════════════════════════════════════════
 // ESTADO CENTRAL
 // ══════════════════════════════════════════════════════
@@ -532,6 +572,7 @@ function iniciarTimerEjercicio(ejIndex, persona = 0) {
       ejercicioTimers[ejIndex][persona] = { ...ejercicioTimers[ejIndex][persona], intervalId: null };
       audioManager.play(timerId);
       vibrarSiActivo();
+      notificarTimerTerminado('¡Descanso terminado! Vuelve a la app para continuar.');
       const card = document.querySelector(`.ejercicio[data-ej-index="${ejIndex}"]`);
       if (card) {
         card.classList.add('timer-ej-flash');
@@ -802,6 +843,7 @@ function iniciarTemporizador(min = 0, seg = 0) {
     if (tiempoRestante <= 0) {
       clearInterval(timerID); timerID = null; timerPausado = false;
       audioManager.play('global-timer');
+      notificarTimerTerminado('¡Timer terminado! Vuelve a la app.');
       mostrarModalTimer();
     }
   }, 1000);
@@ -2754,6 +2796,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const chkVib = document.getElementById('toggle-vibracion');
   if (chkVib) chkVib.checked = localStorage.getItem('vibrarAlTerminar') === 'true';
 
+  // Inicializar slider de amplificación de audio
+  const gainSlider = document.getElementById('audio-gain-slider');
+  const gainVal    = document.getElementById('audio-gain-val');
+  const savedGain  = parseFloat(localStorage.getItem('audioGain') || '1.0');
+  if (gainSlider) gainSlider.value = savedGain;
+  if (gainVal)    gainVal.textContent = savedGain.toFixed(1) + '×';
+
   try { await initAudio(); } catch (e) { console.warn("Audio:", e); }
 
   const saved = JSON.parse(localStorage.getItem("estadoApp"));
@@ -2804,6 +2853,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                   delete ejercicioTimers[idx][persona];
                   audioManager.play(timerId);
                   vibrarSiActivo();
+                  notificarTimerTerminado('¡Descanso terminado! Vuelve a la app para continuar.');
                   const card = document.querySelector(`.ejercicio[data-ej-index="${idx}"]`);
                   if (card) { card.classList.add('timer-ej-flash'); setTimeout(() => card.classList.remove('timer-ej-flash'), 2000); }
                 }

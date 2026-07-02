@@ -115,7 +115,7 @@ export const TEMAS = {
     }
   },
   gris: {
-    nombre: "🩶 Gris Acero",
+    nombre: "⚙️ Gris Acero",
     variables: {
       "--bg-primary": "#1c1c1e",
       "--bg-secondary": "#2c2c2e",
@@ -129,7 +129,7 @@ export const TEMAS = {
     }
   },
   cyan: {
-    nombre: "🩵 Cyan Neón",
+    nombre: "💠 Cyan Neón",
     variables: {
       "--bg-primary": "#00111a",
       "--bg-secondary": "#001f2e",

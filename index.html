@@ -378,6 +378,20 @@
     <p class="audio-toggle-hint">Vibra al acabar cada descanso. Solo funciona en móvil.</p>
   </div>
 
+  <div class="audio-vibracion">
+    <label class="audio-toggle-label" style="flex-direction:column;align-items:flex-start;gap:10px;">
+      <span class="audio-toggle-text">🔊 Amplificación de sonido</span>
+      <div style="display:flex;align-items:center;gap:12px;width:100%;">
+        <input type="range" id="audio-gain-slider"
+               min="0.5" max="2.0" step="0.1" value="1.0"
+               oninput="ajustarGainAudio(this.value)"
+               style="flex:1;accent-color:var(--accent);">
+        <span id="audio-gain-val" style="min-width:36px;text-align:right;font-weight:700;color:var(--accent);">1.0×</span>
+      </div>
+    </label>
+    <p class="audio-toggle-hint" style="margin-left:0;">Amplifica la señal del beep por encima del volumen del sistema (máx 2×). No afecta al volumen de llamadas ni alarma — el navegador siempre usa el canal de medios.</p>
+  </div>
+
   <div class="audio-info">
     <p>📌 Formatos: MP3, WAV, OGG · Máximo 5MB</p>
     <p>El audio se reproduce en bucle hasta que pares el temporizador.</p>
