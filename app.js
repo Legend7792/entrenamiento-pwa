@@ -1,12 +1,13 @@
-// app.js — Gym Tracker v91 — Versión corregida y optimizada
+// app.js — Gym Tracker v96
 import "./auth.js";
-import "./cloud.js";
 import { loadRutinaUsuario, inicializarRutinaBase, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
-import { markDirty, userState } from "./userState.js";
+import { markDirty, userState, esClaveBackup, sincronizarSiHaceFalta } from "./userState.js";
+import { navPush, navLimpiar, navAtras, navRegistrarPop, navConsumirPopstateIgnorado } from "./nav.js";
+import * as audioStore from "./audioStore.js";
 import { renderizarSelectorRutinas, obtenerRutinaActiva, RUTINA_BASE_ID } from "./selectorRutinas.js";
 import "./themes.js";
 import "./editorRutinas.js";
-import { showToast, showConfirm, showPrompt, showAlert, initOfflineBanner } from "./ui.js";
+import { showToast, showConfirm, showPrompt, showAlert, initOfflineBanner, escapeHtml } from "./ui.js";
 import "./aiImport.js";
 
 // ══════════════════════════════════════════════════════
@@ -49,6 +50,12 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
+// Número de día según la fecha LOCAL (no depende de horario de verano: un día siempre = +1)
+function numDia(fecha) {
+  const d = fecha instanceof Date ? fecha : new Date(fecha);
+  return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+}
+
 // ══════════════════════════════════════════════════════
 // ESTIMADOR 1RM (Fórmula de Epley)
 // ══════════════════════════════════════════════════════
@@ -68,6 +75,7 @@ function vibrarSiActivo() {
 
 window.toggleVibracion = function (activo) {
   localStorage.setItem('vibrarAlTerminar', activo ? 'true' : 'false');
+  markDirty();
   showToast(activo ? '📳 Vibración activada' : '🔕 Vibración desactivada', 'info');
 };
 
@@ -121,10 +129,11 @@ window.instalarApp = async function () {
 // ══════════════════════════════════════════════════════
 window.exportarBackupJSON = function () {
   try {
-    const backup = { _version: 'gym-tracker-backup-v1', _exportedAt: new Date().toISOString() };
+    // Sin sesión, tokens, API key, audio ni estado temporal (ver esClaveBackup)
+    const backup = { _version: 'gym-tracker-backup-v2', _exportedAt: new Date().toISOString() };
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      backup[key] = localStorage.getItem(key);
+      if (esClaveBackup(key)) backup[key] = localStorage.getItem(key);
     }
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
@@ -134,8 +143,8 @@ window.exportarBackupJSON = function () {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('💾 Backup exportado correctamente', 'success');
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('💾 Backup exportado (no incluye tu sesión ni claves)', 'success');
   } catch (e) {
     showToast('Error al exportar: ' + e.message, 'error');
   }
@@ -154,29 +163,29 @@ window.importarBackupJSON = function (input) {
     try {
       const data = JSON.parse(e.target.result);
 
-      // Validación mínima: debe tener la marca de versión
-      if (!data._version || !data._version.startsWith('gym-tracker-backup')) {
+      if (!data || typeof data._version !== 'string' || !data._version.startsWith('gym-tracker-backup')) {
         showToast('❌ Archivo no válido. Debe ser un backup de Gym Tracker.', 'error');
         return;
       }
 
-      const totalClaves = Object.keys(data).filter(k => !k.startsWith('_')).length;
+      // Solo claves permitidas: un backup (aunque sea antiguo o manipulado) no puede
+      // cambiar la sesión ni la API key.
+      const entradas = Object.entries(data).filter(([k, v]) => !k.startsWith('_') && esClaveBackup(k) && typeof v === 'string');
+      let nSesiones = 0;
+      try { nSesiones = JSON.parse(data.historial || '[]').length; } catch {}
 
       showConfirm(
-        `📂 ¿Restaurar backup?\n\nEsto REEMPLAZARÁ todos tus datos locales con los del backup.\n\nBackup del: ${data._exportedAt ? new Date(data._exportedAt).toLocaleString('es-ES') : 'fecha desconocida'}\nClaves: ${totalClaves}\n\n⚠️ Esta acción no se puede deshacer.`,
+        `📂 ¿Restaurar backup?\n\nSe REEMPLAZARÁN los datos de este dispositivo que estén en el backup.\n\nBackup del: ${data._exportedAt ? new Date(data._exportedAt).toLocaleString('es-ES') : 'fecha desconocida'}\nSesiones: ${nSesiones} · Claves: ${entradas.length}\n\n⚠️ Esta acción no se puede deshacer. Si quieres conservarlo todo, exporta antes un backup nuevo.`,
         () => {
-          // Restaurar claves (saltarse las meta-claves internas)
-          const META_KEYS = new Set(['_version', '_exportedAt']);
           let restauradas = 0;
-          for (const [key, val] of Object.entries(data)) {
-            if (META_KEYS.has(key)) continue;
-            try {
-              localStorage.setItem(key, val);
-              restauradas++;
-            } catch (err) {
-              console.warn('[Backup] No se pudo restaurar clave:', key, err.message);
-            }
+          for (const [key, val] of entradas) {
+            try { localStorage.setItem(key, val); restauradas++; }
+            catch (err) { console.warn('[Backup] No se pudo restaurar clave:', key, err.message); }
           }
+          // Estado de pantalla/sesión en curso del equipo anterior: no tiene sentido restaurarlo
+          localStorage.removeItem('estadoApp');
+          localStorage.removeItem('gym_sesion_parcial');
+          markDirty();
           showToast(`✅ Backup restaurado: ${restauradas} claves. Recargando...`, 'success');
           setTimeout(() => window.location.reload(), 1800);
         },
@@ -286,7 +295,7 @@ async function liberarOrientacion() {
 // SHARE API — Compartir resumen de sesión
 // ══════════════════════════════════════════════════════
 window.compartirResumen = async function () {
-  const historial = JSON.parse(localStorage.getItem('historial')) || [];
+  const historial = leerHistorialCrudo();
   const sesion = historial[historial.length - 1];
   if (!sesion) { showToast('Sin sesión para compartir', 'info'); return; }
 
@@ -370,6 +379,7 @@ class AudioManager {
     this.gainValue = Math.max(0.1, Math.min(3.0, parseFloat(value)));
     if (this.gainNode) this.gainNode.gain.value = this.gainValue;
     localStorage.setItem('audioGain', String(this.gainValue));
+    if (typeof markDirty === 'function') markDirty();
   }
 
   stop(timerId) {
@@ -400,47 +410,39 @@ class AudioManager {
     try {
       if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       const arrayBuffer = await file.arrayBuffer();
-      this.bufferPersonalizado = await this.ctx.decodeAudioData(arrayBuffer.slice(0));
+      const buffer = await this.ctx.decodeAudioData(arrayBuffer.slice(0));
+      // Guardar en IndexedDB (admite los 5 MB; localStorage no)
+      await audioStore.guardarAudio(arrayBuffer, file.name, file.type);
+      this.bufferPersonalizado = buffer;
       this.nombrePersonalizado = file.name;
-      const reader = new FileReader();
-      reader.onload = e => {
-        try {
-          localStorage.setItem('audioPersonalizado', e.target.result);
-          localStorage.setItem('audioPersonalizadoNombre', file.name);
-          actualizarNombreAudio(file.name);
-          showToast('Audio guardado correctamente', 'success');
-        } catch {
-          showToast('Error al guardar el audio. Intenta con uno más pequeño.', 'error');
-        }
-      };
-      reader.readAsDataURL(file);
+      actualizarNombreAudio(file.name);
+      showToast('Audio guardado correctamente', 'success');
       return true;
-    } catch {
-      showToast('Error al cargar el audio', 'error');
+    } catch (e) {
+      showToast('No se pudo cargar o guardar el audio. Prueba con otro archivo (MP3/WAV/OGG).', 'error');
       return false;
     }
   }
 
   async cargarGuardado() {
-    const guardado = localStorage.getItem('audioPersonalizado');
-    const nombre = localStorage.getItem('audioPersonalizadoNombre');
-    if (!guardado || !nombre) return;
     try {
+      await audioStore.migrarAudioLegacy(); // audio antiguo en localStorage → IndexedDB
+      const reg = await audioStore.leerAudio();
+      if (!reg) return;
       if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const resp = await fetch(guardado);
-      const blob = await resp.blob();
-      const buf = await blob.arrayBuffer();
-      this.bufferPersonalizado = await this.ctx.decodeAudioData(buf);
-      this.nombrePersonalizado = nombre;
-      actualizarNombreAudio(nombre);
+      this.bufferPersonalizado = await this.ctx.decodeAudioData(reg.datos.slice(0));
+      this.nombrePersonalizado = reg.nombre;
+      actualizarNombreAudio(reg.nombre);
     } catch {
-      localStorage.removeItem('audioPersonalizado');
-      localStorage.removeItem('audioPersonalizadoNombre');
+      // Audio dañado: volver al beep sin tocar nada más
+      this.bufferPersonalizado = null;
+      this.nombrePersonalizado = null;
     }
   }
 
   resetear() {
     showConfirm('¿Volver al sonido predeterminado?', () => {
+      audioStore.borrarAudio().catch(() => {});
       localStorage.removeItem('audioPersonalizado');
       localStorage.removeItem('audioPersonalizadoNombre');
       this.bufferPersonalizado = null;
@@ -493,11 +495,23 @@ window.ajustarGainAudio = function (value) {
   if (label) label.textContent = v.toFixed(1) + '×';
 };
 
+let _permisoNotifPedido = false;
+function pedirPermisoNotificaciones() {
+  if (_permisoNotifPedido) return;
+  _permisoNotifPedido = true;
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  } catch { /* navegador sin soporte */ }
+}
+
 // ── Notificación SW cuando el timer termina en background ─
 // Usa el canal de notificaciones (distinto del volumen de medios)
 function notificarTimerTerminado(texto = '¡Descanso terminado! Siguiente serie') {
   if (!document.hidden) return; // Solo si la app está en segundo plano
-  if (Notification.permission !== 'granted') return;
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  if (!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.ready
     .then(reg => reg.showNotification('⏱️ Gym Tracker', {
       body: texto,
@@ -537,6 +551,7 @@ function getTimerId(ejIndex, persona) {
 function iniciarTimerEjercicio(ejIndex, persona = 0) {
   const ej = ejerciciosDia[ejIndex];
   if (!ej) return;
+  pedirPermisoNotificaciones();
   const segundos = ej.descanso || 90;
   const timerId = getTimerId(ejIndex, persona);
 
@@ -615,6 +630,7 @@ window.toggleTimerEjercicio = (ejIndex, persona = 0) => iniciarTimerEjercicio(ej
 window.toggleModoDosPersonas = function () {
   modoDosPersonas = !modoDosPersonas;
   localStorage.setItem('modoDosPersonas', modoDosPersonas);
+  markDirty();
   Object.keys(ejercicioTimers).forEach(i => cancelarTodosTimersEjercicio(Number(i)));
   const btn = document.getElementById('btn-modo-personas');
   if (btn) {
@@ -663,6 +679,73 @@ function recargarConfig() {
 }
 window.recargarConfig = recargarConfig;
 
+// ── Claves de configuración por EJERCICIO, separadas por rutina ──
+// Antes: "<día>_<ejercicio>" para todas las rutinas (dos rutinas con el mismo nombre de
+// día compartían pesos). Ahora: la rutina base conserva su formato (compatibilidad) y las
+// demás usan "<idRutina>::<día>_<ejercicio>". Si no existe la clave nueva se lee la antigua.
+const safeKey = (str) => String(str ?? '').replace(/[<>\"']/g, '');
+
+function claveEj(nombreDia, nombreEj, rutinaId = obtenerRutinaActiva()) {
+  const base = `${safeKey(nombreDia)}_${safeKey(nombreEj)}`;
+  return rutinaId === RUTINA_BASE_KEY ? base : `${rutinaId}::${base}`;
+}
+
+function leerCfg(tabla, nombreDia, nombreEj, rutinaId = obtenerRutinaActiva()) {
+  const t = config[tabla] || {};
+  const nueva = claveEj(nombreDia, nombreEj, rutinaId);
+  if (t[nueva] !== undefined) return t[nueva];
+  const legacy = `${safeKey(nombreDia)}_${safeKey(nombreEj)}`;
+  return t[legacy];
+}
+
+function escribirCfg(tabla, nombreDia, nombreEj, valor, rutinaId = obtenerRutinaActiva()) {
+  if (!config[tabla]) config[tabla] = {};
+  config[tabla][claveEj(nombreDia, nombreEj, rutinaId)] = valor;
+}
+
+// Llamado por el editor de rutinas: fija el peso de trabajo de un ejercicio
+window.fijarPesoConfig = function (rutinaId, nombreDia, nombreEj, peso) {
+  escribirCfg('pesos', nombreDia, nombreEj, Number(peso) || 0, rutinaId);
+  guardarConfig();
+};
+
+// Llamado por el editor al renombrar un ejercicio o un día: conserva pesos, descansos e incrementos
+window.migrarClavesConfig = function (rutinaId, dia, ejViejo, diaNuevo, ejNuevo) {
+  ['pesos', 'descansos', 'incrementos'].forEach(tabla => {
+    const v = leerCfg(tabla, dia, ejViejo, rutinaId);
+    if (v !== undefined) {
+      escribirCfg(tabla, diaNuevo, ejNuevo, v, rutinaId);
+    }
+  });
+  guardarConfig();
+};
+
+// Peso de trabajo vigente (el guardado en config tiene prioridad sobre el de la plantilla de la rutina)
+window.pesoConfigActual = function (rutinaId, nombreDia, nombreEj, porDefecto) {
+  const v = parseFloat(leerCfg('pesos', nombreDia, nombreEj, rutinaId));
+  return (v >= 0 && !Number.isNaN(v)) ? v : (Number(porDefecto) || 0);
+};
+
+// El editor cambió el descanso de un ejercicio: el valor guardado en config tiene prioridad al cargar,
+// así que hay que actualizarlo también o el cambio no se vería.
+window.fijarDescansoConfig = function (rutinaId, nombreDia, nombreEj, seg) {
+  escribirCfg('descansos', nombreDia, nombreEj, Number(seg) || 0, rutinaId);
+  guardarConfig();
+};
+
+// El editor renombró un día: mueve pesos/descansos/incrementos de todos sus ejercicios
+// y los ejercicios extra añadidos desde la pantalla del día.
+window.renombrarDiaConfig = function (rutinaId, diaViejo, diaNuevo, nombresEjercicios) {
+  if (diaViejo === diaNuevo) return;
+  (nombresEjercicios || []).forEach(n => window.migrarClavesConfig(rutinaId, diaViejo, n, diaNuevo, n));
+  const extra = config.ejerciciosExtra || {};
+  if (extra[diaViejo] && !extra[diaNuevo]) {
+    extra[diaNuevo] = extra[diaViejo];
+    delete extra[diaViejo];
+    guardarConfig();
+  }
+};
+
 function migrarPesosAntiguos() {
   if (localStorage.getItem('pesosMigradosV91') === 'true') return;
   
@@ -703,7 +786,7 @@ let timers = JSON.parse(localStorage.getItem("timers")) || [
   { nombre: "Descanso largo", minutos: 4, segundos: 0 }
 ];
 
-function guardarTimers() { localStorage.setItem("timers", JSON.stringify(timers)); }
+function guardarTimers() { localStorage.setItem("timers", JSON.stringify(timers)); markDirty(); }
 
 function renderTimers() {
   const cont = document.getElementById("lista-timers");
@@ -714,13 +797,6 @@ function renderTimers() {
       <button onclick="iniciarTemporizador(${t.minutos},${t.segundos})">▶️</button>
       <button onclick="borrarTimer(${i})">🗑️</button>
     </div>`).join('');
-}
-
-function escapeHtml(text) {
-  if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 let timerDuracionTotal = 0;
@@ -826,7 +902,8 @@ function añadirTimer() {
 function borrarTimer(i) { timers.splice(i, 1); guardarTimers(); renderTimers(); }
 
 function iniciarTemporizador(min = 0, seg = 0) {
-  if (timerID) return;
+  if (timerID) { showToast('Ya hay un timer en marcha. Pulsa ⏹️ Reset para cambiarlo.', 'info', 2500); return; }
+  pedirPermisoNotificaciones();
   const btnPausar = document.querySelector('#temporizador .btn-pausar');
   if (timerPausado && tiempoRestante > 0) {
     tiempoFinal = Date.now() + tiempoRestante * 1000;
@@ -891,7 +968,7 @@ function iniciarHIT() {
     const total = hitAcumulado + Math.round((Date.now() - hitInicio) / 1000);
     const el = document.getElementById("tiempo-hit");
     if (el) el.innerText = formatearTiempo(total);
-    guardarEstadoApp();
+    if (total % 10 === 0) guardarEstadoApp(); // no escribir en localStorage cada segundo
   }, 1000);
   guardarEstadoApp();
 }
@@ -931,7 +1008,8 @@ function abrirDia(diaKey) {
   desbloquearAudioPorGesto();
   guardarEstadoApp();
   diaActual = diaKey;
-  history.pushState({}, "");
+  lastEjerciciosDiaHash = null; // siempre dibujar de cero al entrar
+  navPush();
   ocultarTodas();
   document.getElementById("pantalla-dia").classList.remove("oculto");
 
@@ -961,11 +1039,16 @@ function abrirDia(diaKey) {
   renderBotonesUltimaSesion();
   setTimeout(verificarSesionParcial, 600); // leve delay para que renderDia esté listo
 
+  aplicarConfigDia(diaKey);
+}
+
+// Muestra/oculta cronómetro HIT y temporizador según la configuración del día
+function aplicarConfigDia(diaKey) {
   const rutinaActiva = obtenerRutinaActiva();
   let mostrarCrono = false, mostrarTimer = true;
   const rutinaData = loadRutinaUsuario(rutinaActiva);
   if (rutinaData?.dias) {
-    const match = diaKey.match(/dia_(?:base|personalizado)_(\d+)/);
+    const match = String(diaKey).match(/dia_(?:base|personalizado)_(\d+)/);
     if (match) {
       const diaConf = rutinaData.dias[parseInt(match[1])];
       if (diaConf) { mostrarCrono = diaConf.tieneCronometro || false; mostrarTimer = diaConf.tieneTimer !== false; }
@@ -978,14 +1061,21 @@ function abrirDia(diaKey) {
 // ══════════════════════════════════════════════════════
 // CARGAR EJERCICIOS
 // ══════════════════════════════════════════════════════
+// Incremento sugerido: cargas pequeñas suben poco (2 kg sobre 5 kg de elevaciones laterales
+// es un salto del 40 %); los básicos pesados suben 2,5 kg.
+function incrementoPorDefecto(peso) {
+  const p = Number(peso) || 0;
+  if (p <= 15) return 1;
+  if (p <= 40) return 2;
+  return 2.5;
+}
+
 function cargarEjerciciosDia() {
   const rutinaActual = obtenerRutinaCompleta();
   if (!rutinaActual[diaActual]) return;
   const nombreDia = rutinaActual[diaActual].nombre;
   const base = rutinaActual[diaActual].ejercicios || [];
-  const extra = config.ejerciciosExtra[nombreDia] || [];
-
-  const safeKey = (str) => str.replace(/[<>\"']/g, '');
+  const extra = config.ejerciciosExtra?.[nombreDia] || [];
 
   const descansoInteligente = (repsMax) => {
     if (!repsMax || repsMax <= 5) return 180;
@@ -995,18 +1085,19 @@ function cargarEjerciciosDia() {
   };
 
   ejerciciosDia = [...base, ...extra].map(ej => {
-    const key = `${safeKey(nombreDia)}_${safeKey(ej.nombre)}`;
-    const descanso = config.descansos[key] || ej.descanso || descansoInteligente(ej.repsMax);
-    // Incremento personalizado guardado, o 2 por defecto (excepto al fallo)
-    const incrementoGuardado = config.incrementos?.[key];
-    const inc = ej.alFallo ? 0 : (incrementoGuardado !== undefined ? incrementoGuardado : 2);
+    const descanso = leerCfg('descansos', nombreDia, ej.nombre) || ej.descanso || descansoInteligente(ej.repsMax);
+    const pesoGuardado = parseFloat(leerCfg('pesos', nombreDia, ej.nombre));
+    const pesoTrabajo = ej.alFallo ? 0 : ((pesoGuardado >= 0 && !Number.isNaN(pesoGuardado)) ? pesoGuardado : (parseFloat(ej.peso) || 0));
+    // Incremento personalizado guardado o, si no hay, uno razonable según la carga
+    const incrementoGuardado = leerCfg('incrementos', nombreDia, ej.nombre);
+    const inc = ej.alFallo ? 0 : (incrementoGuardado !== undefined ? incrementoGuardado : incrementoPorDefecto(pesoTrabajo));
 
     return {
       nombre: ej.nombre,
       series: ej.series,
       repsMin: ej.repsMin,
       repsMax: ej.repsMax,
-      peso: ej.alFallo ? 0 : (parseFloat(config.pesos[key]) || parseFloat(ej.peso) || 0),
+      peso: pesoTrabajo,
       reps: Array(ej.series).fill(""),
       incremento: inc,
       noProgresar: ej.alFallo ? true : false,
@@ -1030,7 +1121,17 @@ let lastEjerciciosDiaHash = null;
 function calcularHashEjercicios() {
   // Incluir modoDosPersonas para que cambiar de modo fuerce re-renderizado de los timers
   const modoPrefix = modoDosPersonas ? '2p' : '1p';
-  return modoPrefix + '|' + ejerciciosDia.map(e => `${e.nombre}-${e.series}-${e.repsMin}-${e.repsMax}-${e.peso}-${e.descanso}-${e.alFallo}`).join('|');
+  // Incluye todo lo que se dibuja (antes faltaban tempo, notas y músculo → pantalla desactualizada)
+  return modoPrefix + '|' + ejerciciosDia.map(e => [e.nombre, e.series, e.repsMin, e.repsMax, e.peso, e.descanso, e.alFallo, e.tempo, e.notas, e.musculo, e.incremento, e.noProgresar].join('~')).join('|');
+}
+
+// Clase CSS de una serie según las reps escritas
+function claseSerie(ej, rep) {
+  if (ej.alFallo || rep === "" || rep === null || rep === undefined) return "";
+  const n = Number(rep);
+  if (n >= ej.repsMax) return "serie-ok";
+  if (n < ej.repsMin) return "serie-fail";
+  return "serie-mid";
 }
 
 function renderDia() {
@@ -1058,8 +1159,9 @@ function renderDia() {
   ejerciciosDia.forEach((ej, i) => {
     let seriesHTML = "";
     for (let s = 0; s < ej.series; s++) {
-      seriesHTML += `<input type="number" min="0" max="${ej.repsMax}"
-        id="rep-${i}-${s}" placeholder="S${s + 1}" value="${ej.reps[s]}"
+      seriesHTML += `<input type="number" inputmode="numeric" min="0" max="${ej.alFallo ? 999 : Math.max(ej.repsMax, 1) + 20}"
+        id="rep-${i}-${s}" placeholder="S${s + 1}" value="${ej.reps[s]}" class="${claseSerie(ej, ej.reps[s])}"
+        aria-label="Repeticiones serie ${s + 1} de ${escapeHtml(ej.nombre)}"
         oninput="actualizarSerie(${i},${s},this.value,this)">`;
     }
 
@@ -1086,9 +1188,10 @@ function renderDia() {
         <div class="ejercicio-header">
           <h3>${escapeHtml(ej.nombre)}</h3>
           <div class="ejercicio-badges">
-            ${ej.tempo ? `<span class="badge-tempo" onclick="mostrarGuiaTempo('${escapeHtml(ej.tempo)}')" title="Ver guía de tempo">${escapeHtml(ej.tempo)} ❓</span>` : ''}
+            ${ej.tempo ? `<span class="badge-tempo" onclick="mostrarGuiaTempoEj(${i})" title="Ver guía de tempo">${escapeHtml(ej.tempo)} ❓</span>` : ''}
             ${ej.alFallo ? `<span class="badge-fallo">Al fallo</span>` : ''}
-            ${ej.musculo ? `<span class="badge-musculo">${MUSCULOS_MAP[ej.musculo] || ej.musculo}</span>` : ''}
+            ${!ej.alFallo && ej.peso >= 20 ? `<span class="badge-tempo" onclick="mostrarCalentamiento(${i})" title="Series de aproximación sugeridas" role="button" tabindex="0">🔥 Calentar</span>` : ''}
+            ${ej.musculo ? `<span class="badge-musculo">${escapeHtml(MUSCULOS_MAP[ej.musculo] || ej.musculo)}</span>` : ''}
           </div>
         </div>
 
@@ -1102,7 +1205,7 @@ function renderDia() {
           ${!ej.alFallo ? `
           <div class="ejercicio-col">
             <label class="col-label">Peso (kg)</label>
-            <input type="number" step="0.5" value="${ej.peso}" onchange="actualizarPesoBase(${i},'${escapeHtml(ej.nombre)}',this.value)">
+            <input type="number" step="0.5" value="${ej.peso}" onchange="actualizarPesoBase(${i},this.value)">
           </div>` : ''}
           <div class="ejercicio-col">
             <label class="col-label">Objetivo</label>
@@ -1136,12 +1239,8 @@ function actualizarInputsReps() {
       if (input && input.value !== String(rep)) {
         input.value = rep;
         input.classList.remove("serie-ok", "serie-fail", "serie-mid");
-        if (!ej.alFallo && rep !== "") {
-          const n = Number(rep);
-          if (n >= ej.repsMax) input.classList.add("serie-ok");
-          else if (n < ej.repsMin) input.classList.add("serie-fail");
-          else input.classList.add("serie-mid");
-        }
+        const c = claseSerie(ej, rep);
+        if (c) input.classList.add(c);
       }
     });
   });
@@ -1207,9 +1306,7 @@ window.aplicarDescansoRapido = function (ejIndex, seg) {
   const rutinaActual = obtenerRutinaCompleta();
   const nombreDia = rutinaActual[diaActual]?.nombre;
   if (nombreDia) {
-    const safeKey = (str) => str.replace(/[<>\"']/g, '');
-    const key = `${safeKey(nombreDia)}_${safeKey(ejerciciosDia[ejIndex].nombre)}`;
-    config.descansos[key] = seg;
+    escribirCfg('descansos', nombreDia, ejerciciosDia[ejIndex].nombre, seg);
     guardarConfig();
   }
 
@@ -1237,27 +1334,25 @@ function actualizarSerie(ejIndex, serieIndex, valor, input) {
   const reps = valor === "" ? "" : Number(valor);
   ej.reps[serieIndex] = reps;
   input.classList.remove("serie-ok", "serie-fail", "serie-mid");
-  if (!ej.alFallo && reps !== "") {
-    if (reps >= ej.repsMax) input.classList.add("serie-ok");
-    else if (reps < ej.repsMin) input.classList.add("serie-fail");
-    else input.classList.add("serie-mid");
-  }
+  const c = claseSerie(ej, reps);
+  if (c) input.classList.add(c);
   guardarEstadoApp();
 }
 
 function guardarPesoBase(nombre, valor) {
   const ra = obtenerRutinaCompleta();
   const nombreDia = ra[diaActual]?.nombre || diaActual;
-  const safeKey = (str) => str.replace(/[<>\"']/g, '');
-  const key = `${safeKey(nombreDia)}_${safeKey(nombre)}`;
-  config.pesos[key] = parseFloat(valor) || 0;
+  escribirCfg('pesos', nombreDia, nombre, parseFloat(valor) || 0);
   guardarConfig();
 }
 
-window.actualizarPesoBase = (ejIndex, nombre, valor) => {
-  ejerciciosDia[ejIndex].peso = parseFloat(valor) || 0;
+// El nombre ya no viaja dentro del atributo onchange (un apóstrofe lo rompía): se lee del estado
+window.actualizarPesoBase = (ejIndex, valor) => {
+  const ej = ejerciciosDia[ejIndex];
+  if (!ej) return;
+  ej.peso = parseFloat(valor) || 0;
   if (!deloadEstaActivo()) {
-    guardarPesoBase(nombre, valor);
+    guardarPesoBase(ej.nombre, valor);
   }
 };
 
@@ -1270,10 +1365,7 @@ window.actualizarIncremento = (ejIndex, valor) => {
   const ra = obtenerRutinaCompleta();
   const nombreDia = ra[diaActual]?.nombre || diaActual;
   const ej = ejerciciosDia[ejIndex];
-  const safeKey = (str) => str.replace(/[<>\"']/g, '');
-  const key = `${safeKey(nombreDia)}_${safeKey(ej.nombre)}`;
-  if (!config.incrementos) config.incrementos = {};
-  config.incrementos[key] = nuevoValor;
+  escribirCfg('incrementos', nombreDia, ej.nombre, nuevoValor);
   guardarConfig();
 
   guardarEstadoApp();
@@ -1297,7 +1389,41 @@ function finalizarDia() {
   _doFinalizarDia();
 }
 
+function leerHistorial() {
+  try {
+    const h = JSON.parse(localStorage.getItem("historial"));
+    return Array.isArray(h) ? h.filter(s => s && Array.isArray(s.ejercicios)) : [];
+  } catch { return []; }
+}
+
+// Lectura segura SIN filtrar (mantiene los mismos índices que la lista guardada: se usa para
+// listar, ver detalle y borrar por posición). Si el dato está corrupto devuelve [] en vez de romper la pantalla.
+function leerHistorialCrudo() {
+  try {
+    const h = JSON.parse(localStorage.getItem("historial") || "[]");
+    return Array.isArray(h) ? h : [];
+  } catch { return []; }
+}
+
+function claveSesion(s) { return `${s?.fecha}|${s?.dia}`; }
+
+// Lápidas: sesiones borradas a propósito, para que una fusión entre dispositivos no las "resucite"
+function registrarBorrados(sesiones) {
+  let t = [];
+  try { t = JSON.parse(localStorage.getItem('historialBorrados') || '[]'); } catch {}
+  if (!Array.isArray(t)) t = [];
+  sesiones.forEach(s => { const k = claveSesion(s); if (!t.includes(k)) t.push(k); });
+  try { localStorage.setItem('historialBorrados', JSON.stringify(t.slice(-3000))); } catch {}
+}
+
+let _finalizando = false;
+
 function _doFinalizarDia() {
+  // Evita dos sesiones idénticas por doble toque
+  if (_finalizando) return;
+  _finalizando = true;
+  setTimeout(() => { _finalizando = false; }, 2000);
+
   Object.keys(ejercicioTimers).forEach(i => cancelarTodosTimersEjercicio(Number(i)));
   audioManager.stopAll();
   detenerAutoGuardado();
@@ -1312,12 +1438,13 @@ function _doFinalizarDia() {
     duracionMin: sesionStartTime ? Math.max(1, Math.round((Date.now() - sesionStartTime) / 60000)) : null,
     ejercicios: ejerciciosDia.map(ej => ({ nombre: ej.nombre, peso: ej.peso, reps: [...ej.reps] })),
     tiempoHIT: obtenerTiempoHIT() || null,
-    tipoHIT: hitTipo || null
+    tipoHIT: hitTipo || null,
+    deload: deloadEstaActivo() // las sesiones de deload no cuentan como récords ni en las gráficas
   };
 
   let huboProgresion = false;
   const detalles = [];
-  const enDeload = deloadEstaActivo();
+  const enDeload = sesion.deload;
 
   const cambiosPeso = [];
 
@@ -1341,14 +1468,22 @@ function _doFinalizarDia() {
 
   cambiosPeso.forEach(c => guardarPesoBase(c.nombre, c.pesoNuevo));
 
-  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const historial = leerHistorial();
   historial.push(sesion);
-  localStorage.setItem("historial", JSON.stringify(historial));
+  try {
+    localStorage.setItem("historial", JSON.stringify(historial));
+  } catch (e) {
+    _finalizando = false;
+    showToast('❌ No se pudo guardar la sesión: almacenamiento lleno. Exporta un backup y libera espacio.', 'error', 7000);
+    return;
+  }
+  markDirty();
 
   // ── Detección automática de Récords Personales ─────────────────────
-  const historialPrevio = historial.slice(0, -1); // todo excepto esta sesión
+  const historialPrevio = historial.slice(0, -1).filter(s => !s.deload); // sin esta sesión ni deloads
   const prsNuevos = [];
   sesion.ejercicios.forEach(ej => {
+    if (sesion.deload) return;
     if (!ej.peso || ej.peso <= 0) return;
     const tienePrevio = historialPrevio.some(s => s.ejercicios.some(e => e.nombre === ej.nombre && e.peso > 0));
     if (!tienePrevio) return; // Primera vez — no es PR porque no hay referencia
@@ -1369,7 +1504,7 @@ function _doFinalizarDia() {
   }
   guardarConfig();
 
-  ejerciciosDia.forEach(ej => { ej.reps = Array(ej.series).fill(""); ej.incremento = 2; ej.noProgresar = false; });
+  cargarEjerciciosDia(); // reps vacías y pesos/incrementos recalculados desde la configuración
   resetTemporizador();
   resetHIT();
   lastEjerciciosDiaHash = null;
@@ -1430,7 +1565,7 @@ function mostrarPantallaResumen(sesion, huboProgresion, detalles, enDeload = fal
 
   pantalla.classList.remove('oculto');
 
-  const historialActual = JSON.parse(localStorage.getItem('historial')) || [];
+  const historialActual = leerHistorialCrudo();
   const idxSesion = historialActual.length - 1;
 
   const btnDetalle = document.createElement('button');
@@ -1455,7 +1590,7 @@ const cacheUltimaSesion = new Map();
 function abrirHistorial() {
   cerrarSidebar();
   guardarEstadoApp();
-  history.pushState({}, "");
+  navPush();
   ocultarTodas();
   document.getElementById("pantalla-historial").classList.remove("oculto");
   historialFiltro = "";
@@ -1465,18 +1600,22 @@ function abrirHistorial() {
   renderListaHistorial();
 }
 
-function volverHistorial() {
-  history.pushState({}, "");
+function mostrarPantallaHistorial() {
   ocultarTodas();
   document.getElementById("pantalla-historial").classList.remove("oculto");
 }
 
+// Desde el detalle: retrocede una entrada del historial (popstate muestra el historial)
+function volverHistorial() {
+  if (!navAtras()) mostrarPantallaHistorial();
+}
+
 function verDetalle(index) {
   guardarEstadoApp();
-  history.pushState({ pantalla: 'detalle', index }, "");
-  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const historial = leerHistorialCrudo();
   const s = historial[index];
   if (!s) return;
+  navPush({ pantalla: 'detalle', index });
   ocultarTodas();
   document.getElementById("pantalla-detalle").classList.remove("oculto");
 
@@ -1501,7 +1640,9 @@ function verDetalle(index) {
 
 function borrarTodoHistorial() {
   showConfirm("¿Borrar todo el historial?\nNo se puede deshacer.", () => {
+    registrarBorrados(leerHistorial());
     localStorage.removeItem("historial");
+    markDirty();
     cacheUltimaSesion.clear();
     const cont = document.getElementById("lista-historial");
     if (cont) cont.innerHTML = `<p class="texto-vacio">No hay sesiones registradas.</p>`;
@@ -1510,12 +1651,14 @@ function borrarTodoHistorial() {
 }
 
 window.borrarSesion = function (index) {
-  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const historial = leerHistorialCrudo();
   const s = historial[index];
   if (!s) return;
   showConfirm(`¿Borrar sesión del ${new Date(s.fecha).toLocaleString('es-ES')}?`, () => {
     historial.splice(index, 1);
+    registrarBorrados([s]);
     localStorage.setItem("historial", JSON.stringify(historial));
+    markDirty();
     cacheUltimaSesion.clear();
     renderListaHistorial();
     showToast("Sesión eliminada", "success");
@@ -1523,10 +1666,11 @@ window.borrarSesion = function (index) {
 };
 
 function limpiarHistorialDuplicados() {
-  let h = JSON.parse(localStorage.getItem("historial")) || [];
+  let h = leerHistorialCrudo();
   const antes = h.length;
   h = h.filter((s, i, a) => i === a.findIndex(x => x.fecha === s.fecha && x.dia === s.dia));
   localStorage.setItem("historial", JSON.stringify(h));
+  markDirty();
   if (h.length < antes) {
     cacheUltimaSesion.clear();
     showToast(`Eliminados ${antes - h.length} duplicados`, "success");
@@ -1539,19 +1683,45 @@ function limpiarHistorialDuplicados() {
 function abrirMedidas() {
   cerrarSidebar();
   guardarEstadoApp();
-  history.pushState({}, "");
+  navPush();
   ocultarTodas();
   document.getElementById("pantalla-medidas").classList.remove("oculto");
   cargarMedidas();
 }
 
+function leerMedidas() {
+  try {
+    const h = JSON.parse(localStorage.getItem("historialMedidas") || "[]");
+    return Array.isArray(h) ? h.filter(m => m && m.fecha) : [];
+  } catch { return []; }
+}
+
+// Índice de masa corporal = peso (kg) / altura (m)². Clasificación de la OMS para adultos.
+function calcularIMC(pesoKg, alturaCm) {
+  if (!(pesoKg > 0) || !(alturaCm >= 100 && alturaCm <= 250)) return null;
+  const imc = pesoKg / Math.pow(alturaCm / 100, 2);
+  const cat = imc < 18.5 ? 'bajo peso' : imc < 25 ? 'normal' : imc < 30 ? 'sobrepeso' : 'obesidad';
+  return { valor: Math.round(imc * 10) / 10, categoria: cat };
+}
+
 function guardarMedidas() {
   const campos = ["peso", "altura", "cintura", "cadera", "pecho", "brazo_relajado", "brazo_contraido", "muslo"];
   const nuevaMedida = { fecha: new Date().toISOString() };
-  campos.forEach(id => { const v = document.getElementById(id)?.value; nuevaMedida[id] = v ? Number(v) : null; });
-  const h = JSON.parse(localStorage.getItem("historialMedidas")) || [];
+  let algun = false, invalido = false;
+  campos.forEach(id => {
+    const v = document.getElementById(id)?.value;
+    const n = v === "" || v === undefined ? null : Number(v);
+    if (n !== null && (!Number.isFinite(n) || n <= 0)) invalido = true;
+    nuevaMedida[id] = n;
+    if (n !== null) algun = true;
+  });
+  if (invalido) { showToast("Revisa los valores: deben ser números mayores que 0", "warning"); return; }
+  if (!algun)   { showToast("Escribe al menos una medida", "warning"); return; }
+  const h = leerMedidas();
   h.push(nuevaMedida);
-  localStorage.setItem("historialMedidas", JSON.stringify(h));
+  try { localStorage.setItem("historialMedidas", JSON.stringify(h)); }
+  catch { showToast("No se pudo guardar (almacenamiento lleno)", "error"); return; }
+  markDirty();
   showToast("Medidas guardadas", "success");
   campos.forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   cargarMedidas();
@@ -1560,35 +1730,52 @@ function guardarMedidas() {
 function cargarMedidas() {
   const cont = document.getElementById("lista-medidas");
   if (!cont) return;
-  const h = JSON.parse(localStorage.getItem("historialMedidas")) || [];
+  const h = leerMedidas();
   if (h.length === 0) { cont.innerHTML = `<p class="texto-vacio">Sin medidas registradas.</p>`; return; }
-  cont.innerHTML = h.slice().reverse().map((m, iRev) => {
+
+  // Para el IMC se usa la altura de ese registro o, si falta, la última altura anterior conocida
+  let ultimaAltura = null;
+  const conIMC = h.map(m => {
+    if (m.altura > 0) ultimaAltura = m.altura;
+    return { m, imc: calcularIMC(m.peso, m.altura > 0 ? m.altura : ultimaAltura) };
+  });
+
+  const campo = (rotulo, v, u) => (v !== null && v !== undefined) ? `<p>${rotulo}: ${escapeHtml(String(v))} ${u}</p>` : '';
+  cont.innerHTML = conIMC.slice().reverse().map(({ m, imc }, iRev) => {
     const iReal = h.length - 1 - iRev;
+    const prev = iReal > 0 ? h.slice(0, iReal).reverse().find(x => x.peso > 0) : null;
+    let delta = '';
+    if (m.peso > 0 && prev) {
+      const d = Math.round((m.peso - prev.peso) * 10) / 10;
+      delta = ` <span style="color:var(--text-secondary);font-size:12px;">(${d > 0 ? '+' : ''}${d} kg vs. anterior)</span>`;
+    }
     return `
     <div class="medida-item">
       <div class="medida-item-header">
         <strong>${new Date(m.fecha).toLocaleDateString('es-ES')}</strong>
-        <button class="btn-danger-sm" onclick="borrarMedidaIndividual(${iReal})" title="Borrar esta medida">🗑️</button>
+        <button class="btn-danger-sm" onclick="borrarMedidaIndividual(${iReal})" title="Borrar esta medida" aria-label="Borrar esta medida">🗑️</button>
       </div>
-      ${m.peso !== null ? `<p>Peso: ${m.peso} kg</p>` : ''}
-      ${m.altura !== null ? `<p>Altura: ${m.altura} cm</p>` : ''}
-      ${m.cintura !== null ? `<p>Cintura: ${m.cintura} cm</p>` : ''}
-      ${m.cadera !== null ? `<p>Cadera: ${m.cadera} cm</p>` : ''}
-      ${m.pecho !== null ? `<p>Pecho: ${m.pecho} cm</p>` : ''}
-      ${m.brazo_relajado !== null ? `<p>Brazo rel.: ${m.brazo_relajado} cm</p>` : ''}
-      ${m.brazo_contraido !== null ? `<p>Brazo cont.: ${m.brazo_contraido} cm</p>` : ''}
-      ${m.muslo !== null ? `<p>Muslo: ${m.muslo} cm</p>` : ''}
+      ${m.peso !== null && m.peso !== undefined ? `<p>Peso: ${escapeHtml(String(m.peso))} kg${delta}</p>` : ''}
+      ${imc ? `<p>IMC: ${imc.valor} (${imc.categoria})</p>` : ''}
+      ${campo('Altura', m.altura, 'cm')}
+      ${campo('Cintura', m.cintura, 'cm')}
+      ${campo('Cadera', m.cadera, 'cm')}
+      ${campo('Pecho', m.pecho, 'cm')}
+      ${campo('Brazo rel.', m.brazo_relajado, 'cm')}
+      ${campo('Brazo cont.', m.brazo_contraido, 'cm')}
+      ${campo('Muslo', m.muslo, 'cm')}
     </div>`;
-  }).join('');
+  }).join('') + `<p class="import-hint">El IMC es solo orientativo: no distingue músculo de grasa, así que en personas que entrenan fuerza puede salir alto sin que haya exceso de grasa.</p>`;
 }
 
 window.borrarMedidaIndividual = function (index) {
-  const h = JSON.parse(localStorage.getItem("historialMedidas")) || [];
+  const h = leerMedidas();
   if (!h[index]) return;
   const fecha = new Date(h[index].fecha).toLocaleDateString('es-ES');
   showConfirm(`¿Borrar medida del ${fecha}?`, () => {
     h.splice(index, 1);
     localStorage.setItem("historialMedidas", JSON.stringify(h));
+    markDirty();
     cargarMedidas();
     showToast("Medida eliminada", "success");
   });
@@ -1597,6 +1784,7 @@ window.borrarMedidaIndividual = function (index) {
 function borrarTodoHistorialMedidas() {
   showConfirm("¿Borrar todo el historial de medidas?", () => {
     localStorage.removeItem("historialMedidas");
+    markDirty();
     const cont = document.getElementById("lista-medidas");
     if (cont) cont.innerHTML = `<p class="texto-vacio">Sin medidas registradas.</p>`;
     showToast("Historial de medidas eliminado", "info");
@@ -1606,15 +1794,45 @@ function borrarTodoHistorialMedidas() {
 function abrirConfigAudio() {
   cerrarSidebar();
   guardarEstadoApp();
-  history.pushState({}, "");
+  navPush();
   ocultarTodas();
   document.getElementById("pantalla-audio").classList.remove("oculto");
   actualizarNombreAudio(audioManager.nombrePersonalizado || 'Beep (predeterminado)');
 }
 window.abrirConfigAudio = abrirConfigAudio;
 
+window.mostrarGuiaTempoEj = (i) => window.mostrarGuiaTempo(ejerciciosDia[i]?.tempo || '');
+
+// Series de aproximación orientativas (patrón habitual: ~50 % × 8, ~70 % × 5, ~85 % × 3 del peso de trabajo).
+// Es una sugerencia general, no una prescripción: se ajusta a las sensaciones de cada persona.
+function seriesCalentamiento(pesoTrabajo) {
+  const paso = pesoTrabajo <= 15 ? 1 : 2.5;
+  const redondear = x => Math.round(x / paso) * paso;
+  const plan = [[0.5, 8], [0.7, 5], [0.85, 3]];
+  const vistos = new Set();
+  return plan
+    .map(([f, reps]) => ({ kg: redondear(pesoTrabajo * f), reps }))
+    .filter(s => s.kg > 0 && s.kg < pesoTrabajo && !vistos.has(s.kg) && vistos.add(s.kg));
+}
+
+window.mostrarCalentamiento = function (i) {
+  const ej = ejerciciosDia[i];
+  if (!ej || !(ej.peso > 0)) return;
+  const overlay = document.getElementById('modal-tempo-overlay');
+  const cont = document.getElementById('modal-tempo-contenido');
+  if (!overlay || !cont) return;
+  const filas = seriesCalentamiento(ej.peso).map((s, n) =>
+    `<div class="tempo-fase"><span class="tempo-num">${s.kg} kg</span><span>Serie ${n + 1}: ${s.reps} reps</span></div>`).join('');
+  cont.innerHTML = `
+    <h3>🔥 Calentamiento</h3>
+    <p style="text-align:center;color:var(--text-secondary);margin:0 0 8px;">${escapeHtml(ej.nombre)} · peso de trabajo ${ej.peso} kg</p>
+    <div class="tempo-desglose">${filas || '<p>Con este peso basta con 1–2 series muy ligeras.</p>'}</div>
+    <p class="import-hint">Sugerencia orientativa: descansa 1 min entre series de aproximación y no llegues al cansancio. Si es tu primer ejercicio del día, añade antes 5 min de movilidad o cardio suave.</p>`;
+  overlay.classList.remove('oculto');
+};
+
 window.mostrarGuiaTempo = function (tempo) {
-  const partes = tempo.split('-');
+  const partes = String(tempo).split('-');
   let explicacion = '';
   if (partes.length >= 3) {
     explicacion = `
@@ -1638,15 +1856,30 @@ window.cerrarModalTempo = function () {
 
 function abrirGuiaTempo() {
   cerrarSidebar();
-  history.pushState({}, "");
+  navPush();
   ocultarTodas();
   document.getElementById("pantalla-guia-tempo").classList.remove("oculto");
 }
 window.abrirGuiaTempo = abrirGuiaTempo;
 
+async function hayConexionReal() {
+  if (!navigator.onLine) return false;
+  try {
+    const r = await fetch('./manifest.json?ts=' + Date.now(), { cache: 'no-store' });
+    return r.ok;
+  } catch { return false; }
+}
+
 async function forzarActualizacion() {
-  showConfirm('⚠️ Limpiará la caché y recargará la app.\nTus datos NO se perderán.\n¿Continuar?', async () => {
+  if (!(await hayConexionReal())) {
+    showAlert('📴 Sin conexión.\n\nPara actualizar la app necesitas internet: si borramos la caché ahora no podrías volver a abrirla.\n\nInténtalo cuando tengas datos o Wi-Fi.', 'warning');
+    return;
+  }
+  showConfirm('⚠️ Se descargará de nuevo la app y se recargará.\nTus datos NO se pierden.\nNecesitas conexión durante el proceso.\n¿Continuar?', async () => {
     try {
+      // Primero comprobar que la descarga funciona; solo entonces se borra la caché
+      const resp = await fetch('./index.html?ts=' + Date.now(), { cache: 'no-store' });
+      if (!resp.ok) throw new Error('descarga');
       navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_CACHE' });
       if ('serviceWorker' in navigator) {
         const regs = await navigator.serviceWorker.getRegistrations();
@@ -1657,8 +1890,8 @@ async function forzarActualizacion() {
         await Promise.all(keys.map(k => caches.delete(k)));
       }
       showToast('Caché limpiado. Recargando...', 'success');
-      setTimeout(() => window.location.reload(true), 1200);
-    } catch { showToast('Error al actualizar. Cierra y abre la app.', 'warning'); }
+      setTimeout(() => window.location.reload(), 1200);
+    } catch { showToast('No se pudo actualizar (¿sin conexión?). No se ha borrado nada.', 'warning'); }
   });
 }
 
@@ -1666,7 +1899,7 @@ function mostrarModalTimer() { document.getElementById("modal-timer")?.classList
 function ocultarModalTimer() { document.getElementById("modal-timer")?.classList.add("oculto"); }
 function resetDesdeModal() { resetTemporizador(); ocultarModalTimer(); }
 
-function volverMenu() {
+function volverMenu(desdePopstate = false) {
   const enDia = !document.getElementById("pantalla-dia")?.classList.contains("oculto");
   if (enDia) {
     const hayReps = ejerciciosDia.some(ej => ej.reps.some(r => r !== ""));
@@ -1674,7 +1907,7 @@ function volverMenu() {
       showConfirm(
         '¿Salir del entrenamiento?\nLas repeticiones marcadas NO se guardarán hasta que pulses "✅ Finalizar sesión".',
         _doVolverMenu,
-        () => { }
+        () => { if (desdePopstate === true) navPush(); } // el "atrás" ya consumió la entrada: reponerla
       );
       return;
     }
@@ -1683,7 +1916,7 @@ function volverMenu() {
 }
 
 function _doVolverMenu() {
-  history.pushState({ pantalla: 'menu' }, "");
+  navLimpiar(); // quita de golpe las entradas de historial que añadió la app
   ocultarTodas();
   document.getElementById("menu").classList.remove("oculto");
   cerrarSidebarRight();
@@ -1777,9 +2010,10 @@ function guardarEstadoApp() {
   estadoApp = {
     pantalla, diaActual,
     repsPorEjercicio: ejerciciosDia.map(ej => ({ nombre: ej.nombre, reps: [...ej.reps] })),
-    tiempoRestante, tiempoFinal,
+    tiempoRestante, tiempoFinal, timerPausado, timerDuracionTotal,
     ejTimersSnapshot,
-    hitActivo, hitAcumulado, hitTipo
+    sesionStartTime, notasSesion,
+    hitActivo, hitAcumulado, hitInicio, hitTipo
   };
   localStorage.setItem("estadoApp", JSON.stringify(estadoApp));
 }
@@ -1788,7 +2022,7 @@ function renderizarBotonesDias() {
   const contenedor = document.getElementById("botones-dias");
   if (!contenedor) return;
   const rutinaActual = obtenerRutinaCompleta();
-  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const historial = leerHistorialCrudo();
   contenedor.innerHTML = "";
   
   // Pre-calcular última sesión por día para optimizar
@@ -1804,7 +2038,7 @@ function renderizarBotonesDias() {
     const ultimaSesion = ultimaPorDia.get(dia.nombre);
     let subtexto = '';
     if (ultimaSesion) {
-      const dias = Math.floor((Date.now() - new Date(ultimaSesion.fecha).getTime()) / 86400000);
+      const dias = Math.max(0, numDia(new Date()) - numDia(ultimaSesion.fecha));
       subtexto = dias === 0 ? 'Hoy' : dias === 1 ? 'Ayer' : `Hace ${dias} días`;
     }
     const btn = document.createElement("button");
@@ -1852,7 +2086,7 @@ function rutinaConDeloadHabilitado() {
 // Semanas entrenadas SOLO de la rutina activa desde el último deload (o desde siempre)
 function calcularSemanasEntrenadas() {
   const rutinaId = obtenerRutinaActiva();
-  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const historial = leerHistorialCrudo();
   if (!historial.length) return 0;
 
   const ds = _getDeloadState(rutinaId);
@@ -1948,7 +2182,7 @@ function renderizarBannerDeload() {
 
   const activo = deloadEstaActivo();
   const semanas = calcularSemanasEntrenadas();
-  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const historial = leerHistorialCrudo();
   const rutinaId = obtenerRutinaActiva();
   const sesionesRutina = historial.filter(s => s.rutinaId ? s.rutinaId === rutinaId : true);
 
@@ -2023,7 +2257,7 @@ function renderBotonesUltimaSesion() {
   if (!ultimaSesion) return;
   if (document.getElementById('btn-toggle-guia')) return;
 
-  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const historial = leerHistorialCrudo();
   const idxSesion = historial.findIndex(s => s.fecha === ultimaSesion.fecha && s.dia === ultimaSesion.dia);
   const fechaCorta = new Date(ultimaSesion.fecha).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
 
@@ -2035,7 +2269,7 @@ function renderBotonesUltimaSesion() {
 }
 
 function obtenerUltimaSesion() {
-  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const historial = leerHistorialCrudo();
   const rutinaActual = obtenerRutinaCompleta();
   const nombreDia = rutinaActual[diaActual]?.nombre;
   const rutinaActiva = obtenerRutinaActiva();
@@ -2096,23 +2330,26 @@ function formatearTiempo(segundos) {
 }
 
 window.addEventListener("popstate", () => {
-  if (!document.getElementById("modal-timer")?.classList.contains("oculto")) { ocultarModalTimer(); return; }
-  if (document.getElementById("sidebar-right")?.classList.contains("sidebar-right-open")) { toggleSidebarRight(); return; }
-  if (document.getElementById("sidebar")?.classList.contains("sidebar-open")) { toggleSidebar(); return; }
-  if (!document.getElementById("modal-tempo-overlay")?.classList.contains("oculto")) { cerrarModalTempo(); return; }
-  if (!document.getElementById("pantalla-perfil")?.classList.contains("oculto")) { volverMenu(); return; }
-  if (!document.getElementById("pantalla-audio")?.classList.contains("oculto")) { volverMenu(); return; }
-  if (!document.getElementById("pantalla-editor")?.classList.contains("oculto")) { volverMenu(); return; }
-  if (!document.getElementById("pantalla-guia-tempo")?.classList.contains("oculto")) { volverMenu(); return; }
-  if (!document.getElementById("pantalla-ai-import")?.classList.contains("oculto")) { volverMenu(); return; }
-  if (!document.getElementById("pantalla-estadisticas")?.classList.contains("oculto")) { volverMenu(); return; }
-  if (!document.getElementById("pantalla-progreso")?.classList.contains("oculto")) { volverMenu(); return; }
-  if (!document.getElementById("pantalla-progresion-rutina")?.classList.contains("oculto")) { volverMenu(); return; }
-  if (!document.getElementById("pantalla-resumen")?.classList.contains("oculto")) { cerrarResumen(); return; }
-  if (!document.getElementById("pantalla-detalle")?.classList.contains("oculto")) { volverHistorial(); return; }
-  if (!document.getElementById("pantalla-medidas")?.classList.contains("oculto")) { volverMenu(); return; }
-  if (!document.getElementById("pantalla-historial")?.classList.contains("oculto")) { volverMenu(); return; }
-  if (!document.getElementById("pantalla-dia")?.classList.contains("oculto")) { volverMenu(); return; }
+  if (navConsumirPopstateIgnorado()) return; // lo provocó la propia app (navLimpiar)
+  navRegistrarPop();
+  const visible = id => { const el = document.getElementById(id); return !!el && !el.classList.contains("oculto"); };
+
+  // Capas superiores: se cierran y se repone la entrada que consumió el "atrás"
+  const cerrarCapa = (fn) => { fn(); navPush(); };
+  if (visible("modal-confirm-overlay")) { cerrarCapa(() => document.getElementById("modal-confirm-no")?.click()); return; }
+  if (visible("modal-alert-overlay"))   { cerrarCapa(() => document.getElementById("modal-alert-ok")?.click()); return; }
+  if (visible("modal-prompt-overlay"))  { cerrarCapa(() => document.getElementById("modal-prompt-cancel")?.click()); return; }
+  if (visible("modal-descanso-overlay")) { cerrarCapa(cerrarModalDescanso); return; }
+  if (visible("modal-timer"))           { cerrarCapa(ocultarModalTimer); return; }
+  if (visible("modal-tempo-overlay"))   { cerrarCapa(window.cerrarModalTempo); return; }
+  if (document.getElementById("sidebar-right")?.classList.contains("sidebar-right-open")) { cerrarCapa(cerrarSidebarRight); return; }
+  if (document.getElementById("sidebar")?.classList.contains("sidebar-open")) { cerrarCapa(cerrarSidebar); return; }
+
+  if (visible("pantalla-resumen")) { cerrarResumen(); return; }
+  if (visible("pantalla-detalle")) { mostrarPantallaHistorial(); return; }
+  if (visible("pantalla-editor") && window.volverMenuDesdeEditor) { window.volverMenuDesdeEditor(); return; }
+  if (visible("menu")) return;
+  volverMenu(true);
 });
 
 let touchStartX = 0, touchStartY = 0, isSwiping = false, swipeTarget = null;
@@ -2186,7 +2423,7 @@ window.cargarMasHistorial = function () {
 function renderListaHistorial() {
   const cont = document.getElementById("lista-historial");
   if (!cont) return;
-  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const historial = leerHistorialCrudo();
   const filtrado = historial
     .map((s, i) => ({ s, i }))
     .filter(({ s }) => {
@@ -2230,10 +2467,10 @@ function renderListaHistorial() {
 }
 
 window.exportarHistorialCSV = function () {
-  const historial = JSON.parse(localStorage.getItem("historial")) || [];
+  const historial = leerHistorialCrudo();
   if (historial.length === 0) { showToast('No hay historial para exportar', 'warning'); return; }
 
-  const filas = [['Fecha', 'Día', 'Ejercicio', 'Peso (kg)', 'Series completadas', 'Nota sesión', 'Tiempo HIT', 'Tipo HIT']];
+  const filas = [['Fecha', 'Día', 'Ejercicio', 'Peso (kg)', 'Reps por serie', 'Nota sesión', 'Tiempo HIT', 'Tipo HIT']];
   historial.forEach(s => {
     s.ejercicios.forEach(ej => {
       filas.push([
@@ -2249,7 +2486,9 @@ window.exportarHistorialCSV = function () {
     });
   });
 
-  const csv = filas.map(f => f.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  // Un texto que empiece por = + - @ se interpretaría como fórmula en Excel: se neutraliza con '
+  const seguro = v => { const t = String(v); return /^[=+\-@]/.test(t) && isNaN(Number(t)) ? "'" + t : t; };
+  const csv = filas.map(f => f.map(v => `"${seguro(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2262,7 +2501,7 @@ window.exportarHistorialCSV = function () {
 
 function abrirEstadisticas() {
   cerrarSidebar();
-  history.pushState({}, '');
+  navPush();
   ocultarTodas();
   document.getElementById('pantalla-estadisticas').classList.remove('oculto');
   renderEstadisticas();
@@ -2272,27 +2511,26 @@ window.abrirEstadisticas = abrirEstadisticas;
 function renderEstadisticas() {
   const cont = document.getElementById('stats-contenido');
   if (!cont) return;
-  const historial = JSON.parse(localStorage.getItem('historial')) || [];
+  const historial = leerHistorial();
 
   if (historial.length === 0) {
     cont.innerHTML = `<p class="texto-vacio">Sin sesiones registradas todavía.</p>`; return;
   }
 
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-  const fechasUnicas = [...new Set(historial.map(s => {
-    const d = new Date(s.fecha); d.setHours(0, 0, 0, 0); return d.getTime();
-  }))].sort((a, b) => b - a);
+  const hoy = numDia(new Date());
+  const fechasUnicas = [...new Set(historial.map(s => numDia(s.fecha)))].sort((a, b) => b - a);
 
+  // Racha: días consecutivos (hoy o ayer cuentan como inicio). Usa números de día, no milisegundos.
   let rachaActual = 0;
-  let cursor = hoy.getTime();
+  let cursor = hoy;
   for (const f of fechasUnicas) {
-    if (f === cursor || f === cursor - 86400000) { rachaActual++; cursor = f; }
+    if (f === cursor || f === cursor - 1) { rachaActual++; cursor = f; }
     else break;
   }
   const rachaMejor = calcularRachaMejor(fechasUnicas);
 
-  const primeraFecha = historial.length ? new Date(historial[0].fecha) : new Date();
-  const semanasTotales = Math.max(1, Math.ceil((Date.now() - primeraFecha.getTime()) / (7 * 86400000)));
+  const primeraFecha = historial.reduce((m, s) => Math.min(m, new Date(s.fecha).getTime()), Date.now());
+  const semanasTotales = Math.max(1, Math.ceil((Date.now() - primeraFecha) / (7 * 86400000)));
   const sesXSemana = (historial.length / semanasTotales).toFixed(1);
 
   const totalSesiones = historial.length;
@@ -2305,7 +2543,7 @@ function renderEstadisticas() {
   const records = {};
   historial.forEach(s => {
     s.ejercicios.forEach(ej => {
-      if (!ej.peso || ej.peso <= 0) return;
+      if (!ej.peso || ej.peso <= 0 || s.deload) return;
       if (!records[ej.nombre] || ej.peso > records[ej.nombre].peso) {
         records[ej.nombre] = { peso: ej.peso, fecha: s.fecha };
       }
@@ -2344,7 +2582,7 @@ function renderEstadisticas() {
         <span class="stat-lbl">Sesiones / semana</span>
       </div>
       <div class="stat-box">
-        <span class="stat-val">${(totalVolumen / 1000).toFixed(0)}t</span>
+        <span class="stat-val">${totalVolumen >= 10000 ? (totalVolumen / 1000).toFixed(1) + ' t' : Math.round(totalVolumen) + ' kg'}</span>
         <span class="stat-lbl">Volumen total</span>
       </div>
       <div class="stat-box">
@@ -2375,11 +2613,12 @@ function renderEstadisticas() {
     <button onclick="abrirProgreso()" class="btn-secondary" style="margin-top:4px;">📈 Ver gráficas de progreso</button>`;
 }
 
+// fechasOrdenadas: números de día (numDia) de más reciente a más antigua
 function calcularRachaMejor(fechasOrdenadas) {
   if (!fechasOrdenadas.length) return 0;
   let mejor = 1, actual = 1;
   for (let i = 1; i < fechasOrdenadas.length; i++) {
-    if (fechasOrdenadas[i - 1] - fechasOrdenadas[i] === 86400000) { actual++; mejor = Math.max(mejor, actual); }
+    if (fechasOrdenadas[i - 1] - fechasOrdenadas[i] === 1) { actual++; mejor = Math.max(mejor, actual); }
     else actual = 1;
   }
   return mejor;
@@ -2387,7 +2626,7 @@ function calcularRachaMejor(fechasOrdenadas) {
 
 function abrirProgreso() {
   cerrarSidebar();
-  history.pushState({}, '');
+  navPush();
   ocultarTodas();
   document.getElementById('pantalla-progreso').classList.remove('oculto');
   poblarSelectorEjercicios();
@@ -2397,7 +2636,7 @@ window.abrirProgreso = abrirProgreso;
 function poblarSelectorEjercicios() {
   const sel = document.getElementById('progreso-ejercicio-select');
   if (!sel) return;
-  const historial = JSON.parse(localStorage.getItem('historial')) || [];
+  const historial = leerHistorial();
   const ejercicios = [...new Set(historial.flatMap(s => s.ejercicios.map(e => e.nombre)))].sort();
   sel.innerHTML = `<option value="">Selecciona ejercicio...</option>` +
     ejercicios.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
@@ -2416,9 +2655,9 @@ window.renderGraficaProgreso = function () {
   if (!sel || !cont || !sel.value) { if (cont) cont.innerHTML = `<p class="chart-empty">Selecciona un ejercicio</p>`; return; }
 
   const nombre = sel.value;
-  const historial = JSON.parse(localStorage.getItem('historial')) || [];
+  const historial = leerHistorial();
 
-  const datosEj = historial.filter(s => s.ejercicios.some(e => e.nombre === nombre));
+  const datosEj = historial.filter(s => !s.deload && s.ejercicios.some(e => e.nombre === nombre));
   const esAlFallo = datosEj.length > 0 && datosEj.every(s => {
     const ej = s.ejercicios.find(e => e.nombre === nombre);
     return !ej?.peso || ej.peso === 0;
@@ -2435,11 +2674,14 @@ window.renderGraficaProgreso = function () {
     .filter(s => s.ejercicios.some(e => e.nombre === nombre))
     .map(s => {
       const ej = s.ejercicios.find(e => e.nombre === nombre);
-      const repsTotal = (ej.reps || []).filter(r => r !== '').reduce((a, r) => a + Number(r), 0);
+      const repsLista = (ej.reps || []).filter(r => r !== '').map(Number);
+      const repsTotal = repsLista.reduce((a, r) => a + r, 0);
+      const mejor1RM = Math.max(0, ...repsLista.map(r => calcular1RM(ej.peso || 0, r) || 0));
       return {
         fecha: s.fecha,
         peso: ej.peso || 0,
-        volumen: (ej.peso || 0) * repsTotal
+        volumen: (ej.peso || 0) * repsTotal,
+        e1rm: mejor1RM
       };
     })
     .sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
@@ -2449,24 +2691,28 @@ window.renderGraficaProgreso = function () {
     cont.innerHTML = `<p class="chart-empty">Necesitas al menos 2 sesiones con "${escapeHtml(nombre)}" para ver la gráfica.</p>`; return;
   }
 
-  const esPeso = graficaModo === 'peso';
-  const valores = datos.map(d => esPeso ? d.peso : d.volumen);
+  const modo = ['peso', 'volumen', 'e1rm'].includes(graficaModo) ? graficaModo : 'peso';
+  const valores = datos.map(d => modo === 'peso' ? d.peso : modo === 'volumen' ? d.volumen : d.e1rm);
   const maxVal = Math.max(...valores);
   const minVal = Math.min(...valores);
   const rango = maxVal - minVal || 1;
   const ultimo = valores[valores.length - 1];
   const primero = valores[0];
   const mejora = parseFloat((ultimo - primero).toFixed(1));
-  const unidad = esPeso ? 'kg' : 'kg·r';
+  const unidad = modo === 'volumen' ? 'kg·r' : 'kg';
+  const etiquetaMax = modo === 'volumen' ? 'Vol. máx' : modo === 'e1rm' ? '1RM est. máx' : 'Récord';
+  const leyenda = modo === 'volumen' ? 'sesión de mayor volumen' : modo === 'e1rm' ? 'mejor 1RM estimado' : 'récord de peso';
 
   const alturaMax = 140;
   const barras = datos.map((d, idx) => {
     const val = valores[idx];
-    const pct = (val - minVal) / rango;
+    // Base fija desde 0 si el rango es pequeño respecto al valor, para no exagerar diferencias mínimas
+    const base = Math.min(minVal, maxVal * 0.5);
+    const pct = (val - base) / ((maxVal - base) || 1);
     const alto = Math.max(8, Math.round(pct * alturaMax) + 8);
     const fecha = new Date(d.fecha).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
     const esMax = val === maxVal;
-    const label = esPeso ? `${val}kg` : `${val}`;
+    const label = modo === 'volumen' ? `${Math.round(val)}` : `${val}kg`;
     return `<div class="chart-bar-wrap">
       <span class="chart-bar-val">${label}</span>
       <div class="chart-bar" style="height:${alto}px;${esMax ? 'background:var(--success);' : ''}" title="${label} — ${fecha}"></div>
@@ -2474,17 +2720,17 @@ window.renderGraficaProgreso = function () {
     </div>`;
   }).join('');
 
+  const btn = (m, txt) => `<button onclick="setGraficaModo('${m}')" class="${modo === m ? 'activo' : 'btn-secondary'}">${txt}</button>`;
   cont.innerHTML = `
     <div class="grafica-toggle">
-      <button onclick="setGraficaModo('peso')" class="${esPeso ? 'activo' : 'btn-secondary'}">⚖️ Peso máx</button>
-      <button onclick="setGraficaModo('volumen')" class="${!esPeso ? 'activo' : 'btn-secondary'}">📦 Volumen</button>
+      ${btn('peso', '⚖️ Peso')}${btn('e1rm', '🏋️ 1RM est.')}${btn('volumen', '📦 Volumen')}
     </div>
     <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
       <div class="stat-box" style="flex:1;min-width:80px;">
-        <span class="stat-val">${maxVal} ${unidad}</span><span class="stat-lbl">${esPeso ? 'Récord' : 'Vol. máx'}</span>
+        <span class="stat-val">${Math.round(maxVal * 10) / 10} ${unidad}</span><span class="stat-lbl">${etiquetaMax}</span>
       </div>
       <div class="stat-box ${mejora > 0 ? 'highlight' : ''}" style="flex:1;min-width:80px;">
-        <span class="stat-val">${mejora >= 0 ? '+' : ''}${mejora} ${unidad}</span><span class="stat-lbl">Total ganado</span>
+        <span class="stat-val">${mejora >= 0 ? '+' : ''}${mejora} ${unidad}</span><span class="stat-lbl">Cambio total</span>
       </div>
       <div class="stat-box" style="flex:1;min-width:80px;">
         <span class="stat-val">${datos.length}</span><span class="stat-lbl">Sesiones</span>
@@ -2494,7 +2740,7 @@ window.renderGraficaProgreso = function () {
       <div class="chart-bars">${barras}</div>
     </div>
     <p style="font-size:12px;color:var(--text-secondary);text-align:center;">
-      🟢 barra verde = ${esPeso ? 'récord de peso' : 'sesión de mayor volumen'} · Últimas ${datos.length} sesiones
+      🟢 barra verde = ${leyenda} · Últimas ${datos.length} sesiones (sin semanas de deload)
     </p>`;
 };
 
@@ -2519,7 +2765,7 @@ function guardarNotasProgresion(datos) {
 
 function abrirNotasProgresion() {
   cerrarSidebar();
-  history.pushState({}, '');
+  navPush();
   ocultarTodas();
   document.getElementById('pantalla-progresion-rutina').classList.remove('oculto');
   renderNotasProgresion();
@@ -2697,89 +2943,126 @@ window.guardarNotaProg = function (tipo, valor, diaNombre = '') {
   guardarNotasProgresion(notas);
 };
 
-if ("Notification" in window && Notification.permission !== "granted") {
-  Notification.requestPermission();
-}
-
+// ══════════════════════════════════════════════════════
+// SERVICE WORKER
+// ══════════════════════════════════════════════════════
 let swRegistration = null;
+let _recargarAlCambiarSW = false;
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js')
     .then(reg => {
+      if (!reg) return;            // registro bloqueado (modo privado, política del navegador…)
       swRegistration = reg;
 
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
         if (!nw) return;
         nw.addEventListener('statechange', () => {
-          if (nw.state === 'installed' && navigator.serviceWorker.controller && navigator.onLine) {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
             showConfirm('🎉 Nueva versión disponible. ¿Actualizar ahora?', () => {
+              _recargarAlCambiarSW = true;
               nw.postMessage({ type: 'SKIP_WAITING' });
-              setTimeout(() => window.location.reload(), 200);
-            });
+            }, () => {}, 'Actualizar', 'Luego');
           }
         });
       });
     }).catch(err => console.error('SW error:', err));
 
+  // Recargar solo cuando el usuario aceptó y el nuevo SW ya controla la página
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (_recargarAlCambiarSW) window.location.reload();
+  });
+
   navigator.serviceWorker.addEventListener('message', event => {
-    // Sync de datos a la nube
-    if (event.data?.type === 'SYNC_DATA' && userState.uid) {
-      import('./userState.js').then(m => m.syncToCloud?.().catch(() => { }));
-    }
-    // El SW detectó que el cache estaba dañado y lo reparó
     if (event.data?.type === 'HEALTH_RESULT' && event.data.repaired) {
-      showToast('🔧 Cache reparado. La app recargará en 2s...', 'info');
+      showToast('🔧 Caché reparada. Recargando...', 'info');
       setTimeout(() => window.location.reload(), 2000);
     }
-    // Cache reconstruido bajo demanda (desde "Actualizar app")
-    if (event.data?.type === 'CACHE_REBUILT') {
-      showToast('✅ Cache reconstruido correctamente', 'success');
-    }
-    // El SW reparó el cache durante su activación
-    if (event.data?.type === 'CACHE_REPAIRED') {
-      console.log('[App] SW reparó el cache automáticamente — versión:', event.data.version);
-    }
+    if (event.data?.type === 'CACHE_REBUILT') showToast('✅ Caché reconstruida correctamente', 'success');
+    if (event.data?.type === 'CACHE_REPAIRED') console.log('[App] SW reparó la caché — versión:', event.data.version);
   });
 }
 
+// Al volver la conexión: subir cambios pendientes (sin pisar datos de otros dispositivos)
+// y pedir al SW que compruebe la caché
 window.addEventListener('online', () => {
-  if (userState.uid) {
-    import('./userState.js').then(m => m.syncToCloud?.().catch(() => { }));
-  }
-  // Al volver online, pedir al SW que reconstruya el cache si hace falta
+  sincronizarSiHaceFalta();
   if (navigator.serviceWorker?.controller) {
     navigator.serviceWorker.controller.postMessage({ type: 'HEALTH_CHECK' });
   }
 });
 
 // ── Verificación de salud del SW al volver al primer plano ───────────────────
-// Previene la pantalla negra cuando Android restaura la app tras 1-2 días
 let _swHealthCheckTimer = null;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
-  // Debounce: no lanzar múltiples checks seguidos
   clearTimeout(_swHealthCheckTimer);
   _swHealthCheckTimer = setTimeout(() => {
     if (navigator.serviceWorker?.controller) {
       navigator.serviceWorker.controller.postMessage({ type: 'HEALTH_CHECK' });
     } else if ('serviceWorker' in navigator) {
-      // No hay SW controlador → registrar de nuevo
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
   }, 1500);
 });
 
-// ── Detectar restauración desde bfcache (iOS / Android) ─────────────────────
+// ── Restauración desde bfcache ───────────────────────────────────────────────
 window.addEventListener('pageshow', async (evt) => {
-  if (!evt.persisted) return; // Solo si viene de bfcache
+  if (!evt.persisted) return;
   if (!('serviceWorker' in navigator)) return;
   const reg = await navigator.serviceWorker.getRegistration().catch(() => null);
-  if (!reg?.active) {
-    // SW perdido — recargar para intentar reinstalarlo
-    window.location.reload();
-  }
+  if (!reg?.active) window.location.reload();
 });
+
+// ══════════════════════════════════════════════════════
+// ARRANQUE
+// ══════════════════════════════════════════════════════
+function restaurarTimersEjercicio(snapshot) {
+  Object.keys(snapshot).forEach(ejIdx => {
+    const personas = snapshot[ejIdx];
+    Object.keys(personas).forEach(pp => {
+      const { endTime } = personas[pp];
+      const secondsLeft = Math.round((endTime - Date.now()) / 1000);
+      const idx = Number(ejIdx);
+      const persona = Number(pp);
+      const timerId = getTimerId(idx, persona);
+      if (secondsLeft > 0) {
+        if (!ejercicioTimers[idx]) ejercicioTimers[idx] = {};
+        const intervalId = setInterval(() => {
+          const remaining = Math.max(0, Math.round((endTime - Date.now()) / 1000));
+          actualizarBtnTimer(idx, persona, remaining, true, remaining === 0);
+          if (remaining <= 0) {
+            clearInterval(intervalId);
+            if (ejercicioTimers[idx]) ejercicioTimers[idx][persona] = { intervalId: null, endTime, timerId };
+            audioManager.play(timerId);
+            vibrarSiActivo();
+            notificarTimerTerminado('¡Descanso terminado! Vuelve a la app para continuar.');
+            const card = document.querySelector(`.ejercicio[data-ej-index="${idx}"]`);
+            if (card) { card.classList.add('timer-ej-flash'); setTimeout(() => card.classList.remove('timer-ej-flash'), 2000); }
+          }
+        }, 500);
+        ejercicioTimers[idx][persona] = { intervalId, endTime, timerId };
+        actualizarBtnTimer(idx, persona, secondsLeft, true, false);
+      } else if (secondsLeft > -5) {
+        actualizarBtnTimer(idx, persona, 0, false, true);
+      }
+    });
+  });
+}
+
+// Accesos directos del manifest (?accion=historial|stats|medidas|timer)
+function ejecutarAccesoDirecto() {
+  let accion = null;
+  try { accion = new URLSearchParams(location.search).get('accion'); } catch {}
+  if (!accion) return false;
+  try { history.replaceState(history.state, '', location.pathname + location.hash); } catch {}
+  if (accion === 'historial') { abrirHistorial(); return true; }
+  if (accion === 'stats')     { abrirEstadisticas(); return true; }
+  if (accion === 'medidas')   { abrirMedidas(); return true; }
+  if (accion === 'timer')     { toggleSidebarRight(); return true; }
+  return false;
+}
 
 document.addEventListener("DOMContentLoaded", async () => {
   // Ocultar splash de carga tan pronto como el JS está listo
@@ -2803,105 +3086,98 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (gainSlider) gainSlider.value = savedGain;
   if (gainVal)    gainVal.textContent = savedGain.toFixed(1) + '×';
 
-  try { await initAudio(); } catch (e) { console.warn("Audio:", e); }
+  // El audio se prepara en segundo plano: ya no retrasa la restauración de la pantalla
+  initAudio().catch(e => console.warn("Audio:", e));
 
-  const saved = JSON.parse(localStorage.getItem("estadoApp"));
+  const selectHit = document.getElementById("hit-tipo");
+  if (selectHit) selectHit.addEventListener("change", e => { hitTipo = e.target.value; guardarEstadoApp(); });
+
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem("estadoApp")); } catch { saved = null; }
+  let restauroDia = false;
+
   if (saved) {
     diaActual = saved.diaActual;
-    tiempoRestante = saved.tiempoRestante || 0;
-    tiempoFinal = saved.tiempoFinal;
 
-    if (saved.hitActivo !== undefined) {
-      hitTipo = saved.hitTipo || "HIT 1";
-      if (saved.hitActivo) {
-        hitAcumulado = saved.hitAcumulado || 0;
-        iniciarHIT();
-      } else {
-        hitAcumulado = saved.hitAcumulado || 0;
-        const el = document.getElementById("tiempo-hit");
-        if (el) el.innerText = formatearTiempo(hitAcumulado);
-      }
-    }
-
-    if (saved.pantalla === "dia" && diaActual) {
+    if (saved.pantalla === "dia" && diaActual && obtenerRutinaCompleta()[diaActual]) {
       cargarEjerciciosDia();
-      if (saved.repsPorEjercicio) {
-        saved.repsPorEjercicio.forEach(se => {
-          const ej = ejerciciosDia.find(e => e.nombre === se.nombre);
-          if (ej) ej.reps = se.reps;
-        });
-      }
-      renderDia();
-      renderBotonesUltimaSesion();
+      // Reps guardadas: se emparejan por nombre (con la posición como desempate)
+      (saved.repsPorEjercicio || []).forEach((se, idx) => {
+        const ej = (ejerciciosDia[idx] && ejerciciosDia[idx].nombre === se.nombre)
+          ? ejerciciosDia[idx] : ejerciciosDia.find(e => e.nombre === se.nombre);
+        if (ej && Array.isArray(se.reps)) ej.reps = ej.reps.map((_, i) => se.reps[i] ?? "");
+      });
 
-      if (saved.ejTimersSnapshot) {
-        Object.keys(saved.ejTimersSnapshot).forEach(ejIdx => {
-          const personas = saved.ejTimersSnapshot[ejIdx];
-          Object.keys(personas).forEach(p => {
-            const { endTime } = personas[p];
-            const secondsLeft = Math.round((endTime - Date.now()) / 1000);
-            if (secondsLeft > 0) {
-              const idx = Number(ejIdx);
-              const persona = Number(p);
-              const timerId = getTimerId(idx, persona);
-              if (!ejercicioTimers[idx]) ejercicioTimers[idx] = {};
-              const intervalId = setInterval(() => {
-                const remaining = Math.max(0, Math.round((endTime - Date.now()) / 1000));
-                actualizarBtnTimer(idx, persona, remaining, true, remaining === 0);
-                if (remaining <= 0) {
-                  clearInterval(intervalId);
-                  delete ejercicioTimers[idx][persona];
-                  audioManager.play(timerId);
-                  vibrarSiActivo();
-                  notificarTimerTerminado('¡Descanso terminado! Vuelve a la app para continuar.');
-                  const card = document.querySelector(`.ejercicio[data-ej-index="${idx}"]`);
-                  if (card) { card.classList.add('timer-ej-flash'); setTimeout(() => card.classList.remove('timer-ej-flash'), 2000); }
-                }
-              }, 500);
-              ejercicioTimers[idx][persona] = { intervalId, endTime, timerId };
-              actualizarBtnTimer(idx, persona, secondsLeft, true, false);
-            } else if (secondsLeft <= 0 && secondsLeft > -5) {
-              const idx = Number(ejIdx);
-              const persona = Number(p);
-              actualizarBtnTimer(idx, persona, 0, false, true);
-            }
-          });
-        });
-      }
+      // Datos de la sesión en curso que antes se perdían al reabrir la app
+      sesionStartTime = saved.sesionStartTime || Date.now();
+      notasSesion = saved.notasSesion || "";
+      const notasEl = document.getElementById('notas-sesion-input');
+      if (notasEl) notasEl.value = notasSesion;
 
-      if (saved.repsPorEjercicio) {
-        saved.repsPorEjercicio.forEach((se, ei) => {
-          const ej = ejerciciosDia.find(e => e.nombre === se.nombre);
-          if (!ej) return;
-          se.reps.forEach((r, si) => {
-            const input = document.getElementById(`rep-${ei}-${si}`);
-            if (!input || r === "" || ej.alFallo) return;
-            const n = Number(r);
-            input.classList.toggle('serie-ok', n >= ej.repsMax);
-            input.classList.toggle('serie-fail', n < ej.repsMin);
-            input.classList.toggle('serie-mid', n >= ej.repsMin && n < ej.repsMax);
-          });
-        });
-      }
-      mostrarTiempo();
       ocultarTodas();
       document.getElementById("pantalla-dia").classList.remove("oculto");
       const tituloDia = document.getElementById("titulo-dia");
       const ra = obtenerRutinaCompleta();
       if (tituloDia && ra[diaActual]) tituloDia.innerText = ra[diaActual].nombre;
+      const btnModo = document.getElementById('btn-modo-personas');
+      if (btnModo) {
+        btnModo.textContent = modoDosPersonas ? '👥 2 personas' : '👤 1 persona';
+        btnModo.classList.toggle('modo-activo', modoDosPersonas);
+      }
+      aplicarConfigDia(diaActual);   // cronómetro HIT y temporizador visibles según el día
+      lastEjerciciosDiaHash = null;
+      renderDia();
+      renderBotonesUltimaSesion();
+      activarWakeLock();
+      fijarOrientacionPortrait();
+      iniciarAutoGuardado();
+      navPush();                      // "atrás" vuelve al menú, no sale de la app
+      if (saved.ejTimersSnapshot) restaurarTimersEjercicio(saved.ejTimersSnapshot);
+      restauroDia = true;
     } else if (saved.pantalla === "historial") {
       abrirHistorial();
     } else if (saved.pantalla === "medidas") {
       abrirMedidas();
     }
 
-    if (tiempoFinal && tiempoFinal > Date.now()) {
-      iniciarTemporizador(0, tiempoRestante);
+    // HIT: sumar el tiempo transcurrido mientras la app estaba cerrada si seguía en marcha
+    if (saved.hitActivo !== undefined) {
+      hitTipo = saved.hitTipo || "HIT 1";
+      const sel = document.getElementById("hit-tipo");
+      if (sel) sel.value = hitTipo;
+      hitAcumulado = saved.hitAcumulado || 0;
+      if (saved.hitActivo) {
+        if (saved.hitInicio) hitAcumulado += Math.max(0, Math.round((Date.now() - saved.hitInicio) / 1000));
+        iniciarHIT();
+      } else {
+        const el = document.getElementById("tiempo-hit");
+        if (el) el.innerText = formatearTiempo(hitAcumulado);
+      }
+    }
+
+    // Temporizador global: recalcular desde el instante final (antes reiniciaba con el valor viejo)
+    const totalGuardado = saved.timerDuracionTotal || 0;
+    if (saved.timerPausado && saved.tiempoRestante > 0) {
+      tiempoRestante = saved.tiempoRestante;
+      timerDuracionTotal = totalGuardado || tiempoRestante;
+      timerPausado = true;
+      const bp = document.querySelector('#temporizador .btn-pausar');
+      if (bp) bp.textContent = "▶️ Reanudar";
+      mostrarTiempo();
+    } else if (saved.tiempoFinal && saved.tiempoFinal > Date.now()) {
+      const restante = Math.round((saved.tiempoFinal - Date.now()) / 1000);
+      iniciarTemporizador(0, restante);
+      timerDuracionTotal = Math.max(totalGuardado, restante);
+      mostrarTiempo();
     } else {
       tiempoRestante = 0;
     }
+
+    guardarEstadoApp();
   }
 
-  const selectHit = document.getElementById("hit-tipo");
-  if (selectHit) selectHit.addEventListener("change", e => { hitTipo = e.target.value; });
+  if (!restauroDia) ejecutarAccesoDirecto();
+
+  // Subir cambios que quedaron pendientes (sin pisar datos más nuevos de otro dispositivo)
+  setTimeout(() => sincronizarSiHaceFalta(), 4000);
 });

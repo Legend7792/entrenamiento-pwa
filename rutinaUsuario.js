@@ -71,43 +71,95 @@ const RUTINA_BASE_ORIGINAL = {
   ]
 };
 
+function leerRutinas() {
+  try {
+    const r = JSON.parse(localStorage.getItem("rutinas_usuario"));
+    return (r && typeof r === "object" && !Array.isArray(r)) ? r : {};
+  } catch { return {}; }
+}
+
+function guardarRutinas(rutinas) {
+  localStorage.setItem("rutinas_usuario", JSON.stringify(rutinas));
+  if (typeof window !== 'undefined' && window.markDirty) window.markDirty();
+}
+
+// Normaliza una rutina importada: garantiza estructura mínima válida y números sanos
+export function normalizarRutina(r) {
+  if (!r || typeof r !== 'object' || typeof r.nombre !== 'string' || !r.nombre.trim() || !Array.isArray(r.dias)) return null;
+  const num = (v, d, min = 0) => { const n = Number(v); return Number.isFinite(n) && n >= min ? n : d; };
+  const out = { nombre: r.nombre.trim().slice(0, 80), dias: [] };
+  if (r.tieneDeload === true) out.tieneDeload = true;
+  for (const d of r.dias) {
+    if (!d || typeof d !== 'object') continue;
+    const dia = {
+      nombre: String(d.nombre || `Día ${out.dias.length + 1}`).slice(0, 80),
+      tieneCronometro: d.tieneCronometro === true,
+      tieneTimer: d.tieneTimer !== false,
+      ejercicios: []
+    };
+    for (const e of (Array.isArray(d.ejercicios) ? d.ejercicios : [])) {
+      if (!e || typeof e.nombre !== 'string' || !e.nombre.trim()) continue;
+      const repsMin = Math.max(0, Math.round(num(e.repsMin, 8)));
+      const repsMax = Math.max(repsMin, Math.round(num(e.repsMax, repsMin || 12)));
+      dia.ejercicios.push({
+        nombre: e.nombre.trim().slice(0, 80),
+        peso: num(e.peso, 0),
+        series: Math.max(1, Math.round(num(e.series, 3, 1))),
+        repsMin, repsMax,
+        descanso: Math.round(num(e.descanso, 90)),
+        tempo: String(e.tempo || '').slice(0, 20),
+        notas: String(e.notas || '').slice(0, 500),
+        alFallo: e.alFallo === true,
+        musculo: typeof e.musculo === 'string' ? e.musculo : ''
+      });
+    }
+    out.dias.push(dia);
+  }
+  return out;
+}
+
 export function inicializarRutinaBase() {
-  const rutinas = JSON.parse(localStorage.getItem("rutinas_usuario")) || {};
+  const rutinas = leerRutinas();
   if (!rutinas[RUTINA_BASE_ID]) {
     rutinas[RUTINA_BASE_ID] = JSON.parse(JSON.stringify(RUTINA_BASE_ORIGINAL));
     localStorage.setItem("rutinas_usuario", JSON.stringify(rutinas));
   }
+  // Rutinas dañadas (sin dias): repararlas para que el editor no se rompa
+  let reparado = false;
+  Object.keys(rutinas).forEach(id => {
+    const r = rutinas[id];
+    if (!r || !Array.isArray(r.dias)) { rutinas[id] = { nombre: (r && r.nombre) || "Rutina", dias: [] }; reparado = true; }
+    else r.dias.forEach(d => { if (!Array.isArray(d.ejercicios)) { d.ejercicios = []; reparado = true; } });
+  });
+  if (reparado) localStorage.setItem("rutinas_usuario", JSON.stringify(rutinas));
 }
 
 export function restaurarRutinaBase() {
-  const rutinas = JSON.parse(localStorage.getItem("rutinas_usuario")) || {};
+  const rutinas = leerRutinas();
   rutinas[RUTINA_BASE_ID] = JSON.parse(JSON.stringify(RUTINA_BASE_ORIGINAL));
-  localStorage.setItem("rutinas_usuario", JSON.stringify(rutinas));
+  guardarRutinas(rutinas);
   return true;
 }
 
 export function saveRutinaUsuario(rutina, rutinaId) {
-  const rutinas = JSON.parse(localStorage.getItem("rutinas_usuario")) || {};
+  const rutinas = leerRutinas();
   rutinas[rutinaId] = rutina;
-  localStorage.setItem("rutinas_usuario", JSON.stringify(rutinas));
-  if (typeof window !== 'undefined' && window.markDirty) window.markDirty();
+  guardarRutinas(rutinas);
 }
 
 export function loadRutinaUsuario(rutinaId) {
-  const rutinas = JSON.parse(localStorage.getItem("rutinas_usuario")) || {};
-  return rutinas[rutinaId] || null;
+  return leerRutinas()[rutinaId] || null;
 }
 
 export function getAllRutinasUsuario() {
-  return JSON.parse(localStorage.getItem("rutinas_usuario")) || {};
+  return leerRutinas();
 }
 
 export function deleteRutinaUsuario(rutinaId) {
   if (rutinaId === RUTINA_BASE_ID) return false;
-  const rutinas = JSON.parse(localStorage.getItem("rutinas_usuario")) || {};
+  const rutinas = leerRutinas();
   delete rutinas[rutinaId];
-  localStorage.setItem("rutinas_usuario", JSON.stringify(rutinas));
-  if (typeof window !== 'undefined' && window.markDirty) window.markDirty();
+  guardarRutinas(rutinas);
   return true;
 }
 
@@ -129,7 +181,7 @@ export function exportarRutinaJSON(rutinaId) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `rutina_${rutina.nombre.replace(/[^a-z0-9]/gi, '_')}.json`;
+  a.download = `rutina_${String(rutina.nombre).replace(/[^a-z0-9]/gi, '_')}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -138,9 +190,9 @@ export function importarRutinaDesdeJSON(archivo, callback) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      const rutina = JSON.parse(e.target.result);
-      if (!rutina.nombre || !Array.isArray(rutina.dias)) {
-        callback(null, 'Archivo JSON inválido. Debe tener "nombre" y "dias".');
+      const rutina = normalizarRutina(JSON.parse(e.target.result));
+      if (!rutina) {
+        callback(null, 'Archivo JSON inválido. Debe tener "nombre" y "dias" (con ejercicios).');
         return;
       }
       const nuevoId = generarIdRutina();
@@ -153,8 +205,13 @@ export function importarRutinaDesdeJSON(archivo, callback) {
   reader.readAsText(archivo);
 }
 
+let _ultimoId = 0;
 export function generarIdRutina() {
-  return `rutina_${Date.now()}`;
+  // Único aunque se llame dos veces en el mismo milisegundo
+  let t = Date.now();
+  if (t <= _ultimoId) t = _ultimoId + 1;
+  _ultimoId = t;
+  return `rutina_${t}`;
 }
 
 export function moverEjercicioRutina(rutinaId, diaIndex, ejercicioIndex, direccion) {

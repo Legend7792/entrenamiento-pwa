@@ -1,7 +1,20 @@
-// ui.js — Sistema de Toasts, Modales y Banner Offline
+// ui.js — Sistema de Toasts, Modales, escapado seguro y Banner Offline
 
 // ─────────────────────────────────────────────
-// TOASTS
+// ESCAPADO (válido para texto HTML y para valores de atributo con " o ')
+// ─────────────────────────────────────────────
+export function escapeHtml(text) {
+  if (text === null || text === undefined) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ─────────────────────────────────────────────
+// TOASTS (el mensaje se inserta como TEXTO, nunca como HTML)
 // ─────────────────────────────────────────────
 export function showToast(mensaje, tipo = 'success', duracion = 3500) {
   let container = document.getElementById('toast-container');
@@ -13,31 +26,48 @@ export function showToast(mensaje, tipo = 'success', duracion = 3500) {
   const iconos = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
   const toast = document.createElement('div');
   toast.className = `toast toast-${tipo}`;
-  toast.innerHTML = `<span class="toast-icon">${iconos[tipo] || '•'}</span><span class="toast-msg">${mensaje}</span>`;
+  toast.setAttribute('role', tipo === 'error' ? 'alert' : 'status');
+  const icon = document.createElement('span');
+  icon.className = 'toast-icon';
+  icon.textContent = iconos[tipo] || '•';
+  const msg = document.createElement('span');
+  msg.className = 'toast-msg';
+  msg.textContent = String(mensaje);
+  toast.append(icon, msg);
   container.appendChild(toast);
   requestAnimationFrame(() => toast.classList.add('toast-visible'));
   setTimeout(() => {
     toast.classList.remove('toast-visible');
-    toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+    // Si la transición no se dispara (pestaña en segundo plano), limpiar igualmente
+    const quitar = () => toast.remove();
+    toast.addEventListener('transitionend', quitar, { once: true });
+    setTimeout(quitar, 600);
   }, duracion);
+}
+
+function mensajeAHtml(mensaje) {
+  return escapeHtml(mensaje).replace(/\n/g, '<br>');
 }
 
 // ─────────────────────────────────────────────
 // MODAL CONFIRM
 // ─────────────────────────────────────────────
-export function showConfirm(mensaje, onSi, onNo) {
+export function showConfirm(mensaje, onSi, onNo, textoSi = 'Confirmar', textoNo = 'Cancelar') {
   const overlay = document.getElementById('modal-confirm-overlay');
   if (!overlay) { if (onSi && window.confirm(mensaje)) onSi(); else if (onNo) onNo(); return; }
-  document.getElementById('modal-confirm-msg').innerHTML = mensaje.replace(/\n/g, '<br>');
+  document.getElementById('modal-confirm-msg').innerHTML = mensajeAHtml(mensaje);
   overlay.classList.remove('oculto');
   const btnSi = document.getElementById('modal-confirm-si');
   const btnNo = document.getElementById('modal-confirm-no');
   const newSi = btnSi.cloneNode(true);
   const newNo = btnNo.cloneNode(true);
+  newSi.textContent = textoSi;
+  newNo.textContent = textoNo;
   btnSi.replaceWith(newSi);
   btnNo.replaceWith(newNo);
   newSi.onclick = () => { overlay.classList.add('oculto'); onSi?.(); };
   newNo.onclick = () => { overlay.classList.add('oculto'); onNo?.(); };
+  setTimeout(() => newNo.focus(), 50);
 }
 
 // ─────────────────────────────────────────────
@@ -74,13 +104,24 @@ export function showPrompt(mensaje, placeholder, onConfirm, valorInicial = '') {
 export function showAlert(mensaje, tipo = 'info') {
   const overlay = document.getElementById('modal-alert-overlay');
   if (!overlay) { showToast(mensaje, tipo, 5000); return; }
-  document.getElementById('modal-alert-msg').innerHTML = mensaje.replace(/\n/g, '<br>');
+  document.getElementById('modal-alert-msg').innerHTML = mensajeAHtml(mensaje);
   overlay.classList.remove('oculto');
   const btnOk = document.getElementById('modal-alert-ok');
   const newOk = btnOk.cloneNode(true);
   btnOk.replaceWith(newOk);
   newOk.onclick = () => overlay.classList.add('oculto');
 }
+
+// Tecla Escape: cierra el modal superior que esté abierto
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const abierto = id => { const el = document.getElementById(id); return el && !el.classList.contains('oculto'); };
+  if (abierto('modal-confirm-overlay')) document.getElementById('modal-confirm-no')?.click();
+  else if (abierto('modal-alert-overlay')) document.getElementById('modal-alert-ok')?.click();
+  else if (abierto('modal-prompt-overlay')) document.getElementById('modal-prompt-cancel')?.click();
+  else if (abierto('modal-descanso-overlay')) window.cerrarModalDescanso?.();
+  else if (abierto('modal-tempo-overlay')) window.cerrarModalTempo?.();
+});
 
 // ─────────────────────────────────────────────
 // BANNER OFFLINE
@@ -125,3 +166,4 @@ window.showToast   = showToast;
 window.showConfirm = showConfirm;
 window.showPrompt  = showPrompt;
 window.showAlert   = showAlert;
+window.escapeHtml  = escapeHtml;

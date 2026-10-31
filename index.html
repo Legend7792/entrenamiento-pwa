@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#121212" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏋️</text></svg>" />
-  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png" />
   <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Gym Tracker" />
   <title>Gym Tracker</title>
   <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./style.css" />
@@ -40,8 +43,9 @@
   <style>@keyframes gt-spin{to{transform:rotate(360deg)}}</style>
 </div>
 <script>
-  // Fallback: si app.js no quitó el splash en 8 s, mostramos mensaje de error
-  // (evita quedarse con pantalla negra si el JS no carga)
+  // Fallback: si app.js no quitó el splash en 20 s, mostramos mensaje de error
+  // (evita quedarse con pantalla negra si el JS no carga). Si la app termina de
+  // cargar más tarde, app.js quita igualmente el splash.
   setTimeout(function(){
     var s = document.getElementById('app-splash');
     if (!s) return;
@@ -55,7 +59,7 @@
       'background:#4a9eff;color:#fff;border:none;padding:11px 26px;' +
       'border-radius:8px;font-size:14px;cursor:pointer;font-weight:600">' +
       '🔄 Reintentar</button></div>';
-  }, 60000);
+  }, 20000);
 </script>
 
 <!-- ══════════════════════════════════════
@@ -185,7 +189,7 @@
 ══════════════════════════════════════ -->
 <section id="pantalla-perfil" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back">←</button>
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2>👤 Perfil</h2>
   </div>
   <div id="perfil-contenido"></div>
@@ -196,9 +200,9 @@
 ══════════════════════════════════════ -->
 <section id="menu" class="oculto">
   <div class="menu-topbar">
-    <button onclick="toggleSidebar()" class="btn-icon-top" title="Ajustes">☰</button>
+    <button onclick="toggleSidebar()" class="btn-icon-top" title="Ajustes" aria-label="Abrir ajustes">☰</button>
     <h1>🏋️ Gym Tracker</h1>
-    <button onclick="toggleSidebarRight()" class="btn-icon-top" title="Temporizador">⏱️</button>
+    <button onclick="toggleSidebarRight()" class="btn-icon-top" title="Temporizador" aria-label="Abrir temporizador">⏱️</button>
   </div>
 
   <div id="deload-banner"></div>
@@ -216,9 +220,9 @@
 ══════════════════════════════════════ -->
 <section id="pantalla-dia" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back">←</button>
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2 id="titulo-dia">Entrenamiento</h2>
-    <button onclick="toggleSidebarRight()" class="btn-icon-top">⏱️</button>
+    <button onclick="toggleSidebarRight()" class="btn-icon-top" title="Temporizador" aria-label="Abrir temporizador">⏱️</button>
   </div>
 
   <!-- Modo 2 personas y notas de sesión -->
@@ -268,7 +272,7 @@
 ══════════════════════════════════════ -->
 <section id="pantalla-historial" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back">←</button>
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2>📊 Historial</h2>
   </div>
   <div class="historial-search">
@@ -287,7 +291,7 @@
 ══════════════════════════════════════ -->
 <section id="pantalla-detalle" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverHistorial()" class="btn-back">←</button>
+    <button onclick="volverHistorial()" class="btn-back" aria-label="Volver">←</button>
     <h2>📋 Detalle sesión</h2>
   </div>
   <div id="detalle-sesion"></div>
@@ -298,7 +302,7 @@
 ══════════════════════════════════════ -->
 <section id="pantalla-medidas" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back">←</button>
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2>📏 Medidas corporales</h2>
   </div>
 
@@ -351,7 +355,7 @@
 ══════════════════════════════════════ -->
 <section id="pantalla-audio" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back">←</button>
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2>🔔 Sonido temporizador</h2>
   </div>
 
@@ -413,7 +417,7 @@
 ══════════════════════════════════════ -->
 <section id="pantalla-ai-import" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back">←</button>
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2>🤖 Importar rutina con IA</h2>
   </div>
 
@@ -439,7 +443,11 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
     <div class="import-field" style="margin-top:12px;">
       <label>API Key de Anthropic</label>
       <input id="ai-import-apikey" type="password" placeholder="sk-ant-..." />
-      <p class="import-hint">Se guarda solo en tu dispositivo. Con IA puedes pegar texto libre en cualquier formato y detecta múltiples días automáticamente.</p>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;">
+        <input id="ai-recordar-key" type="checkbox" /> Recordar la clave en este dispositivo
+      </label>
+      <p class="import-hint">Por defecto la clave solo vive mientras la app está abierta. Si marcas "Recordar", se guarda en este dispositivo (sin cifrar), nunca se sube a la nube ni entra en las copias de seguridad. Con IA puedes pegar texto libre en cualquier formato y detecta varios días automáticamente.</p>
+      <button type="button" onclick="borrarApiKeyGuardada()" class="btn-secondary">🗑️ Borrar API key de este dispositivo</button>
     </div>
   </details>
 
@@ -452,7 +460,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
 ══════════════════════════════════════ -->
 <section id="pantalla-guia-tempo" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back">←</button>
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2>📖 Guía de Entrenamiento</h2>
   </div>
 
@@ -632,7 +640,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
 ══════════════════════════════════════ -->
 <section id="pantalla-progresion-rutina" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back">←</button>
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2>📋 Progresión por rutina</h2>
   </div>
   <div id="progresion-rutina-contenido"></div>
@@ -708,7 +716,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
 ══════════════════════════════════════ -->
 <section id="pantalla-estadisticas" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back">←</button>
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2>📊 Estadísticas</h2>
   </div>
   <div id="stats-contenido"></div>
@@ -719,7 +727,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
 ══════════════════════════════════════ -->
 <section id="pantalla-progreso" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back">←</button>
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2>📈 Progreso por ejercicio</h2>
   </div>
   <div class="progreso-selector">

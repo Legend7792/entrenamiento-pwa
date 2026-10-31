@@ -1,20 +1,17 @@
-import { showToast, showConfirm, showPrompt } from "./ui.js";
+import { showToast, showConfirm, showPrompt, escapeHtml } from "./ui.js";
 // editorRutinas.js
 import {
   saveRutinaUsuario, loadRutinaUsuario, getAllRutinasUsuario,
   deleteRutinaUsuario, generarIdRutina, RUTINA_BASE_ID,
   restaurarRutinaBase, moverEjercicioRutina,
-  duplicarRutina, exportarRutinaJSON, importarRutinaDesdeJSON
+  duplicarRutina, exportarRutinaJSON, importarRutinaDesdeJSON, normalizarRutina
 } from "./rutinaUsuario.js";
+import { PLANTILLAS } from "./plantillas.js";
 import { renderizarSelectorRutinas } from "./selectorRutinas.js";
+import { navPush, navLimpiar } from "./nav.js";
 
-// Escapado XSS local (misma función que app.js)
-function esc(text) {
-  if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = String(text);
-  return div.innerHTML;
-}
+// Escapado seguro para texto y atributos (incluye comillas)
+const esc = escapeHtml;
 
 let rutinaEditando   = null;
 let rutinaEditandoId = null;
@@ -22,7 +19,7 @@ let diaEditando      = null;
 let ejEditandoIdx    = null;
 
 window.abrirEditorRutinas = function () {
-  history.pushState({}, '');
+  navPush();
   ['pantalla-auth','pantalla-perfil','pantalla-dia','pantalla-historial',
    'pantalla-detalle','pantalla-medidas','pantalla-audio','pantalla-resumen',
    'pantalla-ai-import','pantalla-guia-tempo','pantalla-estadisticas',
@@ -44,17 +41,19 @@ function renderListaRutinas() {
             return `<div class="rutina-card">
               <div class="rutina-card-info"><h4>${esBase?'📋':'✏️'} ${esc(r.nombre)}</h4><p>${r.dias.length} día(s)</p></div>
               <div class="acciones-rutina-card">
-                <button onclick="editarRutina('${id}')">✏️ Editar</button>
-                <button onclick="exportarRutina('${id}')" title="JSON">📤</button>
+                <button onclick="editarRutina('${esc(id)}')">✏️ Editar</button>
+                <button onclick="exportarRutina('${esc(id)}')" title="Exportar JSON" aria-label="Exportar JSON">📤</button>
+                <button onclick="imprimirRutina('${esc(id)}')" title="Imprimir / guardar PDF" aria-label="Imprimir o guardar como PDF">🖨️</button>
                 ${esBase
                   ? `<button onclick="restaurarRutinaBaseBtn()" style="background:var(--warning);color:#000;" title="Restaurar">🔄</button>`
-                  : `<button onclick="clonarRutina('${id}')" title="Duplicar">📋</button>
-                     <button class="btn-danger" onclick="borrarRutinaCompleta('${id}')">🗑️</button>`}
+                  : `<button onclick="clonarRutina('${esc(id)}')" title="Duplicar">📋</button>
+                     <button class="btn-danger" onclick="borrarRutinaCompleta('${esc(id)}')">🗑️</button>`}
               </div></div>`;
           }).join('')}
     </div>
     <div class="botones-editor-rutinas">
       <button onclick="crearNuevaRutina()">➕ Nueva rutina</button>
+      <button onclick="abrirPlantillas()" class="btn-secondary">📚 Desde plantilla</button>
       <button onclick="document.getElementById('input-importar-json').click()" class="btn-secondary">📥 Importar JSON</button>
       <input type="file" id="input-importar-json" accept=".json" style="display:none" onchange="importarDesdeArchivoJSON(this)">
       <button onclick="volverMenuDesdeEditor()" class="btn-secondary">← Volver al menú</button>
@@ -85,6 +84,64 @@ window.restaurarRutinaBaseBtn = () => {
 
 window.crearNuevaRutina = function() {
   showPrompt("Nombre de la rutina:", "ej: Mi Rutina", (nombre) => { const id=generarIdRutina(); saveRutinaUsuario({nombre:nombre.trim(),dias:[]},id); editarRutina(id); });
+};
+
+// ── Impresión: hoja con la rutina para llevar al gimnasio o guardar como PDF ──
+window.imprimirRutina = function(id) {
+  const r = loadRutinaUsuario(id);
+  if (!r || !r.dias?.length) { showToast('La rutina no tiene días para imprimir','warning'); return; }
+  const filaCeldas = n => Array.from({length:n},()=>'<td class="imp-blanco"></td>').join('');
+  const html = `<h1>${esc(r.nombre)}</h1>
+    <p class="imp-sub">Gym Tracker · ${new Date().toLocaleDateString('es-ES')}</p>
+    ${r.dias.map(d => `
+      <h2>${esc(d.nombre)}</h2>
+      <table class="imp-tabla">
+        <thead><tr><th>Ejercicio</th><th>Series × reps</th><th>Peso</th><th>Desc.</th><th>Tempo</th><th>Series hechas (reps)</th></tr></thead>
+        <tbody>${d.ejercicios.map(ej => {
+          const peso = ej.alFallo ? 'Al fallo' : `${window.pesoConfigActual ? window.pesoConfigActual(id, d.nombre, ej.nombre, ej.peso) : ej.peso} kg`;
+          const reps = ej.alFallo ? 'Al fallo' : `${ej.repsMin}${ej.repsMax !== ej.repsMin ? '-' + ej.repsMax : ''}`;
+          return `<tr><td><strong>${esc(ej.nombre)}</strong>${ej.notas ? `<br><small>${esc(ej.notas)}</small>` : ''}</td>
+            <td>${esc(ej.series)} × ${esc(reps)}</td><td>${esc(peso)}</td><td>${esc(ej.descanso || '')}${ej.descanso ? ' s' : ''}</td>
+            <td>${esc(ej.tempo || '')}</td>${filaCeldas(1)}</tr>`;
+        }).join('')}</tbody>
+      </table>`).join('')}`;
+  let cont = document.getElementById('vista-impresion');
+  if (!cont) { cont = document.createElement('div'); cont.id = 'vista-impresion'; document.body.appendChild(cont); }
+  cont.innerHTML = html;
+  document.body.classList.add('imprimiendo');
+  const limpiar = () => { document.body.classList.remove('imprimiendo'); cont.innerHTML = ''; window.removeEventListener('afterprint', limpiar); };
+  window.addEventListener('afterprint', limpiar);
+  // Pequeña espera para que el navegador pinte antes de abrir el diálogo
+  setTimeout(() => { try { window.print(); } catch { limpiar(); showToast('No se pudo abrir la impresión','error'); } }, 150);
+};
+
+// ── Plantillas: rutinas de partida con los pesos a 0 (se rellenan al entrenar) ──
+window.abrirPlantillas = function() {
+  const cont = document.getElementById("contenido-editor");
+  cont.innerHTML = `<div class="gestor-rutinas"><h3>📚 Plantillas</h3>
+    <p class="import-hint">Se crea una copia que puedes editar libremente. Los pesos empiezan en 0: ponlos en la pantalla del día la primera vez que entrenes.</p>
+    <div class="lista-rutinas">
+      ${Object.entries(PLANTILLAS).map(([id, t]) => `
+        <div class="rutina-card">
+          <div class="rutina-card-info"><h4>${esc(t.titulo)}</h4>
+            <p>${esc(t.descripcion)}</p>
+            <p>${t.rutina.dias.map(d => esc(d.nombre)).join(' · ')}</p></div>
+          <div class="acciones-rutina-card"><button onclick="usarPlantilla('${esc(id)}')">➕ Crear</button></div>
+        </div>`).join('')}
+    </div>
+    <div class="botones-editor-rutinas"><button onclick="volverListaRutinas()" class="btn-secondary">← Volver</button></div>
+  </div>`;
+};
+
+window.usarPlantilla = function(plantillaId) {
+  const t = PLANTILLAS[plantillaId];
+  const rutina = t && normalizarRutina(JSON.parse(JSON.stringify(t.rutina)));
+  if (!rutina) { showToast('Plantilla no disponible','error'); return; }
+  const id = generarIdRutina();
+  saveRutinaUsuario(rutina, id);
+  renderizarSelectorRutinas();
+  showToast(`Rutina "${rutina.nombre}" creada`,'success');
+  editarRutina(id);
 };
 
 window.editarRutina = (id) => { rutinaEditandoId=id; rutinaEditando=loadRutinaUsuario(id); renderEditorRutina(); };
@@ -246,7 +303,7 @@ function renderFormularioDia() {
           <label class="form-label-check"><input type="checkbox" id="edit-fallo-${idx}" ${ej.alFallo?'checked':''}> Al fallo</label>
           <div class="form-edit-btns">
             <button onclick="guardarEjercicioEditado(${idx})" class="btn-primary">💾 Guardar</button>
-            <button onclick="ejEditandoIdx=null;renderFormularioDia()" class="btn-secondary">✕</button>
+            <button onclick="cancelarEdicionEjercicio()" class="btn-secondary" aria-label="Cancelar edición">✕</button>
           </div></div>`:''}
       `).join('')}
     </div>
@@ -293,6 +350,8 @@ function renderFormularioDia() {
   </div>`;
 }
 
+window.cancelarEdicionEjercicio = function() { ejEditandoIdx = null; renderFormularioDia(); };
+
 window.abrirFormEditarEj = function(idx) {
   ejEditandoIdx = ejEditandoIdx===idx ? null : idx;
   renderFormularioDia();
@@ -317,13 +376,22 @@ window.guardarEjercicioEditado = function(idx) {
 
   const rm = alFallo ? (Number(repsMax)||30) : Number(repsMax);
   const musculoV = get(`edit-musculo-${idx}`)?.value || '';
-  rutinaEditando.dias[diaEditando].ejercicios[idx]={
-    ...rutinaEditando.dias[diaEditando].ejercicios[idx],
-    nombre, peso:alFallo?0:(Number(peso)||0),
+  const diaObj = rutinaEditando.dias[diaEditando];
+  const viejo = diaObj.ejercicios[idx];
+  const nuevoPeso = alFallo ? 0 : (Number(peso)||0);
+  const nuevoDescanso = descV ? Number(descV) : (viejo.descanso||descansoInteligente(rm));
+  diaObj.ejercicios[idx]={
+    ...viejo,
+    nombre, peso:nuevoPeso,
     series:Number(series), repsMin:Number(repsMin), repsMax:rm,
-    descanso: descV ? Number(descV) : (rutinaEditando.dias[diaEditando].ejercicios[idx].descanso||descansoInteligente(rm)),
+    descanso: nuevoDescanso,
     tempo:tempoV, notas:notasV, alFallo, musculo:musculoV
   };
+  // Los pesos/descansos guardados en la configuración tienen prioridad al entrenar:
+  // se conservan al renombrar y se actualizan si el usuario los cambió aquí.
+  if (nombre !== viejo.nombre) window.migrarClavesConfig?.(rutinaEditandoId, diaObj.nombre, viejo.nombre, diaObj.nombre, nombre);
+  if (nuevoPeso !== (Number(viejo.peso)||0)) window.fijarPesoConfig?.(rutinaEditandoId, diaObj.nombre, nombre, nuevoPeso);
+  if (descV && nuevoDescanso !== viejo.descanso) window.fijarDescansoConfig?.(rutinaEditandoId, diaObj.nombre, nombre, nuevoDescanso);
   saveRutinaUsuario(rutinaEditando,rutinaEditandoId);
   dispararCambioRutina();
   ejEditandoIdx=null;
@@ -367,20 +435,26 @@ window.añadirEjercicioADia = function() {
 
 window.borrarEjercicio = function(idx) {
   const ej=rutinaEditando.dias[diaEditando].ejercicios[idx];
-  const fn=()=>{ rutinaEditando.dias[diaEditando].ejercicios.splice(idx,1); saveRutinaUsuario(rutinaEditando,rutinaEditandoId); if(ejEditandoIdx===idx) ejEditandoIdx=null; renderFormularioDia(); };
+  const fn=()=>{ rutinaEditando.dias[diaEditando].ejercicios.splice(idx,1); saveRutinaUsuario(rutinaEditando,rutinaEditandoId); ejEditandoIdx=null; dispararCambioRutina(); renderFormularioDia(); };
   showConfirm(`¿Borrar "${ej.nombre}"?`, fn);
 };
 
-window.toggleTimer      = v => { rutinaEditando.dias[diaEditando].tieneTimer=v;      saveRutinaUsuario(rutinaEditando,rutinaEditandoId); };
-window.toggleCronometro = v => { rutinaEditando.dias[diaEditando].tieneCronometro=v; saveRutinaUsuario(rutinaEditando,rutinaEditandoId); };
+window.toggleTimer      = v => { rutinaEditando.dias[diaEditando].tieneTimer=v;      saveRutinaUsuario(rutinaEditando,rutinaEditandoId); dispararCambioRutina(); };
+window.toggleCronometro = v => { rutinaEditando.dias[diaEditando].tieneCronometro=v; saveRutinaUsuario(rutinaEditando,rutinaEditandoId); dispararCambioRutina(); };
 window.cambiarNombreDia = function() {
-  const fn=(n)=>{ rutinaEditando.dias[diaEditando].nombre=n.trim(); saveRutinaUsuario(rutinaEditando,rutinaEditandoId); renderFormularioDia(); };
+  const fn=(n)=>{
+    const nuevo = (n||'').trim();
+    const d = rutinaEditando.dias[diaEditando];
+    if (!nuevo) { showToast('El nombre no puede estar vacío','warning'); return; }
+    window.renombrarDiaConfig?.(rutinaEditandoId, d.nombre, nuevo, d.ejercicios.map(e=>e.nombre));
+    d.nombre = nuevo; saveRutinaUsuario(rutinaEditando,rutinaEditandoId); dispararCambioRutina(); renderFormularioDia(); };
   showPrompt("Nombre del día:", "", fn, rutinaEditando.dias[diaEditando].nombre);
 };
 
 window.volverListaDias    = () => { diaEditando=null; ejEditandoIdx=null; renderEditorRutina(); };
 window.volverListaRutinas = () => { rutinaEditando=rutinaEditandoId=null; renderListaRutinas(); };
 window.volverMenuDesdeEditor = function() {
+  navLimpiar();   // quita la entrada de historial que añadió abrirEditorRutinas
   ['pantalla-editor','pantalla-auth','pantalla-perfil','pantalla-dia',
    'pantalla-historial','pantalla-detalle','pantalla-medidas','pantalla-audio',
    'pantalla-resumen','pantalla-ai-import','pantalla-guia-tempo',

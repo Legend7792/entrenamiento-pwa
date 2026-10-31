@@ -12,6 +12,11 @@
   --warning:       #ff9800;
   --danger:        #f44336;
   --shadow:        rgba(0,0,0,0.35);
+  /* Color de texto legible sobre cada color de relleno (lo recalcula themes.js por tema) */
+  --on-accent:     #000000;
+  --on-success:    #000000;
+  --on-danger:     #ffffff;
+  --on-warning:    #000000;
 }
 
 /* ══════════════════════════════════════════════════
@@ -56,20 +61,20 @@ button {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
   transition: all 0.18s ease;
   display: block;
 }
 button:active { transform: scale(0.97); }
 
-.btn-primary  { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; }
+.btn-primary  { background: var(--accent) !important; color: var(--on-accent) !important; border-color: var(--accent) !important; }
 .btn-secondary {
   background: var(--bg-primary) !important;
   border: 1px solid var(--border) !important;
   color: var(--text-secondary) !important;
 }
-.btn-danger   { background: var(--danger) !important; color: #fff !important; border-color: var(--danger) !important; }
+.btn-danger   { background: var(--danger) !important; color: var(--on-danger) !important; border-color: var(--danger) !important; }
 .btn-danger-sm {
   background: transparent !important;
   border: 1px solid var(--danger) !important;
@@ -326,7 +331,7 @@ textarea { resize: vertical; font-family: inherit; }
   text-align: left; font-size: 15px;
   background: var(--bg-primary); border-color: var(--border); color: var(--text-primary);
 }
-.botones-dias button:active { background: var(--accent); color: #fff; }
+.botones-dias button:active { background: var(--accent); color: var(--on-accent); }
 .menu-footer { display: flex; gap: 10px; margin-top: 8px; }
 .menu-footer button { flex: 1; padding: 12px; margin: 0; font-size: 14px; }
 
@@ -348,7 +353,7 @@ textarea { resize: vertical; font-family: inherit; }
 }
 .btn-modo.modo-activo {
   background: var(--accent) !important; border-color: var(--accent) !important;
-  color: #fff !important;
+  color: var(--on-accent) !important;
 }
 
 .contenido-dia { padding-bottom: 8px; }
@@ -376,14 +381,14 @@ textarea { resize: vertical; font-family: inherit; }
 .ejercicio-badges { display: flex; flex-wrap: wrap; gap: 4px; flex-shrink: 0; }
 
 .badge-tempo {
-  background: var(--accent); color: #fff;
+  background: var(--accent); color: var(--on-accent);
   font-size: 11px; padding: 3px 8px; border-radius: 20px;
   font-weight: 700; white-space: nowrap; cursor: pointer;
   transition: opacity 0.2s;
 }
 .badge-tempo:hover { opacity: 0.8; }
 .badge-fallo {
-  background: var(--warning); color: #000;
+  background: var(--warning); color: var(--on-warning);
   font-size: 11px; padding: 3px 8px; border-radius: 20px; font-weight: 700;
 }
 .badge-musculo {
@@ -450,9 +455,9 @@ textarea { resize: vertical; font-family: inherit; }
   font-size: 18px; font-weight: 700; text-align: center;
   transition: all 0.2s ease; margin: 0;
 }
-.serie-ok   { background: var(--success) !important; color: #fff !important; border: 2px solid var(--success) !important; }
-.serie-fail { background: var(--danger)  !important; color: #fff !important; border: 2px solid var(--danger)  !important; }
-.serie-mid  { background: var(--warning) !important; color: #000 !important; border: 2px solid var(--warning) !important; }
+.serie-ok   { background: var(--success) !important; color: var(--on-success) !important; border: 2px solid var(--success) !important; }
+.serie-fail { background: var(--danger)  !important; color: var(--on-danger) !important; border: 2px solid var(--danger)  !important; }
+.serie-mid  { background: var(--warning) !important; color: var(--on-warning) !important; border: 2px solid var(--warning) !important; }
 
 /* Footer ejercicio */
 .ejercicio-footer {
@@ -479,10 +484,10 @@ textarea { resize: vertical; font-family: inherit; }
 }
 .btn-timer-ej.timer-ej-activo {
   background: var(--accent) !important; border-color: var(--accent) !important;
-  color: #fff !important; animation: pulsar 1.6s infinite;
+  color: var(--on-accent) !important; animation: pulsar 1.6s infinite;
 }
 .btn-timer-ej.timer-ej-done {
-  background: var(--success) !important; border-color: var(--success) !important; color: #fff !important;
+  background: var(--success) !important; border-color: var(--success) !important; color: var(--on-success) !important;
 }
 @keyframes pulsar {
   0%, 100% { box-shadow: 0 0 0 0 rgba(74,158,255,0.45); }
@@ -525,7 +530,7 @@ textarea { resize: vertical; font-family: inherit; }
 /* Acciones día */
 .acciones-dia { margin-top: 16px; display: flex; gap: 10px; }
 .acciones-dia button { flex: 1; padding: 14px; margin: 0; }
-.btn-finalizar { background: var(--success) !important; font-size: 16px; }
+.btn-finalizar { background: var(--success) !important; color: var(--on-success) !important; font-size: 16px; }
 
 /* ══════════════════════════════════════════════════
    PANTALLA RESUMEN
@@ -780,7 +785,7 @@ textarea { resize: vertical; font-family: inherit; }
 .btn-migrar {
   width: auto !important; padding: 6px 12px !important; margin: 0 !important;
   font-size: 12px !important; background: var(--warning) !important;
-  border: none !important; color: #000 !important; font-weight: 700; border-radius: 6px !important;
+  border: none !important; color: var(--on-warning) !important; font-weight: 700; border-radius: 6px !important;
 }
 .sin-descanso { color: var(--warning); font-size: 11px; }
 
@@ -821,7 +826,7 @@ textarea { resize: vertical; font-family: inherit; }
 
 .grafica-toggle { display:flex; gap:8px; margin-bottom:12px; }
 .grafica-toggle button { flex:1; padding:8px; font-size:13px; }
-.grafica-toggle button.activo { background:var(--accent); color:#fff; border-color:var(--accent); }
+.grafica-toggle button.activo { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
 .chart-container {
   background: var(--bg-primary); border: 1px solid var(--border);
   border-radius: 10px; padding: 12px; overflow-x: auto; margin-bottom: 12px;
@@ -865,7 +870,7 @@ textarea { resize: vertical; font-family: inherit; }
   color: var(--text-secondary) !important; border-radius: 8px !important;
 }
 .btn-descanso-op.activo {
-  background: var(--accent) !important; border-color: var(--accent) !important; color: #fff !important;
+  background: var(--accent) !important; border-color: var(--accent) !important; color: var(--on-accent) !important;
 }
 .btn-descanso-op:active { transform: scale(0.95); }
 
@@ -1156,7 +1161,7 @@ textarea { resize: vertical; font-family: inherit; }
   font-size: 13px !important;
   background: var(--success) !important;
   border-color: var(--success) !important;
-  color: #fff !important;
+  color: var(--on-success) !important;
   border-radius: 8px !important;
 }
 
@@ -1250,7 +1255,7 @@ textarea { resize: vertical; font-family: inherit; }
   width: auto !important;
   border-radius: 8px !important;
   background: var(--accent) !important;
-  color: #fff !important;
+  color: var(--on-accent) !important;
   font-weight: 600;
 }
 
@@ -1320,4 +1325,24 @@ textarea { resize: vertical; font-family: inherit; }
   color: var(--text-secondary);
   line-height: 1.4;
   margin-left: 28px;
+}
+
+/* ══════════ Impresión de rutinas ══════════ */
+#vista-impresion { display: none; }
+@media print {
+  body.imprimiendo > *:not(#vista-impresion) { display: none !important; }
+  body.imprimiendo { background: #fff !important; }
+  body.imprimiendo #vista-impresion {
+    display: block; color: #000; background: #fff;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; padding: 8mm;
+  }
+  #vista-impresion h1 { font-size: 20pt; margin: 0 0 2mm; }
+  #vista-impresion h2 { font-size: 13pt; margin: 6mm 0 2mm; page-break-after: avoid; }
+  #vista-impresion .imp-sub { color: #555; font-size: 9pt; margin: 0 0 4mm; }
+  #vista-impresion .imp-tabla { width: 100%; border-collapse: collapse; font-size: 10pt; page-break-inside: auto; }
+  #vista-impresion .imp-tabla tr { page-break-inside: avoid; }
+  #vista-impresion .imp-tabla th, #vista-impresion .imp-tabla td { border: 1px solid #888; padding: 2mm; text-align: left; vertical-align: top; }
+  #vista-impresion .imp-tabla th { background: #eee; }
+  #vista-impresion .imp-blanco { min-width: 40mm; height: 9mm; }
+  #vista-impresion small { color: #444; }
 }

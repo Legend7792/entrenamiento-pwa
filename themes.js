@@ -163,8 +163,23 @@ export function obtenerTemaActual() {
   return localStorage.getItem("tema") || "oscuro";
 }
 
-// Aplicar tema
-export function aplicarTema(idTema) {
+// ── Contraste: texto blanco o negro, el que más contraste dé sobre un color ──
+function luminancia(hex) {
+  const h = hex.replace("#", "");
+  const c = [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16) / 255)
+    .map(v => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+export function textoSobre(hex) {
+  const L = luminancia(hex);
+  const conBlanco = 1.05 / (L + 0.05);
+  const conNegro  = (L + 0.05) / 0.05;
+  return conNegro >= conBlanco ? "#000000" : "#ffffff";
+}
+
+// Aplicar tema. `sincronizar` solo debe ser true cuando el USUARIO cambia el tema
+// (antes se marcaba como cambio en cada arranque y provocaba una subida a la nube).
+export function aplicarTema(idTema, { sincronizar = false } = {}) {
   const tema = TEMAS[idTema];
   if (!tema) return;
 
@@ -173,12 +188,22 @@ export function aplicarTema(idTema) {
     root.style.setProperty(variable, valor);
   });
 
+  // Colores de texto legibles sobre los rellenos de cada tema
+  const v = tema.variables;
+  root.style.setProperty("--on-accent",  textoSobre(v["--accent"]));
+  root.style.setProperty("--on-success", textoSobre(v["--success"]));
+  root.style.setProperty("--on-danger",  textoSobre(v["--danger"]));
+  root.style.setProperty("--on-warning", textoSobre(v["--warning"]));
+
+  // Barra de estado del navegador/PWA acorde al tema
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", v["--bg-primary"]);
+
   try {
-    localStorage.setItem("tema", idTema);
+    if (localStorage.getItem("tema") !== idTema) localStorage.setItem("tema", idTema);
   } catch (e) {
     console.warn("No se pudo guardar el tema:", e);
   }
-  markDirty(); // Marcar para sincronizar
+  if (sincronizar) markDirty();
 }
 
 // Crear selector de temas en el sidebar
@@ -195,7 +220,7 @@ export function crearSelectorTemas() {
   ).join("");
 
   selector.onchange = (e) => {
-    aplicarTema(e.target.value);
+    aplicarTema(e.target.value, { sincronizar: true });
   };
 }
 
@@ -204,3 +229,6 @@ document.addEventListener("DOMContentLoaded", () => {
   aplicarTema(obtenerTemaActual());
   crearSelectorTemas();
 });
+
+// Reaplicar el tema guardado (p. ej. después de traer datos de la nube)
+window.aplicarTemaGuardado = () => aplicarTema(obtenerTemaActual());

@@ -54,26 +54,19 @@ Object.keys(rutinasUsuario).forEach(rutinaId => {
     selector.appendChild(option);
   });
   
-  // Event listener
+  // Event listener (setRutinaActiva emite "cambio-rutina"; app.js refresca botones y banner)
   selector.onchange = function() {
     setRutinaActiva(this.value);
-    
-    if (typeof window.renderizarBotonesDias === 'function') {
-      window.renderizarBotonesDias();
-    }
   };
 }
+window.renderizarSelectorRutinas = renderizarSelectorRutinas;
 
 // Inicializar
 document.addEventListener("DOMContentLoaded", () => {
   renderizarSelectorRutinas();
 });
 
-// Escuchar cambios
+// Escuchar cambios (los botones de días y el banner los refresca app.js)
 window.addEventListener("cambio-rutina", () => {
   renderizarSelectorRutinas();
-  
-  if (typeof window.renderizarBotonesDias === 'function') {
-    window.renderizarBotonesDias();
-  }
 });
