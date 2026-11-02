@@ -342,8 +342,11 @@ window.importarRutina = async function() {
     _aiDias = [{ id: Date.now(), nombre: 'Día 1', texto: '' }];
 
     setTimeout(() => {
-      document.getElementById('pantalla-ai-import')?.classList.add('oculto');
-      document.getElementById('menu')?.classList.remove('oculto');
+      if (typeof window.volverMenu === 'function') window.volverMenu();
+      else {
+        document.getElementById('pantalla-ai-import')?.classList.add('oculto');
+        document.getElementById('menu')?.classList.remove('oculto');
+      }
       if (typeof window.renderizarBotonesDias === 'function') window.renderizarBotonesDias();
     }, 1500);
 

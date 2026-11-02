@@ -2,7 +2,7 @@
 import { getSupabase } from "./cloud.js";
 import { userState, saveLocal, syncFromCloud, syncToCloud, obtenerInfoNube, esClaveSincronizable, sincronizarSiHaceFalta } from "./userState.js";
 import { showToast, showConfirm, escapeHtml } from "./ui.js";
-import { navPush } from "./nav.js";
+import { navPush, navLimpiar } from "./nav.js";
 
 const PANTALLAS_SECUNDARIAS = [
   "pantalla-auth", "pantalla-perfil", "pantalla-dia", "pantalla-historial",
@@ -19,6 +19,7 @@ export function mostrarPantallaAuth() {
 }
 
 export function mostrarMenu() {
+  navLimpiar();
   PANTALLAS_SECUNDARIAS.forEach(id => document.getElementById(id)?.classList.add("oculto"));
   document.getElementById("menu")?.classList.remove("oculto");
 }

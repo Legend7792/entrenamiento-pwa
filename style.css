@@ -78,14 +78,14 @@ button:active { transform: scale(0.97); }
 .btn-danger-sm {
   background: transparent !important;
   border: 1px solid var(--danger) !important;
-  color: var(--danger) !important;
+  color: var(--danger-text, var(--danger)) !important;
   font-size: 13px;
   padding: 8px 14px;
 }
 .btn-link {
   background: none !important;
   border: none !important;
-  color: var(--accent) !important;
+  color: var(--accent-text, var(--accent)) !important;
   font-size: 14px;
   padding: 6px;
   text-decoration: underline;
@@ -446,7 +446,7 @@ textarea { resize: vertical; font-family: inherit; }
 .ejercicio-col { flex: 1; }
 .col-label { font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 3px; }
 .ejercicio-col input[type="number"] { width: 100% !important; }
-.objetivo-texto { margin: 6px 0 0; font-size: 18px; font-weight: 700; color: var(--accent); }
+.objetivo-texto { margin: 6px 0 0; font-size: 18px; font-weight: 700; color: var(--accent-text, var(--accent)); }
 
 /* Series */
 .series { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
@@ -505,7 +505,7 @@ textarea { resize: vertical; font-family: inherit; }
 /* Botones última sesión */
 .botones-ultima-sesion { margin-bottom: 12px; }
 .botones-ultima-sesion button { background: var(--bg-primary) !important; border-color: var(--border) !important; color: var(--text-secondary) !important; font-size: 13px; padding: 8px 14px; }
-.botones-ultima-sesion button.activo { border-color: var(--accent) !important; color: var(--accent) !important; }
+.botones-ultima-sesion button.activo { border-color: var(--accent) !important; color: var(--accent-text, var(--accent)) !important; }
 
 /* Guía última sesión */
 .guia-ultima-sesion {
@@ -514,7 +514,7 @@ textarea { resize: vertical; font-family: inherit; }
   border-radius: 8px; padding: 8px 10px; margin: 6px 0;
   font-size: 13px; color: var(--text-secondary);
 }
-.guia-fecha { color: var(--accent); }
+.guia-fecha { color: var(--accent-text, var(--accent)); }
 .guia-peso, .guia-reps { font-weight: 600; }
 
 /* HIT cronómetro */
@@ -539,7 +539,7 @@ textarea { resize: vertical; font-family: inherit; }
 .resumen-emoji  { font-size: 52px; margin-bottom: 8px; }
 .resumen-header h2 { margin: 0 0 6px; font-size: 19px; }
 .resumen-fecha { color: var(--text-secondary); font-size: 13px; text-transform: capitalize; margin: 3px 0; }
-.resumen-dia   { color: var(--accent); font-weight: 700; margin: 3px 0; }
+.resumen-dia   { color: var(--accent-text, var(--accent)); font-weight: 700; margin: 3px 0; }
 .resumen-notas { color: var(--text-secondary); font-style: italic; font-size: 13px; margin-top: 6px; }
 
 .resumen-stats { display: flex; gap: 10px; margin: 16px 0; }
@@ -589,7 +589,7 @@ textarea { resize: vertical; font-family: inherit; }
 .ejercicio-detalle strong { flex: 1; }
 .ejercicio-detalle span { color: var(--text-secondary); font-size: 13px; }
 .detalle-header { margin-bottom: 14px; }
-.detalle-hit { color: var(--accent); font-size: 13px; margin-top: 4px; font-weight: 600; }
+.detalle-hit { color: var(--accent-text, var(--accent)); font-size: 13px; margin-top: 4px; font-weight: 600; }
 
 /* ══════════════════════════════════════════════════
    MEDIDAS
@@ -601,7 +601,7 @@ textarea { resize: vertical; font-family: inherit; }
 .medida-item {  background: var(--bg-primary); border: 1px solid var(--border);
   border-radius: 10px; padding: 12px; margin-bottom: 8px;
 }
-.medida-item strong { display: block; margin-bottom: 6px; color: var(--accent); }
+.medida-item strong { display: block; margin-bottom: 6px; color: var(--accent-text, var(--accent)); }
 .medida-item p { font-size: 14px; margin: 2px 0; }
 .medida-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .medida-item-header strong { margin-bottom: 0; }
@@ -671,7 +671,7 @@ textarea { resize: vertical; font-family: inherit; }
 .ej-editor-info strong { display: block; font-size: 14px; margin-bottom: 2px; }
 .ej-editor-sub { font-size: 12px; color: var(--text-secondary); display: block; }
 .ej-editor-notas { font-size: 12px; color: var(--text-secondary); display: block; margin-top: 3px; font-style: italic; }
-.ej-editor-notas em { font-style: normal; color: var(--warning); }
+.ej-editor-notas em { font-style: normal; color: var(--warning-text, var(--warning)); }
 
 .form-ejercicio { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
 .form-row { display: flex; gap: 10px; }
@@ -690,7 +690,7 @@ textarea { resize: vertical; font-family: inherit; }
 .import-hint code {
   display: block; background: var(--bg-primary); border: 1px solid var(--border);
   border-radius: 6px; padding: 8px 10px; margin-top: 6px;
-  font-size: 12px; color: var(--accent); line-height: 1.7; white-space: pre;
+  font-size: 12px; color: var(--accent-text, var(--accent)); line-height: 1.7; white-space: pre;
 }
 .import-ia-section { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 12px 0; }
 .import-ia-section summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text-secondary); list-style: none; }
@@ -709,7 +709,7 @@ textarea { resize: vertical; font-family: inherit; }
 }
 .tempo-ejemplo-num {
   font-size: 32px; font-weight: 700; text-align: center;
-  color: var(--accent); letter-spacing: 12px; margin-bottom: 14px;
+  color: var(--accent-text, var(--accent)); letter-spacing: 12px; margin-bottom: 14px;
 }
 .tempo-fases-desc { display: flex; gap: 6px; }
 .tempo-fase-item {
@@ -717,7 +717,7 @@ textarea { resize: vertical; font-family: inherit; }
   padding: 10px 8px; text-align: center; display: flex; flex-direction: column; gap: 6px;
 }
 .tempo-n {
-  font-size: 26px; font-weight: 700; color: var(--accent);
+  font-size: 26px; font-weight: 700; color: var(--accent-text, var(--accent));
   display: block; line-height: 1;
 }
 .tempo-fase-item div { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
@@ -740,7 +740,7 @@ textarea { resize: vertical; font-family: inherit; }
 /* Modal tempo */
 .tempo-desglose { display: flex; gap: 8px; margin-top: 12px; }
 .tempo-fase { flex: 1; background: var(--bg-primary); border-radius: 8px; padding: 10px; text-align: center; }
-.tempo-num  { font-size: 32px; font-weight: 700; color: var(--accent); display: block; }
+.tempo-num  { font-size: 32px; font-weight: 700; color: var(--accent-text, var(--accent)); display: block; }
 .tempo-fase span:last-child { font-size: 12px; color: var(--text-secondary); display: block; margin-top: 4px; }
 #modal-tempo-contenido h3 { text-align: center; font-size: 20px; margin-bottom: 4px; }
 
@@ -765,7 +765,7 @@ textarea { resize: vertical; font-family: inherit; }
 .btn-edit-ej {
   width: auto !important; padding: 6px 10px !important; margin: 0 !important;
   font-size: 14px !important; background: var(--bg-secondary) !important;
-  border: 1px solid var(--accent) !important; color: var(--accent) !important;
+  border: 1px solid var(--accent) !important; color: var(--accent-text, var(--accent)) !important;
 }
 .ejercicio-editor-card.editing { border-color: var(--accent) !important; }
 
@@ -773,7 +773,7 @@ textarea { resize: vertical; font-family: inherit; }
   background: var(--bg-primary); border: 2px solid var(--accent);
   border-radius: 10px; padding: 14px; margin: -6px 0 8px 0;
 }
-.form-edit-ejercicio h5 { margin: 0 0 12px; color: var(--accent); font-size: 14px; }
+.form-edit-ejercicio h5 { margin: 0 0 12px; color: var(--accent-text, var(--accent)); font-size: 14px; }
 .form-edit-btns { display: flex; gap: 8px; margin-top: 8px; }
 .form-edit-btns button { flex: 1; padding: 10px; margin: 0; font-size: 13px; }
 
@@ -787,7 +787,7 @@ textarea { resize: vertical; font-family: inherit; }
   font-size: 12px !important; background: var(--warning) !important;
   border: none !important; color: var(--on-warning) !important; font-weight: 700; border-radius: 6px !important;
 }
-.sin-descanso { color: var(--warning); font-size: 11px; }
+.sin-descanso { color: var(--warning-text, var(--warning)); font-size: 11px; }
 
 /* ══════════════════════════════════════════════════
    ESTADÍSTICAS
@@ -797,10 +797,10 @@ textarea { resize: vertical; font-family: inherit; }
   background: var(--bg-primary); border: 1px solid var(--border);
   border-radius: 10px; padding: 14px 10px; text-align: center;
 }
-.stat-box .stat-val { font-size: 28px; font-weight: 700; color: var(--accent); display: block; }
+.stat-box .stat-val { font-size: 28px; font-weight: 700; color: var(--accent-text, var(--accent)); display: block; }
 .stat-box .stat-lbl { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.4px; }
 .stat-box.highlight { border-color: var(--success); }
-.stat-box.highlight .stat-val { color: var(--success); }
+.stat-box.highlight .stat-val { color: var(--success-text, var(--success)); }
 
 .records-list { margin-bottom: 14px; }
 .record-item {
@@ -809,7 +809,7 @@ textarea { resize: vertical; font-family: inherit; }
   border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; gap: 8px;
 }
 .record-nombre { flex: 1; font-size: 14px; font-weight: 600; }
-.record-val { color: var(--accent); font-weight: 700; font-size: 15px; }
+.record-val { color: var(--accent-text, var(--accent)); font-weight: 700; font-size: 15px; }
 .record-fecha { font-size: 11px; color: var(--text-secondary); }
 
 .stats-seccion h3 {
@@ -994,7 +994,7 @@ textarea { resize: vertical; font-family: inherit; }
 .ai-dia-num {
   font-weight: 700;
   font-size: 14px;
-  color: var(--accent);
+  color: var(--accent-text, var(--accent));
 }
 .ai-dia-nombre {
   margin-bottom: 8px !important;
@@ -1054,7 +1054,7 @@ textarea { resize: vertical; font-family: inherit; }
 }
 .progresion-seccion h4 {
   font-size: 14px;
-  color: var(--accent);
+  color: var(--accent-text, var(--accent));
   margin-bottom: 8px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 4px;
@@ -1120,7 +1120,7 @@ textarea { resize: vertical; font-family: inherit; }
   font-size: 12px !important;
   background: var(--bg-secondary) !important;
   border: 1px solid var(--border) !important;
-  color: var(--accent) !important;
+  color: var(--accent-text, var(--accent)) !important;
   border-radius: 6px !important;
 }
 .nota-acciones {
@@ -1135,7 +1135,7 @@ textarea { resize: vertical; font-family: inherit; }
   font-size: 12px !important;
   background: var(--bg-primary) !important;
   border: 1px solid var(--accent) !important;
-  color: var(--accent) !important;
+  color: var(--accent-text, var(--accent)) !important;
   border-radius: 6px !important;
 }
 .nota-textarea-auto {
@@ -1174,7 +1174,7 @@ textarea { resize: vertical; font-family: inherit; }
 .dia-btn-fecha {
   display: block;
   font-size: 11px;
-  color: var(--accent);
+  color: var(--accent-text, var(--accent));
   font-weight: 400;
   margin-top: 2px;
   opacity: 0.85;
@@ -1346,3 +1346,64 @@ textarea { resize: vertical; font-family: inherit; }
   #vista-impresion .imp-blanco { min-width: 40mm; height: 9mm; }
   #vista-impresion small { color: #444; }
 }
+
+/* ══════════ v97: músculos, asistencia, discos, gráfica de peso corporal ══════════ */
+.musculo-fila { display: grid; grid-template-columns: 38% 1fr auto; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
+.musculo-barra { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.musculo-barra > div { height: 100%; background: var(--accent); border-radius: 4px; }
+.musculo-n { font-weight: 700; text-align: right; }
+.musculo-n small { font-weight: 400; color: var(--text-secondary); font-size: 11px; }
+
+.heatmap { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 14px); grid-auto-columns: 14px; gap: 3px; justify-content: center; margin: 8px 0; }
+.hm-cell { border-radius: 3px; background: var(--border); }
+.hm-on { background: var(--success); }
+.hm-fut { visibility: hidden; }
+
+.btn-discos { background: none; border: none; padding: 0 2px; font-size: 14px; cursor: pointer; line-height: 1; }
+.discos-form { display: grid; gap: 8px; margin: 10px 0; }
+.discos-form label { display: grid; gap: 4px; font-size: 12px; color: var(--text-secondary); text-align: left; }
+.discos-form input { padding: 8px; font-size: 15px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); }
+.discos-fila { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 6px; }
+.disco-chip { min-width: 44px; padding: 10px 6px; border-radius: 22px; background: var(--accent); color: var(--on-accent); font-weight: 700; text-align: center; }
+
+.grafica-peso-corporal { margin: 8px 0 12px; }
+.grafica-peso-corporal svg { width: 100%; height: auto; display: block; background: var(--bg-secondary); border-radius: 8px; }
+
+/* ══════════ v98: pantallas estrechas (320 px) y objetivos táctiles ══════════ */
+/* Ejemplo de formato de importación: se ajusta en vez de ensanchar toda la página */
+.import-hint code { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Cabecera de ejercicio: el título cede espacio y las etiquetas pasan a otra línea si no caben */
+.ejercicio-header h3 { min-width: 0; overflow-wrap: anywhere; }
+.ejercicio-badges { flex: 0 1 auto; max-width: 60%; justify-content: flex-end; }
+
+/* Tarjetas de rutina: los botones bajan a una segunda línea si no caben */
+.rutina-card { flex-wrap: wrap; }
+.rutina-card-info { min-width: 0; overflow-wrap: anywhere; }
+.acciones-rutina-card { flex-wrap: wrap; margin-left: auto; }
+
+/* Guía de tempo: las cuatro fases se encogen sin desbordar */
+.tempo-fase-item { min-width: 0; overflow-wrap: anywhere; }
+
+/* Objetivos táctiles: mínimo ~38 px de alto en botones (antes algunos medían 24–35 px) */
+button { min-height: 38px; }
+.btn-back { min-width: 44px; min-height: 40px; }
+.btn-close-sidebar { min-width: 40px; min-height: 40px; }
+.btn-link { padding: 10px 6px; }
+.ej-editor-acciones button { min-height: 36px; }
+.chart-bar-val { font-size: 10px; }
+.chart-bar-date { font-size: 10px; }
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]), select { min-height: 38px; }
+.ej-editor-acciones button { min-width: 38px; }
+/* Etiqueta de tempo/calentar: área de toque más grande sin cambiar su tamaño visible */
+.badge-tempo { position: relative; }
+.badge-tempo::after { content: ""; position: absolute; inset: -9px -5px; }
+/* "Ver detalle →" en la pantalla del día: es un enlace, no un botón (la regla de .botones-ultima-sesion lo pintaba como caja gris) */
+.botones-ultima-sesion button.btn-link { background: none !important; border: none !important; color: var(--accent-text, var(--accent)) !important; }
+.orden-btns button { min-width: 38px; min-height: 36px; }
+.dia-card { flex-wrap: wrap; }
+.dia-card-info { min-width: 0; overflow-wrap: anywhere; }
+.acciones-dia-card { margin-left: auto; }
+/* La info de la tarjeta no se queda en una columna estrecha: si no hay ~140 px, los botones bajan de línea */
+.rutina-card-info { flex: 1 1 140px; }
+.dia-card-info { flex: 1 1 120px; }

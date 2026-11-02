@@ -16,7 +16,8 @@ export const userState = { uid: null, email: null };
 const CLAVES_SYNC = new Set([
   'historial', 'historialMedidas', 'config', 'rutinas_usuario', 'rutinaActiva',
   'notasProgresion', 'tema', 'timers', 'vibrarAlTerminar', 'audioGain', 'modoDosPersonas',
-  'historialBorrados'   // lápidas: sesiones borradas a propósito (formato "fecha|dia")
+  'historialBorrados',  // lápidas: sesiones borradas a propósito (formato "fecha|dia")
+  'medidasBorradas'     // lápidas: medidas borradas a propósito (la fecha del registro)
 ]);
 const PREFIJOS_SYNC = ['deloadState_'];
 
@@ -28,7 +29,8 @@ export function esClaveSincronizable(k) {
 const CLAVES_NO_BACKUP = new Set([
   'userState', 'anthropic_api_key', 'estadoApp', 'gym_sesion_parcial',
   'gym_dirty', 'gym_ultimoUid', 'gym_modoLocal', 'gym_bienvenida', '_syncedAt',
-  'audioPersonalizado', 'audioPersonalizadoNombre'
+  'audioPersonalizado', 'audioPersonalizadoNombre',
+  'gym_ultimoBackup', 'gym_backupSnooze'
 ]);
 export function esClaveBackup(k) {
   return !CLAVES_NO_BACKUP.has(k) && !k.startsWith('supabase.') && !k.startsWith('sb-');
@@ -85,7 +87,7 @@ export function mezclarValor(clave, vLocal, vRemoto, prioridad) {
   const gana    = prioridad === 'remoto' ? vRemoto : vLocal;
   const pierde  = prioridad === 'remoto' ? vLocal  : vRemoto;
 
-  if (clave === 'historialBorrados') {
+  if (clave === 'historialBorrados' || clave === 'medidasBorradas') {
     const a = parse(vLocal, []), b = parse(vRemoto, []);
     if (!Array.isArray(a) || !Array.isArray(b)) return gana;
     return JSON.stringify([...new Set([...a, ...b])].slice(-3000));
@@ -140,6 +142,14 @@ export function mezclarDatos(local, remoto, prioridad) {
     if (Array.isArray(lista) && borrados.size) {
       const filtrada = lista.filter(s => !borrados.has(CLAVE_LISTA.historial(s)));
       if (filtrada.length !== lista.length) out.historial = JSON.stringify(filtrada);
+    }
+  }
+  if (out.historialMedidas && out.medidasBorradas) {
+    const borradas = new Set(parse(out.medidasBorradas, []));
+    const lista = parse(out.historialMedidas, []);
+    if (Array.isArray(lista) && borradas.size) {
+      const filtrada = lista.filter(m => !borradas.has(CLAVE_LISTA.historialMedidas(m)));
+      if (filtrada.length !== lista.length) out.historialMedidas = JSON.stringify(filtrada);
     }
   }
   return out;

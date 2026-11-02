@@ -177,6 +177,30 @@ export function textoSobre(hex) {
   return conNegro >= conBlanco ? "#000000" : "#ffffff";
 }
 
+function contrasteEntre(a, b) {
+  const la = luminancia(a), lb = luminancia(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+function mezclarHex(origen, destino, t) {
+  const o = origen.replace("#", ""), d = destino.replace("#", "");
+  return "#" + [0, 2, 4].map(i => {
+    const a = parseInt(o.substr(i, 2), 16), b = parseInt(d.substr(i, 2), 16);
+    return Math.round(a + (b - a) * t).toString(16).padStart(2, "0");
+  }).join("");
+}
+// Versión del color apta para TEXTO sobre los fondos del tema (contraste mínimo 4.5:1).
+// Si el color ya cumple se devuelve tal cual; si no, se aclara (fondo oscuro) u oscurece (fondo claro)
+// lo justo. Los rellenos (botones, barras) siguen usando el color original.
+export function colorLegible(hex, fondos, minimo = 4.5) {
+  if (fondos.every(f => contrasteEntre(hex, f) >= minimo)) return hex;
+  const destino = luminancia(fondos[0]) < 0.4 ? "#ffffff" : "#000000";
+  for (let t = 0.05; t <= 1.0001; t += 0.05) {
+    const c = mezclarHex(hex, destino, t);
+    if (fondos.every(f => contrasteEntre(c, f) >= minimo)) return c;
+  }
+  return destino;
+}
+
 // Aplicar tema. `sincronizar` solo debe ser true cuando el USUARIO cambia el tema
 // (antes se marcaba como cambio en cada arranque y provocaba una subida a la nube).
 export function aplicarTema(idTema, { sincronizar = false } = {}) {
@@ -194,6 +218,12 @@ export function aplicarTema(idTema, { sincronizar = false } = {}) {
   root.style.setProperty("--on-success", textoSobre(v["--success"]));
   root.style.setProperty("--on-danger",  textoSobre(v["--danger"]));
   root.style.setProperty("--on-warning", textoSobre(v["--warning"]));
+  // Variantes para usar el color como TEXTO (en temas claros u oscuros con poco contraste)
+  const fondos = [v["--bg-primary"], v["--bg-secondary"]];
+  ["accent", "success", "warning", "danger"].forEach(n =>
+    root.style.setProperty(`--${n}-text`, colorLegible(v[`--${n}`], fondos)));
+  // El texto secundario es siempre texto: se ajusta directamente (solo cambia si no llegaba a 4.5:1)
+  root.style.setProperty("--text-secondary", colorLegible(v["--text-secondary"], fondos));
 
   // Barra de estado del navegador/PWA acorde al tema
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", v["--bg-primary"]);

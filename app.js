@@ -1,8 +1,8 @@
-// app.js — Gym Tracker v96
+// app.js — Gym Tracker v98
 import "./auth.js";
-import { loadRutinaUsuario, inicializarRutinaBase, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
+import { loadRutinaUsuario, inicializarRutinaBase, getAllRutinasUsuario, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
 import { markDirty, userState, esClaveBackup, sincronizarSiHaceFalta } from "./userState.js";
-import { navPush, navLimpiar, navAtras, navRegistrarPop, navConsumirPopstateIgnorado } from "./nav.js";
+import { navPush, navLimpiar, navAtras, navRegistrarPop, navVigilarCapas, navTopePantalla } from "./nav.js";
 import * as audioStore from "./audioStore.js";
 import { renderizarSelectorRutinas, obtenerRutinaActiva, RUTINA_BASE_ID } from "./selectorRutinas.js";
 import "./themes.js";
@@ -54,6 +54,12 @@ document.addEventListener('visibilitychange', async () => {
 function numDia(fecha) {
   const d = fecha instanceof Date ? fecha : new Date(fecha);
   return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+}
+
+// Un ejercicio "hecho" tiene al menos una serie con repeticiones > 0. Los ejercicios que no se
+// tocaron en una sesión no deben contar como récord, volumen ni referencia de la "última vez".
+function ejercicioHecho(ej) {
+  return Array.isArray(ej?.reps) && ej.reps.some(r => r !== '' && r !== null && Number(r) > 0);
 }
 
 // ══════════════════════════════════════════════════════
@@ -144,6 +150,7 @@ window.exportarBackupJSON = function () {
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    try { localStorage.setItem('gym_ultimoBackup', String(Date.now())); } catch {}
     showToast('💾 Backup exportado (no incluye tu sesión ni claves)', 'success');
   } catch (e) {
     showToast('Error al exportar: ' + e.message, 'error');
@@ -182,6 +189,16 @@ window.importarBackupJSON = function (input) {
             try { localStorage.setItem(key, val); restauradas++; }
             catch (err) { console.warn('[Backup] No se pudo restaurar clave:', key, err.message); }
           }
+          // Las sesiones que vuelven con el backup dejan de contar como "borradas" (si no, la
+          // siguiente fusión con la nube las eliminaría otra vez)
+          try {
+            const vivas = new Set(leerHistorialCrudo().map(claveSesion));
+            const lapidas = JSON.parse(localStorage.getItem('historialBorrados') || '[]').filter(k => !vivas.has(k));
+            localStorage.setItem('historialBorrados', JSON.stringify(lapidas));
+            const medVivas = new Set(leerMedidas().map(m => m.fecha));
+            const lapMed = JSON.parse(localStorage.getItem('medidasBorradas') || '[]').filter(k => !medVivas.has(k));
+            localStorage.setItem('medidasBorradas', JSON.stringify(lapMed));
+          } catch {}
           // Estado de pantalla/sesión en curso del equipo anterior: no tiene sentido restaurarlo
           localStorage.removeItem('estadoApp');
           localStorage.removeItem('gym_sesion_parcial');
@@ -1188,7 +1205,7 @@ function renderDia() {
         <div class="ejercicio-header">
           <h3>${escapeHtml(ej.nombre)}</h3>
           <div class="ejercicio-badges">
-            ${ej.tempo ? `<span class="badge-tempo" onclick="mostrarGuiaTempoEj(${i})" title="Ver guía de tempo">${escapeHtml(ej.tempo)} ❓</span>` : ''}
+            ${ej.tempo ? `<span class="badge-tempo" onclick="mostrarGuiaTempoEj(${i})" title="Ver guía de tempo" role="button" tabindex="0">${escapeHtml(ej.tempo)} ❓</span>` : ''}
             ${ej.alFallo ? `<span class="badge-fallo">Al fallo</span>` : ''}
             ${!ej.alFallo && ej.peso >= 20 ? `<span class="badge-tempo" onclick="mostrarCalentamiento(${i})" title="Series de aproximación sugeridas" role="button" tabindex="0">🔥 Calentar</span>` : ''}
             ${ej.musculo ? `<span class="badge-musculo">${escapeHtml(MUSCULOS_MAP[ej.musculo] || ej.musculo)}</span>` : ''}
@@ -1204,7 +1221,7 @@ function renderDia() {
         <div class="ejercicio-row">
           ${!ej.alFallo ? `
           <div class="ejercicio-col">
-            <label class="col-label">Peso (kg)</label>
+            <label class="col-label">Peso (kg) <button type="button" class="btn-discos" onclick="mostrarDiscos(${i})" title="Calculadora de discos" aria-label="Calculadora de discos">🧮</button></label>
             <input type="number" step="0.5" value="${ej.peso}" onchange="actualizarPesoBase(${i},this.value)">
           </div>` : ''}
           <div class="ejercicio-col">
@@ -1436,7 +1453,8 @@ function _doFinalizarDia() {
     dia: rutinaActual[diaActual]?.nombre || "Día desconocido",
     notas: notasSesion,
     duracionMin: sesionStartTime ? Math.max(1, Math.round((Date.now() - sesionStartTime) / 60000)) : null,
-    ejercicios: ejerciciosDia.map(ej => ({ nombre: ej.nombre, peso: ej.peso, reps: [...ej.reps] })),
+    ejercicios: (ejerciciosDia.some(ejercicioHecho) ? ejerciciosDia.filter(ejercicioHecho) : ejerciciosDia)
+      .map(ej => ({ nombre: ej.nombre, peso: ej.peso, reps: [...ej.reps] })),
     tiempoHIT: obtenerTiempoHIT() || null,
     tipoHIT: hitTipo || null,
     deload: deloadEstaActivo() // las sesiones de deload no cuentan como récords ni en las gráficas
@@ -1484,13 +1502,12 @@ function _doFinalizarDia() {
   const prsNuevos = [];
   sesion.ejercicios.forEach(ej => {
     if (sesion.deload) return;
-    if (!ej.peso || ej.peso <= 0) return;
-    const tienePrevio = historialPrevio.some(s => s.ejercicios.some(e => e.nombre === ej.nombre && e.peso > 0));
-    if (!tienePrevio) return; // Primera vez — no es PR porque no hay referencia
-    const maxPrevio = Math.max(...historialPrevio
+    if (!ej.peso || ej.peso <= 0 || !ejercicioHecho(ej)) return;
+    const previos = historialPrevio
       .flatMap(s => s.ejercicios)
-      .filter(e => e.nombre === ej.nombre && e.peso > 0)
-      .map(e => e.peso));
+      .filter(e => e.nombre === ej.nombre && e.peso > 0 && ejercicioHecho(e));
+    if (previos.length === 0) return; // Primera vez — no es PR porque no hay referencia
+    const maxPrevio = Math.max(...previos.map(e => e.peso));
     if (ej.peso > maxPrevio) {
       prsNuevos.push({ nombre: ej.nombre, peso: ej.peso, previo: maxPrevio });
     }
@@ -1704,6 +1721,32 @@ function calcularIMC(pesoKg, alturaCm) {
   return { valor: Math.round(imc * 10) / 10, categoria: cat };
 }
 
+function registrarMedidasBorradas(fechas) {
+  let t = [];
+  try { t = JSON.parse(localStorage.getItem('medidasBorradas') || '[]'); } catch {}
+  if (!Array.isArray(t)) t = [];
+  fechas.forEach(f => { if (f && !t.includes(f)) t.push(f); });
+  try { localStorage.setItem('medidasBorradas', JSON.stringify(t.slice(-3000))); } catch {}
+}
+
+// Mini gráfica del peso corporal (últimos 30 registros con peso)
+function htmlGraficaPesoCorporal(h) {
+  const pts = h.filter(m => m.peso > 0).slice(-30);
+  if (pts.length < 2) return '';
+  const W = 300, H = 70, P = 6;
+  const vals = pts.map(m => m.peso);
+  const min = Math.min(...vals), max = Math.max(...vals), rango = (max - min) || 1;
+  const xy = vals.map((v, i) => [P + i * (W - 2 * P) / (vals.length - 1), H - P - (v - min) * (H - 2 * P) / rango]);
+  const delta = Math.round((vals[vals.length - 1] - vals[0]) * 10) / 10;
+  return `<div class="grafica-peso-corporal">
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del peso corporal de ${vals[0]} a ${vals[vals.length - 1]} kilos">
+      <polyline fill="none" stroke="var(--accent)" stroke-width="2" points="${xy.map(([x, y]) => x.toFixed(1) + ',' + y.toFixed(1)).join(' ')}" />
+      <circle cx="${xy[xy.length - 1][0].toFixed(1)}" cy="${xy[xy.length - 1][1].toFixed(1)}" r="3.5" fill="var(--accent)" />
+    </svg>
+    <p class="import-hint">Peso corporal: ${vals[0]} → ${vals[vals.length - 1]} kg (${delta > 0 ? '+' : ''}${delta} kg en ${pts.length} registros)</p>
+  </div>`;
+}
+
 function guardarMedidas() {
   const campos = ["peso", "altura", "cintura", "cadera", "pecho", "brazo_relajado", "brazo_contraido", "muslo"];
   const nuevaMedida = { fecha: new Date().toISOString() };
@@ -1740,8 +1783,9 @@ function cargarMedidas() {
     return { m, imc: calcularIMC(m.peso, m.altura > 0 ? m.altura : ultimaAltura) };
   });
 
+  const grafica = htmlGraficaPesoCorporal(h);
   const campo = (rotulo, v, u) => (v !== null && v !== undefined) ? `<p>${rotulo}: ${escapeHtml(String(v))} ${u}</p>` : '';
-  cont.innerHTML = conIMC.slice().reverse().map(({ m, imc }, iRev) => {
+  cont.innerHTML = grafica + conIMC.slice().reverse().map(({ m, imc }, iRev) => {
     const iReal = h.length - 1 - iRev;
     const prev = iReal > 0 ? h.slice(0, iReal).reverse().find(x => x.peso > 0) : null;
     let delta = '';
@@ -1773,6 +1817,7 @@ window.borrarMedidaIndividual = function (index) {
   if (!h[index]) return;
   const fecha = new Date(h[index].fecha).toLocaleDateString('es-ES');
   showConfirm(`¿Borrar medida del ${fecha}?`, () => {
+    registrarMedidasBorradas([h[index].fecha]);
     h.splice(index, 1);
     localStorage.setItem("historialMedidas", JSON.stringify(h));
     markDirty();
@@ -1783,6 +1828,7 @@ window.borrarMedidaIndividual = function (index) {
 
 function borrarTodoHistorialMedidas() {
   showConfirm("¿Borrar todo el historial de medidas?", () => {
+    registrarMedidasBorradas(leerMedidas().map(m => m.fecha));
     localStorage.removeItem("historialMedidas");
     markDirty();
     const cont = document.getElementById("lista-medidas");
@@ -1800,6 +1846,84 @@ function abrirConfigAudio() {
   actualizarNombreAudio(audioManager.nombrePersonalizado || 'Beep (predeterminado)');
 }
 window.abrirConfigAudio = abrirConfigAudio;
+
+// ── Calculadora de discos: qué poner en cada lado de la barra ──
+const DISCOS_POR_DEFECTO = [25, 20, 15, 10, 5, 2.5, 1.25];
+
+function leerConfigDiscos() {
+  let c = {};
+  try { c = JSON.parse(localStorage.getItem('calcDiscos') || '{}') || {}; } catch {}
+  const barra = Number(c.barra) > 0 ? Number(c.barra) : 20;
+  const lista = Array.isArray(c.discos) ? c.discos.map(Number).filter(n => Number.isFinite(n) && n > 0) : [];
+  return { barra, discos: lista.length ? lista : DISCOS_POR_DEFECTO };
+}
+
+// Mínimo de discos por lado (cambio de monedas). Trabaja en centésimas de kg para evitar errores de decimales.
+function calcularDiscos(total, barra, discos) {
+  const porLado = (total - barra) / 2;
+  if (!(total > 0) || porLado < 0) return null;
+  const E = 100;
+  const objetivo = Math.round(porLado * E);
+  if (objetivo > 40000) return null;
+  const pl = [...new Set(discos.map(d => Math.round(d * E)))].filter(d => d > 0).sort((a, b) => b - a);
+  if (!pl.length) return null;
+  const INF = 1e9;
+  const dp = new Array(objetivo + 1).fill(INF), usado = new Array(objetivo + 1).fill(0);
+  dp[0] = 0;
+  for (let t = 1; t <= objetivo; t++) {
+    for (const d of pl) if (d <= t && dp[t - d] + 1 < dp[t]) { dp[t] = dp[t - d] + 1; usado[t] = d; }
+  }
+  let t = objetivo;
+  while (t > 0 && dp[t] >= INF) t--;      // si no se llega exacto, lo más cercano por debajo
+  const lista = [];
+  for (let x = t; x > 0; x -= usado[x]) lista.push(usado[x] / E);
+  lista.sort((a, b) => b - a);
+  return { lista, exacto: t === objetivo, totalReal: Math.round((barra + 2 * t / E) * 100) / 100 };
+}
+
+function pintarResultadoDiscos() {
+  const cont = document.getElementById('disc-resultado');
+  if (!cont) return;
+  const total = Number(document.getElementById('disc-total')?.value);
+  const barra = Number(document.getElementById('disc-barra')?.value);
+  const discos = String(document.getElementById('disc-lista')?.value || '')
+    .split(/[\s,;]+/).map(Number).filter(n => Number.isFinite(n) && n > 0).slice(0, 12);
+  if (!(barra >= 0) || !discos.length) { cont.innerHTML = '<p class="import-hint">Indica el peso de la barra y al menos un disco.</p>'; return; }
+  try { localStorage.setItem('calcDiscos', JSON.stringify({ barra, discos })); } catch {}
+  const r = calcularDiscos(total, barra, discos);
+  if (!r) { cont.innerHTML = '<p class="import-hint">El peso total debe ser mayor o igual que el de la barra.</p>'; return; }
+  const chips = r.lista.length ? r.lista.map(d => `<span class="disco-chip">${d}</span>`).join('') : '<em>solo la barra</em>';
+  cont.innerHTML = `<p style="margin:6px 0;"><strong>Por cada lado:</strong></p><div class="discos-fila">${chips}</div>
+    ${r.exacto ? '' : `<p class="import-hint">⚠️ Con esos discos no se llega exacto a ${total} kg. Lo más cercano por debajo es <strong>${r.totalReal} kg</strong>.</p>`}`;
+}
+
+window.recalcularDiscos = pintarResultadoDiscos;
+
+window.mostrarDiscos = function (i) {
+  const ej = ejerciciosDia[i];
+  const overlay = document.getElementById('modal-tempo-overlay');
+  const cont = document.getElementById('modal-tempo-contenido');
+  if (!overlay || !cont) return;
+  const cfg = leerConfigDiscos();
+  cont.innerHTML = `
+    <h3>🧮 Calculadora de discos</h3>
+    <div class="discos-form">
+      <label>Peso total (kg)<input id="disc-total" type="number" step="0.5" min="0" value="${Number(ej?.peso) || ''}" oninput="recalcularDiscos()"></label>
+      <label>Barra (kg)<input id="disc-barra" type="number" step="0.5" min="0" value="${cfg.barra}" oninput="recalcularDiscos()"></label>
+      <label>Discos que tienes (kg, separados por coma)<input id="disc-lista" type="text" value="${cfg.discos.join(', ')}" oninput="recalcularDiscos()"></label>
+    </div>
+    <div id="disc-resultado"></div>`;
+  overlay.classList.remove('oculto');
+  pintarResultadoDiscos();
+};
+
+// Insignias accesibles con teclado (Enter / Espacio)
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target?.matches?.('[role="button"][tabindex]')) {
+    e.preventDefault();
+    e.target.click();
+  }
+});
 
 window.mostrarGuiaTempoEj = (i) => window.mostrarGuiaTempo(ejerciciosDia[i]?.tempo || '');
 
@@ -1907,7 +2031,7 @@ function volverMenu(desdePopstate = false) {
       showConfirm(
         '¿Salir del entrenamiento?\nLas repeticiones marcadas NO se guardarán hasta que pulses "✅ Finalizar sesión".',
         _doVolverMenu,
-        () => { if (desdePopstate === true) navPush(); } // el "atrás" ya consumió la entrada: reponerla
+        () => { if (desdePopstate === true) navPush({ pantalla: 'dia' }); } // el "atrás" ya consumió la entrada: reponerla
       );
       return;
     }
@@ -1916,7 +2040,7 @@ function volverMenu(desdePopstate = false) {
 }
 
 function _doVolverMenu() {
-  navLimpiar(); // quita de golpe las entradas de historial que añadió la app
+  navLimpiar(); // quita de golpe las entradas de historial de las pantallas (los paneles abiertos se quedan)
   ocultarTodas();
   document.getElementById("menu").classList.remove("oculto");
   cerrarSidebarRight();
@@ -2297,7 +2421,7 @@ function mostrarGuiaUltimaSesion() {
   if (!sesion) return;
   const fecha = new Date(sesion.fecha).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
   ejerciciosDia.forEach((ej, ejIndex) => {
-    const ejAnterior = sesion.ejercicios.find(e => e.nombre === ej.nombre);
+    const ejAnterior = sesion.ejercicios.find(e => e.nombre === ej.nombre && ejercicioHecho(e));
     if (!ejAnterior) return;
     const div = document.querySelectorAll('.ejercicio')[ejIndex];
     if (!div) return;
@@ -2329,21 +2453,45 @@ function formatearTiempo(segundos) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-window.addEventListener("popstate", () => {
-  if (navConsumirPopstateIgnorado()) return; // lo provocó la propia app (navLimpiar)
-  navRegistrarPop();
+// Cierra una capa (panel lateral o diálogo) por su id
+const CAPAS = {
+  'modal-confirm-overlay':  { abierta: el => !el.classList.contains('oculto'), cerrar: () => document.getElementById('modal-confirm-no')?.click() },
+  'modal-alert-overlay':    { abierta: el => !el.classList.contains('oculto'), cerrar: () => document.getElementById('modal-alert-ok')?.click() },
+  'modal-prompt-overlay':   { abierta: el => !el.classList.contains('oculto'), cerrar: () => document.getElementById('modal-prompt-cancel')?.click() },
+  'modal-descanso-overlay': { abierta: el => !el.classList.contains('oculto'), cerrar: () => window.cerrarModalDescanso?.() },
+  'modal-timer':            { abierta: el => !el.classList.contains('oculto'), cerrar: ocultarModalTimer },
+  'modal-tempo-overlay':    { abierta: el => !el.classList.contains('oculto'), cerrar: () => window.cerrarModalTempo?.() },
+  'sidebar-right':          { abierta: el => el.classList.contains('sidebar-right-open'), cerrar: cerrarSidebarRight },
+  'sidebar':                { abierta: el => el.classList.contains('sidebar-open'), cerrar: cerrarSidebar }
+};
+
+function cerrarCapaPorId(id) {
+  const def = CAPAS[id];
+  const el = document.getElementById(id);
+  if (!def || !el) return;
+  def.cerrar();
+  if (def.abierta(el)) navPush({ capa: id });   // no se pudo cerrar: que "atrás" siga disponible
+}
+
+window.addEventListener("popstate", (e) => {
+  const r = navRegistrarPop(e.state);
+  if (r.ignorar || r.sobrante) return;
+  const it = r.item;
   const visible = id => { const el = document.getElementById(id); return !!el && !el.classList.contains("oculto"); };
 
-  // Capas superiores: se cierran y se repone la entrada que consumió el "atrás"
-  const cerrarCapa = (fn) => { fn(); navPush(); };
-  if (visible("modal-confirm-overlay")) { cerrarCapa(() => document.getElementById("modal-confirm-no")?.click()); return; }
-  if (visible("modal-alert-overlay"))   { cerrarCapa(() => document.getElementById("modal-alert-ok")?.click()); return; }
-  if (visible("modal-prompt-overlay"))  { cerrarCapa(() => document.getElementById("modal-prompt-cancel")?.click()); return; }
-  if (visible("modal-descanso-overlay")) { cerrarCapa(cerrarModalDescanso); return; }
-  if (visible("modal-timer"))           { cerrarCapa(ocultarModalTimer); return; }
-  if (visible("modal-tempo-overlay"))   { cerrarCapa(window.cerrarModalTempo); return; }
-  if (document.getElementById("sidebar-right")?.classList.contains("sidebar-right-open")) { cerrarCapa(cerrarSidebarRight); return; }
-  if (document.getElementById("sidebar")?.classList.contains("sidebar-open")) { cerrarCapa(cerrarSidebar); return; }
+  // Panel lateral o diálogo
+  if (it && it.capa) { cerrarCapaPorId(it.capa); return; }
+
+  // Nivel interno del editor de rutinas (día → rutina → lista)
+  if (it && it.pantalla === 'editor' && it.nivel && window.editorSubirNivel) { window.editorSubirNivel(it.nivel); return; }
+
+  // Progreso abierto desde Estadísticas: vuelve a Estadísticas
+  if (it && it.pantalla === 'progreso' && it.padre === 'stats' && visible("pantalla-progreso")) {
+    ocultarTodas();
+    document.getElementById('pantalla-estadisticas')?.classList.remove('oculto');
+    renderEstadisticas();
+    return;
+  }
 
   if (visible("pantalla-resumen")) { cerrarResumen(); return; }
   if (visible("pantalla-detalle")) { mostrarPantallaHistorial(); return; }
@@ -2508,6 +2656,74 @@ function abrirEstadisticas() {
 }
 window.abrirEstadisticas = abrirEstadisticas;
 
+// Nombre de ejercicio → músculo, según las rutinas guardadas (el historial no guarda el músculo)
+function mapaMusculos() {
+  const mapa = {};
+  try {
+    Object.values(getAllRutinasUsuario()).forEach(r => (r.dias || []).forEach(d => (d.ejercicios || []).forEach(e => {
+      if (e.musculo && !mapa[e.nombre]) mapa[e.nombre] = e.musculo;
+    })));
+  } catch {}
+  return mapa;
+}
+
+// Series efectivas (con reps > 0) por músculo entre dos números de día, sin contar deloads
+function seriesPorMusculo(historial, desdeDia, hastaDia) {
+  const mapa = mapaMusculos();
+  const out = {};
+  historial.forEach(s => {
+    const d = numDia(s.fecha);
+    if (s.deload || d < desdeDia || d > hastaDia) return;
+    s.ejercicios.forEach(ej => {
+      const series = (ej.reps || []).filter(r => r !== '' && Number(r) > 0).length;
+      if (!series) return;
+      const m = mapa[ej.nombre] || '_sin';
+      out[m] = (out[m] || 0) + series;
+    });
+  });
+  return out;
+}
+
+function htmlSeriesPorMusculo(historial, hoy) {
+  const actual = seriesPorMusculo(historial, hoy - 6, hoy);
+  const previa = seriesPorMusculo(historial, hoy - 13, hoy - 7);
+  const claves = Object.keys(actual).sort((a, b) => actual[b] - actual[a]);
+  if (!claves.length) return '';
+  const filas = claves.map(k => {
+    const n = actual[k], pv = previa[k] || 0;
+    const nombre = k === '_sin' ? 'Sin músculo asignado' : (MUSCULOS_MAP[k] || k);
+    return `<div class="musculo-fila">
+      <span class="musculo-nombre">${escapeHtml(nombre)}</span>
+      <div class="musculo-barra" role="presentation"><div style="width:${Math.min(100, Math.round(n / 20 * 100))}%"></div></div>
+      <span class="musculo-n">${n}<small> (sem. previa ${pv})</small></span>
+    </div>`;
+  }).join('');
+  return `<div class="stats-seccion">
+    <h3>💪 Series por músculo · últimos 7 días</h3>
+    ${filas}
+    <p class="import-hint">Orientativo: muchos programas de hipertrofia manejan del orden de 10–20 series semanales por grupo muscular; depende de tu nivel y recuperación. La barra llena equivale a 20 series.</p>
+  </div>`;
+}
+
+// Calendario de asistencia: últimas 12 semanas, columnas = semanas (lunes a domingo)
+function htmlAsistencia(fechasUnicas, hoy) {
+  const diaSemana = (new Date().getDay() + 6) % 7;      // 0 = lunes
+  const inicio = hoy - (11 * 7 + diaSemana);
+  const con = new Set(fechasUnicas);
+  let celdas = '', total = 0;
+  for (let d = inicio; d <= inicio + 12 * 7 - 1; d++) {
+    if (d > hoy) { celdas += '<span class="hm-cell hm-fut"></span>'; continue; }
+    const on = con.has(d);
+    if (on) total++;
+    celdas += `<span class="hm-cell${on ? ' hm-on' : ''}"></span>`;
+  }
+  return `<div class="stats-seccion">
+    <h3>📅 Asistencia · últimas 12 semanas</h3>
+    <div class="heatmap" role="img" aria-label="Entrenaste ${total} días en las últimas 12 semanas">${celdas}</div>
+    <p class="import-hint">${total} día${total !== 1 ? 's' : ''} con entrenamiento (cada columna es una semana, de lunes a domingo).</p>
+  </div>`;
+}
+
 function renderEstadisticas() {
   const cont = document.getElementById('stats-contenido');
   if (!cont) return;
@@ -2543,7 +2759,7 @@ function renderEstadisticas() {
   const records = {};
   historial.forEach(s => {
     s.ejercicios.forEach(ej => {
-      if (!ej.peso || ej.peso <= 0 || s.deload) return;
+      if (!ej.peso || ej.peso <= 0 || s.deload || !ejercicioHecho(ej)) return;
       if (!records[ej.nombre] || ej.peso > records[ej.nombre].peso) {
         records[ej.nombre] = { peso: ej.peso, fecha: s.fecha };
       }
@@ -2610,7 +2826,10 @@ function renderEstadisticas() {
       </div>
     </div>` : ''}
 
-    <button onclick="abrirProgreso()" class="btn-secondary" style="margin-top:4px;">📈 Ver gráficas de progreso</button>`;
+    ${htmlSeriesPorMusculo(historial, hoy)}
+    ${htmlAsistencia(fechasUnicas, hoy)}
+
+    <button onclick="abrirProgreso(true)" class="btn-secondary" style="margin-top:4px;">📈 Ver gráficas de progreso</button>`;
 }
 
 // fechasOrdenadas: números de día (numDia) de más reciente a más antigua
@@ -2624,14 +2843,21 @@ function calcularRachaMejor(fechasOrdenadas) {
   return mejor;
 }
 
-function abrirProgreso() {
+function abrirProgreso(desdeStats = false) {
   cerrarSidebar();
-  navPush();
+  navPush(desdeStats === true ? { pantalla: 'progreso', padre: 'stats' } : { pantalla: 'progreso' });
   ocultarTodas();
   document.getElementById('pantalla-progreso').classList.remove('oculto');
   poblarSelectorEjercicios();
 }
 window.abrirProgreso = abrirProgreso;
+
+// ← de "Progreso": si se abrió desde Estadísticas vuelve allí; si no, al menú
+window.volverDeProgreso = function () {
+  const t = navTopePantalla();
+  if (t && t.pantalla === 'progreso' && t.padre === 'stats' && navAtras()) return;
+  volverMenu();
+};
 
 function poblarSelectorEjercicios() {
   const sel = document.getElementById('progreso-ejercicio-select');
@@ -2657,7 +2883,7 @@ window.renderGraficaProgreso = function () {
   const nombre = sel.value;
   const historial = leerHistorial();
 
-  const datosEj = historial.filter(s => !s.deload && s.ejercicios.some(e => e.nombre === nombre));
+  const datosEj = historial.filter(s => !s.deload && s.ejercicios.some(e => e.nombre === nombre && ejercicioHecho(e)));
   const esAlFallo = datosEj.length > 0 && datosEj.every(s => {
     const ej = s.ejercicios.find(e => e.nombre === nombre);
     return !ej?.peso || ej.peso === 0;
@@ -2671,9 +2897,8 @@ window.renderGraficaProgreso = function () {
   }
 
   const datos = datosEj
-    .filter(s => s.ejercicios.some(e => e.nombre === nombre))
     .map(s => {
-      const ej = s.ejercicios.find(e => e.nombre === nombre);
+      const ej = s.ejercicios.find(e => e.nombre === nombre && ejercicioHecho(e));
       const repsLista = (ej.reps || []).filter(r => r !== '').map(Number);
       const repsTotal = repsLista.reduce((a, r) => a + r, 0);
       const mejor1RM = Math.max(0, ...repsLista.map(r => calcular1RM(ej.peso || 0, r) || 0));
@@ -3051,6 +3276,26 @@ function restaurarTimersEjercicio(snapshot) {
   });
 }
 
+// Recordatorio de backup: solo si no hay cuenta en la nube y hay suficientes datos que perder
+function recordarBackupSiHaceFalta() {
+  try {
+    if (userState.uid) return;
+    const menuVisible = !document.getElementById('menu')?.classList.contains('oculto');
+    if (!menuVisible) return;
+    const ahora = Date.now(), DIA = 86400000;
+    const ultimo = Number(localStorage.getItem('gym_ultimoBackup')) || 0;
+    const posponer = Number(localStorage.getItem('gym_backupSnooze')) || 0;
+    const sesiones = leerHistorial().length;
+    if (ahora < posponer) return;
+    if (ultimo ? (ahora - ultimo < 30 * DIA || sesiones < 1) : sesiones < 5) return;
+    const msg = ultimo
+      ? `💾 Hace más de 30 días que no exportas una copia de seguridad.\nTienes ${sesiones} sesiones guardadas solo en este teléfono.\n\n¿Exportar una copia ahora?`
+      : `💾 Tienes ${sesiones} sesiones guardadas solo en este teléfono y aún no has hecho ninguna copia de seguridad.\n\n¿Exportar una copia ahora?`;
+    const posponerSemana = () => { try { localStorage.setItem('gym_backupSnooze', String(Date.now() + 7 * DIA)); } catch {} };
+    showConfirm(msg, () => { posponerSemana(); window.exportarBackupJSON(); }, posponerSemana, 'Exportar', 'Luego');
+  } catch {}
+}
+
 // Accesos directos del manifest (?accion=historial|stats|medidas|timer)
 function ejecutarAccesoDirecto() {
   let accion = null;
@@ -3068,6 +3313,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Ocultar splash de carga tan pronto como el JS está listo
   const splash = document.getElementById('app-splash');
   if (splash) splash.remove();
+
+  // Paneles laterales y diálogos: cada uno que se abre añade su entrada de historial ("atrás" lo cierra)
+  navVigilarCapas(Object.entries(CAPAS).map(([id, d]) => ({ id, abierta: d.abierta })));
 
   inicializarRutinaBase();
   initOfflineBanner();
@@ -3180,4 +3428,5 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Subir cambios que quedaron pendientes (sin pisar datos más nuevos de otro dispositivo)
   setTimeout(() => sincronizarSiHaceFalta(), 4000);
+  setTimeout(recordarBackupSiHaceFalta, 9000);
 });

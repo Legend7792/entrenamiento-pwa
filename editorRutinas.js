@@ -3,12 +3,12 @@ import { showToast, showConfirm, showPrompt, escapeHtml } from "./ui.js";
 import {
   saveRutinaUsuario, loadRutinaUsuario, getAllRutinasUsuario,
   deleteRutinaUsuario, generarIdRutina, RUTINA_BASE_ID,
-  restaurarRutinaBase, moverEjercicioRutina,
+  restaurarRutinaBase, moverEjercicioRutina, moverDiaRutina,
   duplicarRutina, exportarRutinaJSON, importarRutinaDesdeJSON, normalizarRutina
 } from "./rutinaUsuario.js";
 import { PLANTILLAS } from "./plantillas.js";
 import { renderizarSelectorRutinas } from "./selectorRutinas.js";
-import { navPush, navLimpiar } from "./nav.js";
+import { navPush, navLimpiar, navAtras, navCerrar, navTope } from "./nav.js";
 
 // Escapado seguro para texto y atributos (incluye comillas)
 const esc = escapeHtml;
@@ -117,6 +117,7 @@ window.imprimirRutina = function(id) {
 
 // ── Plantillas: rutinas de partida con los pesos a 0 (se rellenan al entrenar) ──
 window.abrirPlantillas = function() {
+  navPush({ pantalla: 'editor', nivel: 'plantillas' });
   const cont = document.getElementById("contenido-editor");
   cont.innerHTML = `<div class="gestor-rutinas"><h3>📚 Plantillas</h3>
     <p class="import-hint">Se crea una copia que puedes editar libremente. Los pesos empiezan en 0: ponlos en la pantalla del día la primera vez que entrenes.</p>
@@ -144,7 +145,11 @@ window.usarPlantilla = function(plantillaId) {
   editarRutina(id);
 };
 
-window.editarRutina = (id) => { rutinaEditandoId=id; rutinaEditando=loadRutinaUsuario(id); renderEditorRutina(); };
+window.editarRutina = (id) => {
+  navCerrar({ nivel: 'plantillas' });                 // al crear desde plantilla, la rutina sustituye al nivel "plantillas"
+  navPush({ pantalla: 'editor', nivel: 'rutina' });
+  rutinaEditandoId=id; rutinaEditando=loadRutinaUsuario(id); renderEditorRutina();
+};
 
 function renderEditorRutina() {
   const cont=document.getElementById("contenido-editor"); const esBase=rutinaEditandoId===RUTINA_BASE_ID;
@@ -171,6 +176,10 @@ function renderEditorRutina() {
     ${rutinaEditando.dias.length===0
       ? `<p class="texto-vacio">Sin días. Añade uno abajo.</p>`
       : rutinaEditando.dias.map((d,i)=>`<div class="dia-card">
+          ${rutinaEditando.dias.length>1?`<div class="orden-btns">
+            <button onclick="moverDiaEditor(${i},'arriba')" ${i===0?'disabled':''} aria-label="Subir día">⬆️</button>
+            <button onclick="moverDiaEditor(${i},'abajo')" ${i===rutinaEditando.dias.length-1?'disabled':''} aria-label="Bajar día">⬇️</button>
+          </div>`:''}
           <div class="dia-card-info"><h4>📅 ${esc(d.nombre)}</h4><p>${d.ejercicios.length} ejercicio(s)</p></div>
           <div class="acciones-dia-card">
             <button onclick="editarDia(${i})">✏️ Editar</button>
@@ -208,7 +217,7 @@ window.borrarDia = function(i) {
   showConfirm(`¿Borrar "${rutinaEditando.dias[i].nombre}"?`, fn);
 };
 
-window.editarDia = (i) => { diaEditando=i; ejEditandoIdx=null; renderFormularioDia(); };
+window.editarDia = (i) => { navPush({ pantalla: 'editor', nivel: 'dia' }); diaEditando=i; ejEditandoIdx=null; renderFormularioDia(); };
 
 // ─────────────────────────────────────────────────
 // FORMULARIO DÍA — con edición de ejercicios existentes
@@ -263,7 +272,7 @@ function renderFormularioDia() {
           </div>
           <div class="ej-editor-acciones">
             <button class="btn-icon btn-edit-ej" onclick="abrirFormEditarEj(${idx})" title="Editar">✏️</button>
-            <button class="danger btn-icon" onclick="borrarEjercicio(${idx})">🗑️</button>
+            <button class="btn-danger btn-icon" onclick="borrarEjercicio(${idx})" aria-label="Borrar ejercicio">🗑️</button>
           </div>
         </div>
         ${ejEditandoIdx===idx?`<div class="form-edit-ejercicio" id="form-editar-${idx}">
@@ -350,6 +359,12 @@ function renderFormularioDia() {
   </div>`;
 }
 
+// Los pesos y el historial se asocian al nombre del ejercicio dentro del día: no puede repetirse
+function nombreRepetido(dia, nombre, idxPropio) {
+  const n = String(nombre).trim().toLowerCase();
+  return dia.ejercicios.some((ej, i) => i !== idxPropio && String(ej.nombre).trim().toLowerCase() === n);
+}
+
 window.cancelarEdicionEjercicio = function() { ejEditandoIdx = null; renderFormularioDia(); };
 
 window.abrirFormEditarEj = function(idx) {
@@ -373,6 +388,7 @@ window.guardarEjercicioEditado = function(idx) {
   if(!nombre||!series){ showToast('Completa los campos obligatorios (nombre y series)','warning'); return; }
   if(!alFallo && (peso===''||peso===undefined||!repsMin||!repsMax)){ showToast('Completa los campos obligatorios','warning'); return; }
   if(Number(repsMin)>Number(repsMax) && !alFallo){ showToast('Reps mín no puede superar reps máx','warning'); return; }
+  if(nombreRepetido(rutinaEditando.dias[diaEditando], nombre, idx)){ showToast(`Ya hay un ejercicio llamado "${nombre}" en este día`,'warning'); return; }
 
   const rm = alFallo ? (Number(repsMax)||30) : Number(repsMax);
   const musculoV = get(`edit-musculo-${idx}`)?.value || '';
@@ -405,6 +421,9 @@ window.migrarDescansosDia = function() {
   if(n){ saveRutinaUsuario(rutinaEditando,rutinaEditandoId); dispararCambioRutina(); showToast(`${n} descanso(s) asignados`,'success'); renderFormularioDia(); }
 };
 
+window.moverDiaEditor = (idx,dir) => {
+  if(moverDiaRutina(rutinaEditandoId,idx,dir)){ rutinaEditando=loadRutinaUsuario(rutinaEditandoId); dispararCambioRutina(); renderEditorRutina(); }
+};
 window.moverEjercicioEditor = (idx,dir) => {
   if(moverEjercicioRutina(rutinaEditandoId,diaEditando,idx,dir)){ rutinaEditando=loadRutinaUsuario(rutinaEditandoId); ejEditandoIdx=null; renderFormularioDia(); }
 };
@@ -420,6 +439,7 @@ window.añadirEjercicioADia = function() {
   if(!nombre||!seriesV){ showToast('Completa los campos obligatorios: nombre y series (*)','warning'); return; }
   if(!alFallo && (pesoV===''||pesoV===undefined||!rminV||!rmaxV)){ showToast('Completa todos los campos obligatorios (*)','warning'); return; }
   if(!alFallo && Number(rminV)>Number(rmaxV)){ showToast('Reps mín no puede superar reps máx','warning'); return; }
+  if(nombreRepetido(rutinaEditando.dias[diaEditando], nombre, -1)){ showToast(`Ya hay un ejercicio llamado "${nombre}" en este día`,'warning'); return; }
   const rm = alFallo ? (Number(rmaxV)||30) : Number(rmaxV);
   rutinaEditando.dias[diaEditando].ejercicios.push({
     nombre, peso:alFallo?0:(Number(pesoV)||0), series:Number(seriesV),
@@ -451,8 +471,16 @@ window.cambiarNombreDia = function() {
   showPrompt("Nombre del día:", "", fn, rutinaEditando.dias[diaEditando].nombre);
 };
 
-window.volverListaDias    = () => { diaEditando=null; ejEditandoIdx=null; renderEditorRutina(); };
-window.volverListaRutinas = () => { rutinaEditando=rutinaEditandoId=null; renderListaRutinas(); };
+// Subir un nivel: si hay entrada de historial para ese nivel se retrocede con ella (popstate llama a editorSubirNivel)
+function _irListaDias()    { diaEditando=null; ejEditandoIdx=null; renderEditorRutina(); }
+function _irListaRutinas() { rutinaEditando=rutinaEditandoId=diaEditando=ejEditandoIdx=null; renderListaRutinas(); }
+window.volverListaDias    = () => { if (navTope()?.nivel === 'dia' && navAtras()) return; _irListaDias(); };
+window.volverListaRutinas = () => {
+  const n = navTope()?.nivel;
+  if ((n === 'rutina' || n === 'plantillas') && navAtras()) return;
+  _irListaRutinas();
+};
+window.editorSubirNivel = (nivel) => { if (nivel === 'dia') _irListaDias(); else _irListaRutinas(); };
 window.volverMenuDesdeEditor = function() {
   navLimpiar();   // quita la entrada de historial que añadió abrirEditorRutinas
   ['pantalla-editor','pantalla-auth','pantalla-perfil','pantalla-dia',

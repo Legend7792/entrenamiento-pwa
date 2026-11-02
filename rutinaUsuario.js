@@ -97,12 +97,16 @@ export function normalizarRutina(r) {
       tieneTimer: d.tieneTimer !== false,
       ejercicios: []
     };
+    const usados = new Set();   // dos ejercicios con el mismo nombre en un día compartirían pesos e historial
     for (const e of (Array.isArray(d.ejercicios) ? d.ejercicios : [])) {
       if (!e || typeof e.nombre !== 'string' || !e.nombre.trim()) continue;
       const repsMin = Math.max(0, Math.round(num(e.repsMin, 8)));
       const repsMax = Math.max(repsMin, Math.round(num(e.repsMax, repsMin || 12)));
+      let nombreEj = e.nombre.trim().slice(0, 74), n = 1, candidato = nombreEj;
+      while (usados.has(candidato.toLowerCase())) candidato = `${nombreEj} (${++n})`;
+      usados.add(candidato.toLowerCase());
       dia.ejercicios.push({
-        nombre: e.nombre.trim().slice(0, 80),
+        nombre: candidato,
         peso: num(e.peso, 0),
         series: Math.max(1, Math.round(num(e.series, 3, 1))),
         repsMin, repsMax,
@@ -212,6 +216,18 @@ export function generarIdRutina() {
   if (t <= _ultimoId) t = _ultimoId + 1;
   _ultimoId = t;
   return `rutina_${t}`;
+}
+
+// Cambia de posición un día dentro de la rutina. Es seguro porque la configuración, las notas y el
+// historial se guardan por NOMBRE de día, no por su posición.
+export function moverDiaRutina(rutinaId, diaIndex, direccion) {
+  const rutina = loadRutinaUsuario(rutinaId);
+  if (!rutina?.dias?.[diaIndex]) return false;
+  const nuevo = direccion === 'arriba' ? diaIndex - 1 : diaIndex + 1;
+  if (nuevo < 0 || nuevo >= rutina.dias.length) return false;
+  [rutina.dias[diaIndex], rutina.dias[nuevo]] = [rutina.dias[nuevo], rutina.dias[diaIndex]];
+  saveRutinaUsuario(rutina, rutinaId);
+  return true;
 }
 
 export function moverEjercicioRutina(rutinaId, diaIndex, ejercicioIndex, direccion) {
