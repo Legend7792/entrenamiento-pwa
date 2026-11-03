@@ -1,4 +1,4 @@
-// app.js — Gym Tracker v98
+// app.js — Gym Tracker v99
 import "./auth.js";
 import { loadRutinaUsuario, inicializarRutinaBase, getAllRutinasUsuario, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
 import { markDirty, userState, esClaveBackup, sincronizarSiHaceFalta } from "./userState.js";
@@ -69,6 +69,31 @@ function calcular1RM(peso, reps) {
   if (!peso || peso <= 0 || !reps || reps <= 0) return null;
   return Math.round(peso * (1 + reps / 30) * 10) / 10;
 }
+
+// ══════════════════════════════════════════════════════
+// MODO TEXTO GRANDE — letras y botones más grandes para usar la app entre series (manos sudadas, prisa)
+// Es una preferencia de ESTE dispositivo (no se sincroniza con la nube). La clase se aplica ya desde
+// index.html para que no haya un parpadeo al abrir; aquí solo se mantienen los controles al día.
+// ══════════════════════════════════════════════════════
+try { if (localStorage.getItem('textoGrande') === 'true') document.documentElement.classList.add('texto-grande'); } catch {}
+
+function textoGrandeActivo() { return document.documentElement.classList.contains('texto-grande'); }
+
+function sincronizarControlesTextoGrande() {
+  const on = textoGrandeActivo();
+  const chk = document.getElementById('toggle-texto-grande');
+  if (chk) chk.checked = on;
+  const btn = document.getElementById('btn-texto-grande');
+  if (btn) { btn.setAttribute('aria-pressed', on ? 'true' : 'false'); btn.classList.toggle('modo-activo', on); }
+}
+
+window.toggleTextoGrande = function (activo) {
+  const on = typeof activo === 'boolean' ? activo : !textoGrandeActivo();
+  document.documentElement.classList.toggle('texto-grande', on);
+  try { localStorage.setItem('textoGrande', on ? 'true' : 'false'); } catch {}
+  sincronizarControlesTextoGrande();
+  showToast(on ? '🔠 Texto grande activado' : 'Texto normal', 'info', 1800);
+};
 
 // ══════════════════════════════════════════════════════
 // VIBRACIÓN AL TERMINAR TIMER
@@ -553,6 +578,9 @@ let diaActual = null;
 let ejerciciosDia = [];
 let notasSesion = "";
 let sesionStartTime = null; // Para calcular duración de la sesión
+let sesionActiva = false;   // hay un entrenamiento abierto (entre abrir el día y finalizar o salir)
+let guiaUltimaVisible = false; // la guía "última sesión" sigue visible aunque se vuelva a dibujar el día
+let _rutinaCargadaId = null;   // rutina activa con la que se cargaron los ejercicios del día
 
 // ══════════════════════════════════════════════════════
 // MODO 2 PERSONAS — TIMERS INDEPENDIENTES POR EJERCICIO
@@ -655,7 +683,6 @@ window.toggleModoDosPersonas = function () {
     btn.classList.toggle('modo-activo', modoDosPersonas);
   }
   renderDia();
-  renderBotonesUltimaSesion();
   showToast(modoDosPersonas ? 'Modo 2 personas activado' : 'Modo 1 persona activado', 'info', 2000);
 };
 
@@ -761,6 +788,21 @@ window.renombrarDiaConfig = function (rutinaId, diaViejo, diaNuevo, nombresEjerc
     delete extra[diaViejo];
     guardarConfig();
   }
+};
+
+// El editor duplicó un día: el día nuevo parte de los mismos pesos de trabajo, descansos e incrementos
+// que tiene ahora el original (todo se guarda por nombre de día, así que hay que copiarlo).
+window.copiarConfigDia = function (rutinaId, diaOrigen, diaNuevo, nombresEjercicios) {
+  (nombresEjercicios || []).forEach(n => {
+    ['pesos', 'descansos', 'incrementos'].forEach(tabla => {
+      const v = leerCfg(tabla, diaOrigen, n, rutinaId);
+      if (v !== undefined) escribirCfg(tabla, diaNuevo, n, v, rutinaId);
+    });
+  });
+  // Ejercicios añadidos a mano a ese día (si los hay)
+  const extra = config.ejerciciosExtra?.[diaOrigen];
+  if (extra?.length) { config.ejerciciosExtra[diaNuevo] = JSON.parse(JSON.stringify(extra)); }
+  guardarConfig();
 };
 
 function migrarPesosAntiguos() {
@@ -884,7 +926,7 @@ function añadirTimer() {
         <input id="_timer-min" type="number" min="0" max="99" placeholder="Min" style="margin:0;flex:1;" value="1" />
         <input id="_timer-seg" type="number" min="0" max="59" placeholder="Seg" style="margin:0;flex:1;" value="30" />
       </div>
-      <div style="display:flex;gap:4px;font-size:12px;color:var(--text-secondary);">
+      <div style="display:flex;gap:4px;font-size:calc(12px*var(--fs));color:var(--text-secondary);">
         <span style="flex:1;text-align:center;">Minutos</span>
         <span style="flex:1;text-align:center;">Segundos</span>
       </div>
@@ -1044,6 +1086,8 @@ function abrirDia(diaKey) {
 
   notasSesion = "";
   sesionStartTime = Date.now();
+  sesionActiva = true;
+  guiaUltimaVisible = false;
   activarWakeLock();
   fijarOrientacionPortrait();
   iniciarAutoGuardado();
@@ -1052,8 +1096,7 @@ function abrirDia(diaKey) {
 
   cargarEjerciciosDia();
   resetTemporizador();
-  renderDia();
-  renderBotonesUltimaSesion();
+  renderDia();   // dibuja también los botones de "última sesión"
   setTimeout(verificarSesionParcial, 600); // leve delay para que renderDia esté listo
 
   aplicarConfigDia(diaKey);
@@ -1090,6 +1133,7 @@ function incrementoPorDefecto(peso) {
 function cargarEjerciciosDia() {
   const rutinaActual = obtenerRutinaCompleta();
   if (!rutinaActual[diaActual]) return;
+  _rutinaCargadaId = obtenerRutinaActiva();
   const nombreDia = rutinaActual[diaActual].nombre;
   const base = rutinaActual[diaActual].ejercicios || [];
   const extra = config.ejerciciosExtra?.[nombreDia] || [];
@@ -1169,7 +1213,7 @@ function renderDia() {
   if (deloadEstaActivo()) {
     html += `<div class="deload-dia-notice">
         💤 <strong>SEMANA DE DELOAD</strong> — Pesos al 70% · Series al 60% · RIR 4-5
-        <button onclick="mostrarInfoDeload()" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 4px;">ℹ️</button>
+        <button onclick="mostrarInfoDeload()" style="background:none;border:none;cursor:pointer;font-size:calc(14px*var(--fs));padding:0 4px;">ℹ️</button>
       </div>`;
   }
 
@@ -1247,6 +1291,9 @@ function renderDia() {
   });
 
   cont.innerHTML = html;
+  // El dibujado completo borra los botones de "última sesión" (viven dentro de #contenido):
+  // se reponen aquí para que no desaparezcan al restaurar una sesión, cambiar de modo, etc.
+  renderBotonesUltimaSesion();
 }
 
 function actualizarInputsReps() {
@@ -1309,7 +1356,7 @@ window.editarDescansoInline = function (ejIndex) {
       <input id="descanso-custom" type="number" min="5" max="900" placeholder="segundos" value="${actual}"
         style="flex:1;margin:0;" />
       <button onclick="aplicarDescansoRapido(${ejIndex}, parseInt(document.getElementById('descanso-custom').value)||90)"
-        style="width:auto!important;padding:10px 14px!important;margin:0!important;font-size:13px;">✓</button>
+        style="width:auto!important;padding:10px 14px!important;margin:0!important;font-size:calc(13px*var(--fs));">✓</button>
     </div>`;
 
   overlay.classList.remove('oculto');
@@ -1467,7 +1514,7 @@ function _doFinalizarDia() {
   const cambiosPeso = [];
 
   ejerciciosDia.forEach(ej => {
-    const completo = ej.reps.every(r => Number(r) >= ej.repsMax);
+    const completo = ej.repsMax > 0 && ej.reps.every(r => Number(r) >= ej.repsMax);
     if (enDeload) {
       detalles.push(`${ej.nombre}: 💤 Deload — ${ej.reps.filter(r => r !== "").join("/")} reps a ${ej.peso}kg`);
     } else if (!ej.alFallo && completo && !ej.noProgresar) {
@@ -1521,6 +1568,8 @@ function _doFinalizarDia() {
   }
   guardarConfig();
 
+  sesionActiva = false;
+  guiaUltimaVisible = false;
   cargarEjerciciosDia(); // reps vacías y pesos/incrementos recalculados desde la configuración
   resetTemporizador();
   resetHIT();
@@ -1528,6 +1577,7 @@ function _doFinalizarDia() {
   renderDia();
 
   mostrarPantallaResumen(sesion, huboProgresion, detalles, enDeload);
+  guardarEstadoApp();   // ya no estamos en el día: si se cierra la app aquí no debe reabrirse un día vacío
 }
 
 function mostrarPantallaResumen(sesion, huboProgresion, detalles, enDeload = false) {
@@ -1622,17 +1672,34 @@ function mostrarPantallaHistorial() {
   document.getElementById("pantalla-historial").classList.remove("oculto");
 }
 
-// Desde el detalle: retrocede una entrada del historial (popstate muestra el historial)
+// Desde el detalle: retrocede una entrada del historial (popstate muestra el historial, o el día en curso)
 function volverHistorial() {
-  if (!navAtras()) mostrarPantallaHistorial();
+  if (navAtras()) return;
+  if (sesionActiva && _detalleDesdeDia) volverADiaEnCurso(); else mostrarPantallaHistorial();
 }
 
-function verDetalle(index) {
+let _detalleDesdeDia = false;
+
+// "Ver detalle →" de la pantalla del día: el detalle se abre ENCIMA del entrenamiento, sin pasar por el
+// historial, y al volver se retoma el día con lo que ya habías escrito (antes se acababa en el menú y se perdía).
+window.verDetalleDesdeDia = function (index) { verDetalle(index, { desdeDia: true }); };
+
+// Retoma el entrenamiento abierto (sin tocar las repeticiones escritas)
+function volverADiaEnCurso(desdePopstate = false) {
+  if (!desdePopstate) { navLimpiar(); navPush({ pantalla: 'dia' }); }   // la pila queda solo con el día
+  ocultarTodas();
+  document.getElementById('pantalla-dia')?.classList.remove('oculto');
+  activarWakeLock();
+  guardarEstadoApp();
+}
+
+function verDetalle(index, opciones = {}) {
   guardarEstadoApp();
   const historial = leerHistorialCrudo();
   const s = historial[index];
   if (!s) return;
-  navPush({ pantalla: 'detalle', index });
+  _detalleDesdeDia = opciones.desdeDia === true;
+  navPush(_detalleDesdeDia ? { pantalla: 'detalle', index, desde: 'dia' } : { pantalla: 'detalle', index });
   ocultarTodas();
   document.getElementById("pantalla-detalle").classList.remove("oculto");
 
@@ -1641,7 +1708,7 @@ function verDetalle(index) {
     <div class="detalle-header">
       <p>${new Date(s.fecha).toLocaleString('es-ES')}</p>
       <p class="resumen-dia">${escapeHtml(s.dia)}</p>
-      ${s.duracionMin ? `<p style="color:var(--text-secondary);font-size:13px;">⏱️ Duración: <strong>${s.duracionMin} min</strong></p>` : ''}
+      ${s.duracionMin ? `<p style="color:var(--text-secondary);font-size:calc(13px*var(--fs));">⏱️ Duración: <strong>${s.duracionMin} min</strong></p>` : ''}
       ${s.notas ? `<p class="resumen-notas">"${escapeHtml(s.notas)}"</p>` : ''}
       ${s.tiempoHIT ? `<p class="detalle-hit">⏲️ HIT (${escapeHtml(s.tipoHIT || 'Cardio')}): ${formatearTiempo(s.tiempoHIT)}</p>` : ''}
     </div>
@@ -1791,7 +1858,7 @@ function cargarMedidas() {
     let delta = '';
     if (m.peso > 0 && prev) {
       const d = Math.round((m.peso - prev.peso) * 10) / 10;
-      delta = ` <span style="color:var(--text-secondary);font-size:12px;">(${d > 0 ? '+' : ''}${d} kg vs. anterior)</span>`;
+      delta = ` <span style="color:var(--text-secondary);font-size:calc(12px*var(--fs));">(${d > 0 ? '+' : ''}${d} kg vs. anterior)</span>`;
     }
     return `
     <div class="medida-item">
@@ -2025,8 +2092,11 @@ function resetDesdeModal() { resetTemporizador(); ocultarModalTimer(); }
 
 function volverMenu(desdePopstate = false) {
   const enDia = !document.getElementById("pantalla-dia")?.classList.contains("oculto");
+  const hayReps = ejerciciosDia.some(ej => ej.reps.some(r => r !== ""));
+  // Se abrió otra pantalla (historial, medidas…) en mitad de un entrenamiento con series escritas:
+  // "volver" retoma el entrenamiento en vez de llevar al menú y perder lo escrito.
+  if (!enDia && sesionActiva && hayReps) { volverADiaEnCurso(desdePopstate === true); return; }
   if (enDia) {
-    const hayReps = ejerciciosDia.some(ej => ej.reps.some(r => r !== ""));
     if (hayReps) {
       showConfirm(
         '¿Salir del entrenamiento?\nLas repeticiones marcadas NO se guardarán hasta que pulses "✅ Finalizar sesión".',
@@ -2040,6 +2110,8 @@ function volverMenu(desdePopstate = false) {
 }
 
 function _doVolverMenu() {
+  sesionActiva = false;
+  guiaUltimaVisible = false;
   navLimpiar(); // quita de golpe las entradas de historial de las pantallas (los paneles abiertos se quedan)
   ocultarTodas();
   document.getElementById("menu").classList.remove("oculto");
@@ -2100,7 +2172,7 @@ function renderSidebarPerfil() {
     <div class="sidebar-perfil-email">
       ${logueado
       ? `<span>👤 ${escapeHtml(email)}</span>`
-      : `<span style="color:var(--text-secondary);font-size:12px;">Sin cuenta — datos locales</span>`}
+      : `<span style="color:var(--text-secondary);font-size:calc(12px*var(--fs));">Sin cuenta — datos locales</span>`}
     </div>
     <div class="sidebar-perfil-btns">
       <button onclick="toggleSidebar(); mostrarPerfil()">
@@ -2112,7 +2184,7 @@ function renderSidebarPerfil() {
 window.renderSidebarPerfil = renderSidebarPerfil;
 
 function guardarEstadoApp() {
-  const pantalla =
+  const pantalla = sesionActiva ? "dia" :
     !document.getElementById("menu")?.classList.contains("oculto") ? "menu" :
       !document.getElementById("pantalla-dia")?.classList.contains("oculto") ? "dia" :
         !document.getElementById("pantalla-historial")?.classList.contains("oculto") ? "historial" :
@@ -2149,9 +2221,11 @@ function renderizarBotonesDias() {
   const historial = leerHistorialCrudo();
   contenedor.innerHTML = "";
   
-  // Pre-calcular última sesión por día para optimizar
+  // Pre-calcular última sesión por día (solo de la rutina activa; las antiguas sin rutinaId cuentan para todas)
+  const rutinaActivaId = obtenerRutinaActiva();
   const ultimaPorDia = new Map();
   historial.forEach(s => {
+    if (s.rutinaId && s.rutinaId !== rutinaActivaId) return;
     if (!ultimaPorDia.has(s.dia) || new Date(s.fecha) > new Date(ultimaPorDia.get(s.dia).fecha)) {
       ultimaPorDia.set(s.dia, s);
     }
@@ -2377,9 +2451,9 @@ function aplicarFactorDeload(ejercicios) {
 function renderBotonesUltimaSesion() {
   const contenedor = document.getElementById("contenido");
   if (!contenedor) return;
+  contenedor.querySelector('.botones-ultima-sesion')?.remove();
   const ultimaSesion = obtenerUltimaSesion();
-  if (!ultimaSesion) return;
-  if (document.getElementById('btn-toggle-guia')) return;
+  if (!ultimaSesion) { guiaUltimaVisible = false; return; }
 
   const historial = leerHistorialCrudo();
   const idxSesion = historial.findIndex(s => s.fecha === ultimaSesion.fecha && s.dia === ultimaSesion.dia);
@@ -2387,9 +2461,10 @@ function renderBotonesUltimaSesion() {
 
   contenedor.insertAdjacentHTML('afterbegin', `
     <div class="botones-ultima-sesion">
-      <button onclick="toggleGuiaUltimaSesion()" id="btn-toggle-guia" class="btn-secondary">👁️ Última sesión (${fechaCorta})</button>
-      ${idxSesion >= 0 ? `<button onclick="abrirHistorial();setTimeout(()=>verDetalle(${idxSesion}),150)" class="btn-link" style="width:auto!important;padding:4px 8px!important;font-size:12px;">Ver detalle →</button>` : ''}
+      <button onclick="toggleGuiaUltimaSesion()" id="btn-toggle-guia" class="btn-secondary${guiaUltimaVisible ? ' activo' : ''}" data-fecha="${escapeHtml(fechaCorta)}">${guiaUltimaVisible ? '🚫 Ocultar guía' : `👁️ Última sesión (${escapeHtml(fechaCorta)})`}</button>
+      ${idxSesion >= 0 ? `<button onclick="verDetalleDesdeDia(${idxSesion})" class="btn-link" style="width:auto!important;padding:4px 8px!important;font-size:calc(12px*var(--fs));">Ver detalle →</button>` : ''}
     </div>`);
+  if (guiaUltimaVisible) mostrarGuiaUltimaSesion();
 }
 
 function obtenerUltimaSesion() {
@@ -2403,34 +2478,40 @@ function obtenerUltimaSesion() {
 }
 
 window.toggleGuiaUltimaSesion = function () {
-  const guias = document.querySelectorAll('.guia-ultima-sesion');
   const btn = document.getElementById('btn-toggle-guia');
-  if (guias.length > 0) {
-    guias.forEach(g => g.remove());
-    btn.textContent = `👁️ Última sesión`;
-    btn.classList.remove('activo');
-  } else {
+  if (!btn) return;
+  guiaUltimaVisible = !guiaUltimaVisible;
+  if (guiaUltimaVisible) {
     mostrarGuiaUltimaSesion();
     btn.textContent = '🚫 Ocultar guía';
     btn.classList.add('activo');
+  } else {
+    document.querySelectorAll('.guia-ultima-sesion').forEach(g => g.remove());
+    btn.textContent = `👁️ Última sesión (${btn.dataset.fecha || ''})`;
+    btn.classList.remove('activo');
   }
 };
 
 function mostrarGuiaUltimaSesion() {
   const sesion = obtenerUltimaSesion();
   if (!sesion) return;
+  document.querySelectorAll('.guia-ultima-sesion').forEach(g => g.remove());   // nunca duplicar
   const fecha = new Date(sesion.fecha).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
   ejerciciosDia.forEach((ej, ejIndex) => {
     const ejAnterior = sesion.ejercicios.find(e => e.nombre === ej.nombre && ejercicioHecho(e));
     if (!ejAnterior) return;
-    const div = document.querySelectorAll('.ejercicio')[ejIndex];
+    const div = document.querySelector(`.ejercicio[data-ej-index="${ejIndex}"]`);
     if (!div) return;
     const guia = `<div class="guia-ultima-sesion">
       <span class="guia-fecha">📅 ${fecha}</span>
-      <span class="guia-peso">Peso: ${ejAnterior.peso}kg</span>
-      <span class="guia-reps">Reps: ${ejAnterior.reps.filter(r => r !== "").join(' - ')}</span>
+      <span class="guia-peso">Peso: ${escapeHtml(ejAnterior.peso)}kg</span>
+      <span class="guia-reps">Reps: ${ejAnterior.reps.filter(r => r !== "").map(escapeHtml).join(' - ')}</span>
     </div>`;
-    div.querySelector('h3')?.insertAdjacentHTML('afterend', guia);
+    // Debajo de TODA la cabecera (título + etiquetas). Antes se insertaba junto al título, dentro de la
+    // cabecera flexible, y lo aplastaba hasta dejar el nombre del ejercicio en vertical.
+    const ancla = div.querySelector('.ejercicio-header');
+    if (ancla) ancla.insertAdjacentHTML('afterend', guia);
+    else div.insertAdjacentHTML('afterbegin', guia);
   });
 }
 
@@ -2494,6 +2575,8 @@ window.addEventListener("popstate", (e) => {
   }
 
   if (visible("pantalla-resumen")) { cerrarResumen(); return; }
+  // Detalle abierto desde "Ver detalle →" del entrenamiento: "atrás" retoma el día
+  if (it && it.pantalla === 'detalle' && it.desde === 'dia' && visible("pantalla-detalle") && sesionActiva) { volverADiaEnCurso(true); return; }
   if (visible("pantalla-detalle")) { mostrarPantallaHistorial(); return; }
   if (visible("pantalla-editor") && window.volverMenuDesdeEditor) { window.volverMenuDesdeEditor(); return; }
   if (visible("menu")) return;
@@ -2642,8 +2725,10 @@ window.exportarHistorialCSV = function () {
   const a = document.createElement('a');
   a.href = url;
   a.download = `historial_gym_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   showToast('CSV exportado correctamente', 'success');
 };
 
@@ -2892,7 +2977,7 @@ window.renderGraficaProgreso = function () {
   if (esAlFallo) {
     cont.innerHTML = `<div class="chart-empty-fallo">
       <p>⚠️ <strong>${escapeHtml(nombre)}</strong> es un ejercicio de peso corporal / al fallo.</p>
-      <p style="font-size:13px;color:var(--text-secondary);">La gráfica de peso no aplica. Puedes ver el historial de reps en la pantalla de detalle de cada sesión.</p>
+      <p style="font-size:calc(13px*var(--fs));color:var(--text-secondary);">La gráfica de peso no aplica. Puedes ver el historial de reps en la pantalla de detalle de cada sesión.</p>
     </div>`; return;
   }
 
@@ -2964,7 +3049,7 @@ window.renderGraficaProgreso = function () {
     <div class="chart-container">
       <div class="chart-bars">${barras}</div>
     </div>
-    <p style="font-size:12px;color:var(--text-secondary);text-align:center;">
+    <p style="font-size:calc(12px*var(--fs));color:var(--text-secondary);text-align:center;">
       🟢 barra verde = ${leyenda} · Últimas ${datos.length} sesiones (sin semanas de deload)
     </p>`;
 };
@@ -2973,7 +3058,15 @@ window.addEventListener("cambio-rutina", () => {
   renderizarBotonesDias();
   renderizarBannerDeload();
   renderizarSelectorRutinas();
-  if (diaActual) { cargarEjerciciosDia(); renderDia(); }
+  if (diaActual) {
+    // Editar la rutina (editor) con un entrenamiento abierto recargaba los ejercicios y borraba las repeticiones
+    // escritas. Se conservan (por nombre de ejercicio) si la rutina activa sigue siendo la misma.
+    const activa = obtenerRutinaActiva();
+    const previas = (sesionActiva && _rutinaCargadaId === activa) ? new Map(ejerciciosDia.map(e => [e.nombre, e.reps])) : null;
+    cargarEjerciciosDia();
+    if (previas) ejerciciosDia.forEach(e => { const r = previas.get(e.nombre); if (r) e.reps = e.reps.map((_, i) => r[i] ?? ""); });
+    renderDia();
+  }
 });
 
 window.actualizarNotasSesion = function (val) { notasSesion = val; };
@@ -3044,7 +3137,7 @@ function renderNotasProgresion() {
 
   let html = '<div class="progresion-header">' +
     '<h3>🏋️ ' + escapeHtml(nombreRutina) + '</h3>' +
-    '<p style="font-size:12px;color:var(--text-secondary);margin:4px 0 0;">' +
+    '<p style="font-size:calc(12px*var(--fs));color:var(--text-secondary);margin:4px 0 0;">' +
     'Estrategia de progresión: cómo subir peso, cuándo y qué hacer al estancarte.' +
     '</p></div>';
 
@@ -3323,6 +3416,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderizarBotonesDias();
   renderizarBannerDeload();
 
+  sincronizarControlesTextoGrande();
+
   // Inicializar toggle de vibración con el valor guardado
   const chkVib = document.getElementById('toggle-vibracion');
   if (chkVib) chkVib.checked = localStorage.getItem('vibrarAlTerminar') === 'true';
@@ -3374,8 +3469,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       aplicarConfigDia(diaActual);   // cronómetro HIT y temporizador visibles según el día
       lastEjerciciosDiaHash = null;
+      sesionActiva = true;
+      guiaUltimaVisible = false;
       renderDia();
-      renderBotonesUltimaSesion();
       activarWakeLock();
       fijarOrientacionPortrait();
       iniciarAutoGuardado();

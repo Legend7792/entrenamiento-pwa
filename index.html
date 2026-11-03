@@ -12,6 +12,10 @@
   <meta name="apple-mobile-web-app-title" content="Gym Tracker" />
   <title>Gym Tracker</title>
   <link rel="manifest" href="./manifest.json" />
+  <script>
+    /* Texto grande: se aplica antes de pintar para que no haya un parpadeo al abrir la app */
+    try { if (localStorage.getItem('textoGrande') === 'true') document.documentElement.classList.add('texto-grande'); } catch (e) {}
+  </script>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -85,6 +89,14 @@
   <div class="sidebar-section">
     <label class="sidebar-label">📋 Rutina activa</label>
     <select id="selector-rutina"></select>
+  </div>
+
+  <div class="sidebar-section">
+    <label class="sidebar-label">🔠 Texto grande</label>
+    <label class="check-texto-grande">
+      <input type="checkbox" id="toggle-texto-grande" onchange="toggleTextoGrande(this.checked)">
+      <span>Letras y botones más grandes para usar entre series</span>
+    </label>
   </div>
 
   <div class="sidebar-section sidebar-btns">
@@ -162,7 +174,7 @@
     <div class="auth-links">
       <button class="btn-link" onclick="mostrarFormRegistro()">¿Sin cuenta? Regístrate</button>
       <button class="btn-link" onclick="mostrarFormRecuperar()">Olvidé mi contraseña</button>
-      <button class="btn-link" onclick="reenviarVerificacion()" style="font-size:12px;opacity:0.7;">Reenviar email de verificación</button>
+      <button class="btn-link" onclick="reenviarVerificacion()" style="font-size:calc(12px*var(--fs));opacity:0.7;">Reenviar email de verificación</button>
     </div>
   </div>
 
@@ -222,6 +234,7 @@
   <div class="pantalla-header">
     <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2 id="titulo-dia">Entrenamiento</h2>
+    <button id="btn-texto-grande" onclick="toggleTextoGrande()" class="btn-icon-top btn-texto-grande" title="Texto grande" aria-label="Texto grande" aria-pressed="false">Aa</button>
     <button onclick="toggleSidebarRight()" class="btn-icon-top" title="Temporizador" aria-label="Abrir temporizador">⏱️</button>
   </div>
 
@@ -277,7 +290,7 @@
   </div>
   <div class="historial-search">
     <input id="historial-buscar" type="text" placeholder="🔍 Buscar ejercicio, día, fecha, notas..." oninput="filtrarHistorial(this.value)" />
-    <button onclick="exportarHistorialCSV()" title="Exportar CSV" style="width:auto!important;padding:10px 12px!important;margin:0!important;font-size:13px;">📥 CSV</button>
+    <button onclick="exportarHistorialCSV()" title="Exportar CSV" style="width:auto!important;padding:10px 12px!important;margin:0!important;font-size:calc(13px*var(--fs));">📥 CSV</button>
   </div>
   <div id="lista-historial"></div>
   <div class="historial-footer">
@@ -443,7 +456,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
     <div class="import-field" style="margin-top:12px;">
       <label>API Key de Anthropic</label>
       <input id="ai-import-apikey" type="password" placeholder="sk-ant-..." />
-      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;">
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:calc(13px*var(--fs));">
         <input id="ai-recordar-key" type="checkbox" /> Recordar la clave en este dispositivo
       </label>
       <p class="import-hint">Por defecto la clave solo vive mientras la app está abierta. Si marcas "Recordar", se guarda en este dispositivo (sin cifrar), nunca se sube a la nube ni entra en las copias de seguridad. Con IA puedes pegar texto libre en cualquier formato y detecta varios días automáticamente.</p>

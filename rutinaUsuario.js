@@ -1,4 +1,4 @@
-// rutinaUsuario.js
+// rutinaUsuario.js — v99
 export const RUTINA_BASE_ID = "rutina_base";
 
 const RUTINA_BASE_ORIGINAL = {
@@ -89,10 +89,15 @@ export function normalizarRutina(r) {
   const num = (v, d, min = 0) => { const n = Number(v); return Number.isFinite(n) && n >= min ? n : d; };
   const out = { nombre: r.nombre.trim().slice(0, 80), dias: [] };
   if (r.tieneDeload === true) out.tieneDeload = true;
+  const diasUsados = new Set();   // dos días con el mismo nombre compartirían pesos, notas e historial
   for (const d of r.dias) {
     if (!d || typeof d !== 'object') continue;
+    const nombreBaseDia = String(d.nombre || `Día ${out.dias.length + 1}`).slice(0, 80);
+    let nombreDia = nombreBaseDia, nd = 1;
+    while (diasUsados.has(nombreDia.toLowerCase())) { const suf = ` (${++nd})`; nombreDia = nombreBaseDia.slice(0, 80 - suf.length) + suf; }
+    diasUsados.add(nombreDia.toLowerCase());
     const dia = {
-      nombre: String(d.nombre || `Día ${out.dias.length + 1}`).slice(0, 80),
+      nombre: nombreDia,
       tieneCronometro: d.tieneCronometro === true,
       tieneTimer: d.tieneTimer !== false,
       ejercicios: []
@@ -186,8 +191,10 @@ export function exportarRutinaJSON(rutinaId) {
   const a = document.createElement('a');
   a.href = url;
   a.download = `rutina_${String(rutina.nombre).replace(/[^a-z0-9]/gi, '_')}.json`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);   // si se revoca al instante algunos navegadores cancelan la descarga
 }
 
 export function importarRutinaDesdeJSON(archivo, callback) {
@@ -218,25 +225,62 @@ export function generarIdRutina() {
   return `rutina_${t}`;
 }
 
-// Cambia de posición un día dentro de la rutina. Es seguro porque la configuración, las notas y el
-// historial se guardan por NOMBRE de día, no por su posición.
-export function moverDiaRutina(rutinaId, diaIndex, direccion) {
+// Mueve un elemento de una lista de la posición `desde` a la posición final `hasta`
+function moverElemento(lista, desde, hasta) {
+  const [x] = lista.splice(desde, 1);
+  lista.splice(hasta, 0, x);
+}
+
+function indicesValidos(lista, desde, hasta) {
+  return Array.isArray(lista) && Number.isInteger(desde) && Number.isInteger(hasta) &&
+    desde !== hasta && desde >= 0 && hasta >= 0 && desde < lista.length && hasta < lista.length;
+}
+
+// Cambia de posición un día dentro de la rutina (arrastrar para reordenar). Es seguro porque la
+// configuración, las notas y el historial se guardan por NOMBRE de día, no por su posición.
+export function reordenarDiaRutina(rutinaId, desde, hasta) {
   const rutina = loadRutinaUsuario(rutinaId);
-  if (!rutina?.dias?.[diaIndex]) return false;
-  const nuevo = direccion === 'arriba' ? diaIndex - 1 : diaIndex + 1;
-  if (nuevo < 0 || nuevo >= rutina.dias.length) return false;
-  [rutina.dias[diaIndex], rutina.dias[nuevo]] = [rutina.dias[nuevo], rutina.dias[diaIndex]];
+  if (!rutina || !indicesValidos(rutina.dias, desde, hasta)) return false;
+  moverElemento(rutina.dias, desde, hasta);
   saveRutinaUsuario(rutina, rutinaId);
   return true;
 }
 
-export function moverEjercicioRutina(rutinaId, diaIndex, ejercicioIndex, direccion) {
+export function reordenarEjercicioRutina(rutinaId, diaIndex, desde, hasta) {
   const rutina = loadRutinaUsuario(rutinaId);
-  if (!rutina?.dias[diaIndex]) return false;
-  const ejercicios = rutina.dias[diaIndex].ejercicios;
-  const newIndex = direccion === 'arriba' ? ejercicioIndex - 1 : ejercicioIndex + 1;
-  if (newIndex < 0 || newIndex >= ejercicios.length) return false;
-  [ejercicios[ejercicioIndex], ejercicios[newIndex]] = [ejercicios[newIndex], ejercicios[ejercicioIndex]];
+  const ejercicios = rutina?.dias?.[diaIndex]?.ejercicios;
+  if (!indicesValidos(ejercicios, desde, hasta)) return false;
+  moverElemento(ejercicios, desde, hasta);
   saveRutinaUsuario(rutina, rutinaId);
   return true;
+}
+
+// ¿Existe ya un día con ese nombre? (sin distinguir mayúsculas; `idxPropio` se ignora al renombrar)
+export function nombreDiaRepetido(dias, nombre, idxPropio = -1) {
+  const n = String(nombre).trim().toLowerCase();
+  return (dias || []).some((d, i) => i !== idxPropio && String(d.nombre).trim().toLowerCase() === n);
+}
+
+// "Día 1 (copia)", "Día 1 (copia 2)"… el primero que no exista
+export function nombreCopiaDia(dias, nombre) {
+  const base = String(nombre);
+  for (let n = 1; n < 1000; n++) {
+    const sufijo = n === 1 ? ' (copia)' : ` (copia ${n})`;
+    const cand = base.slice(0, Math.max(1, 80 - sufijo.length)) + sufijo;
+    if (!nombreDiaRepetido(dias, cand)) return cand;
+  }
+  return base + ' (copia ' + Date.now() + ')';
+}
+
+// Duplica un día justo debajo del original (copia profunda: ejercicios, notas, tempos, descansos, timers).
+// Devuelve { indice, nombre, nombreOrigen, ejercicios } o null.
+export function duplicarDiaRutina(rutinaId, diaIndex) {
+  const rutina = loadRutinaUsuario(rutinaId);
+  const origen = rutina?.dias?.[diaIndex];
+  if (!origen) return null;
+  const copia = JSON.parse(JSON.stringify(origen));
+  copia.nombre = nombreCopiaDia(rutina.dias, origen.nombre);
+  rutina.dias.splice(diaIndex + 1, 0, copia);
+  saveRutinaUsuario(rutina, rutinaId);
+  return { indice: diaIndex + 1, nombre: copia.nombre, nombreOrigen: origen.nombre, ejercicios: (copia.ejercicios || []).map(e => e.nombre) };
 }

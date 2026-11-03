@@ -1,4 +1,4 @@
-// sw.js — Gym Tracker v98
+// sw.js — Gym Tracker v99
 //
 // Estrategia (cambió respecto a v95):
 //  * Los archivos de la app se guardan TODOS juntos al instalar una versión nueva (todo o nada).
@@ -10,8 +10,8 @@
 //  * Supabase ya no se necesita para arrancar (se carga solo al usar la nube), así que no se
 //    precarga; si se descarga alguna vez se guarda para reutilizarlo.
 
-const CACHE_VERSION = "v98";
-const CACHE_NAME    = "gym-tracker-v98";
+const CACHE_VERSION = "v99";
+const CACHE_NAME    = "gym-tracker-v99";
 
 const BASE = new URL("./", self.location.href).pathname;
 
@@ -27,6 +27,7 @@ const APP_CRITICOS = [
   BASE + "selectorRutinas.js",
   BASE + "themes.js",
   BASE + "editorRutinas.js",
+  BASE + "ordenar.js",
   BASE + "ui.js",
   BASE + "aiImport.js",
   BASE + "nav.js",

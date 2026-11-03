@@ -60,7 +60,7 @@ export function mostrarPerfil() {
       ${!esSinCuenta ? `
       <div class="perfil-seccion">
         <h3>🔄 Sincronización</h3>
-        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">
+        <p style="font-size:calc(12px*var(--fs));color:var(--text-secondary);margin-bottom:8px;">
           Última sincronización de este dispositivo: <strong>${escapeHtml(fechaSubida)}</strong>
         </p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
@@ -71,7 +71,7 @@ export function mostrarPerfil() {
             ⬇️ Traer de la nube
           </button>
         </div>
-        <p style="font-size:11px;color:var(--text-secondary);">
+        <p style="font-size:calc(11px*var(--fs));color:var(--text-secondary);">
           ⬆️ Guarda los datos de <em>este</em> dispositivo. Si otro dispositivo subió datos más nuevos, te lo dirá y podrás fusionarlos (no se pierde nada).<br>
           ⬇️ Trae los datos de la nube y los <em>fusiona</em> con los de este dispositivo: el historial y las medidas se unen; rutinas, pesos y ajustes de la nube mandan.
         </p>
@@ -86,7 +86,7 @@ export function mostrarPerfil() {
         <button onclick="logout()" class="btn-danger" style="width:100%;margin-top:8px;">🚪 Cerrar sesión</button>
       </div>` : `
       <div class="perfil-seccion">
-        <p style="color:var(--text-secondary);font-size:14px;">Estás usando la app sin cuenta. Los datos se guardan solo en este dispositivo.</p>
+        <p style="color:var(--text-secondary);font-size:calc(14px*var(--fs));">Estás usando la app sin cuenta. Los datos se guardan solo en este dispositivo.</p>
         <button onclick="mostrarPantallaAuth()" class="btn-secondary">Crear cuenta / Iniciar sesión</button>
       </div>`}`;
   }

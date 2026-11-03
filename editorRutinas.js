@@ -1,11 +1,12 @@
 import { showToast, showConfirm, showPrompt, escapeHtml } from "./ui.js";
-// editorRutinas.js
+// editorRutinas.js — v99 (arrastrar para reordenar, duplicar día)
 import {
   saveRutinaUsuario, loadRutinaUsuario, getAllRutinasUsuario,
   deleteRutinaUsuario, generarIdRutina, RUTINA_BASE_ID,
-  restaurarRutinaBase, moverEjercicioRutina, moverDiaRutina,
-  duplicarRutina, exportarRutinaJSON, importarRutinaDesdeJSON, normalizarRutina
+  restaurarRutinaBase, reordenarEjercicioRutina, reordenarDiaRutina, duplicarDiaRutina,
+  nombreDiaRepetido, duplicarRutina, exportarRutinaJSON, importarRutinaDesdeJSON, normalizarRutina
 } from "./rutinaUsuario.js";
+import { habilitarOrdenar } from "./ordenar.js";
 import { PLANTILLAS } from "./plantillas.js";
 import { renderizarSelectorRutinas } from "./selectorRutinas.js";
 import { navPush, navLimpiar, navAtras, navCerrar, navTope } from "./nav.js";
@@ -17,6 +18,24 @@ let rutinaEditando   = null;
 let rutinaEditandoId = null;
 let diaEditando      = null;
 let ejEditandoIdx    = null;
+let _borrador        = null;   // lo escrito (sin guardar) en el formulario de editar ejercicio: sobrevive a un reordenado
+
+// ── Asa de arrastre (⋮⋮): sustituye a las flechas ⬆️⬇️. Las flechas del teclado también funcionan sobre ella ──
+const ICONO_ASA = `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><g fill="currentColor"><circle cx="9" cy="6" r="2"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></g></svg>`;
+function asaHTML(tipo, idx, nombre, total) {
+  return `<button type="button" class="asa-orden" data-asa="${tipo}" data-idx="${idx}" title="Arrastra para reordenar"
+    aria-label="Reordenar «${esc(nombre)}», posición ${idx + 1} de ${total}. Arrastra, o usa las flechas arriba y abajo del teclado">${ICONO_ASA}</button>`;
+}
+function enfocarAsa(tipo, idx) {
+  setTimeout(() => document.querySelector(`.asa-orden[data-asa="${tipo}"][data-idx="${idx}"]`)?.focus(), 0);
+}
+// Dónde queda un elemento (índice i) cuando otro pasa de `desde` a `hasta`
+function indiceTrasMover(i, desde, hasta) {
+  if (i === desde) return hasta;
+  if (desde < hasta && i > desde && i <= hasta) return i - 1;
+  if (desde > hasta && i >= hasta && i < desde) return i + 1;
+  return i;
+}
 
 window.abrirEditorRutinas = function () {
   navPush();
@@ -176,17 +195,37 @@ function renderEditorRutina() {
     ${rutinaEditando.dias.length===0
       ? `<p class="texto-vacio">Sin días. Añade uno abajo.</p>`
       : rutinaEditando.dias.map((d,i)=>`<div class="dia-card">
-          ${rutinaEditando.dias.length>1?`<div class="orden-btns">
-            <button onclick="moverDiaEditor(${i},'arriba')" ${i===0?'disabled':''} aria-label="Subir día">⬆️</button>
-            <button onclick="moverDiaEditor(${i},'abajo')" ${i===rutinaEditando.dias.length-1?'disabled':''} aria-label="Bajar día">⬇️</button>
-          </div>`:''}
+          ${rutinaEditando.dias.length>1?asaHTML('dia', i, d.nombre, rutinaEditando.dias.length):''}
           <div class="dia-card-info"><h4>📅 ${esc(d.nombre)}</h4><p>${d.ejercicios.length} ejercicio(s)</p></div>
           <div class="acciones-dia-card">
             <button onclick="editarDia(${i})">✏️ Editar</button>
-            <button class="btn-danger" onclick="borrarDia(${i})">🗑️</button>
+            <button onclick="duplicarDia(${i})" class="btn-secondary" title="Duplicar este día" aria-label="Duplicar el día ${esc(d.nombre)}">📑</button>
+            <button class="btn-danger" onclick="borrarDia(${i})" aria-label="Borrar el día ${esc(d.nombre)}">🗑️</button>
           </div></div>`).join('')}
   </div><button onclick="añadirNuevoDia()">➕ Añadir día</button>`;
+  habilitarOrdenar(cont.querySelector('.lista-dias'), { item: '.dia-card', asa: '.asa-orden', alSoltar: alSoltarDia });
 }
+
+function alSoltarDia(desde, hasta, via) {
+  if (!reordenarDiaRutina(rutinaEditandoId, desde, hasta)) return;
+  rutinaEditando = loadRutinaUsuario(rutinaEditandoId);
+  dispararCambioRutina();
+  renderEditorRutina();
+  if (via === 'teclado') enfocarAsa('dia', hasta);
+}
+
+// Duplica un día justo debajo del original, con el mismo contenido y los mismos pesos de trabajo actuales
+window.duplicarDia = function(i) {
+  const r = duplicarDiaRutina(rutinaEditandoId, i);
+  if (!r) { showToast('No se pudo duplicar el día','error'); return; }
+  window.copiarConfigDia?.(rutinaEditandoId, r.nombreOrigen, r.nombre, r.ejercicios);
+  rutinaEditando = loadRutinaUsuario(rutinaEditandoId);
+  dispararCambioRutina();
+  renderEditorRutina();
+  const tarjeta = document.querySelectorAll('.lista-dias .dia-card')[r.indice];
+  if (tarjeta) { tarjeta.classList.add('dia-nuevo'); tarjeta.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  showToast(`Día duplicado: «${r.nombre}»`, 'success');
+};
 
 window.cambiarNombreRutina = function() {
   const fn=(n)=>{ rutinaEditando.nombre=n.trim(); saveRutinaUsuario(rutinaEditando,rutinaEditandoId); dispararCambioRutina(); renderEditorRutina(); };
@@ -208,8 +247,14 @@ window.borrarRutinaCompleta = function(id) {
 };
 
 window.añadirNuevoDia = function() {
-  const fn=(n)=>{ rutinaEditando.dias.push({nombre:n.trim(),ejercicios:[],tieneTimer:true,tieneCronometro:false}); saveRutinaUsuario(rutinaEditando,rutinaEditandoId); dispararCambioRutina(); renderEditorRutina(); };
-  showPrompt("Nombre del día:", `Día ${rutinaEditando.dias.length+1}`, fn);
+  // Pesos, notas e historial se guardan por nombre de día: dos días con el mismo nombre se mezclarían
+  const fn=(n)=>{
+    const nombre = n.trim();
+    if (nombreDiaRepetido(rutinaEditando.dias, nombre)) { showToast(`Ya hay un día llamado "${nombre}" en esta rutina`,'warning'); return; }
+    rutinaEditando.dias.push({nombre,ejercicios:[],tieneTimer:true,tieneCronometro:false}); saveRutinaUsuario(rutinaEditando,rutinaEditandoId); dispararCambioRutina(); renderEditorRutina(); };
+  let sugerido = rutinaEditando.dias.length+1;
+  while (nombreDiaRepetido(rutinaEditando.dias, `Día ${sugerido}`)) sugerido++;
+  showPrompt("Nombre del día:", `Día ${sugerido}`, fn);
 };
 
 window.borrarDia = function(i) {
@@ -257,14 +302,12 @@ function renderFormularioDia() {
     ${sinDescanso&&total>0?`<div class="aviso-migracion">⚠️ Ejercicios sin descanso configurado.
       <button onclick="migrarDescansosDia()" class="btn-migrar">✨ Asignar descansos automáticamente</button></div>`:''}
     <hr>
-    <h4>Ejercicios <small style="color:var(--text-secondary);font-weight:normal;">(✏️ para editar cualquiera)</small></h4>
+    <h4>Ejercicios <small style="color:var(--text-secondary);font-weight:normal;font-size:calc(12px*var(--fs));">(✏️ para editar cualquiera)</small></h4>
     <div class="lista-ejercicios-editor">
       ${total===0?`<p class="texto-vacio">Sin ejercicios.</p>`:dia.ejercicios.map((ej,idx)=>`
+       <div class="ej-item">
         <div class="ejercicio-editor-card${ejEditandoIdx===idx?' editing':''}">
-          <div class="orden-btns">
-            <button onclick="moverEjercicioEditor(${idx},'arriba')" ${idx===0?'disabled':''}>⬆️</button>
-            <button onclick="moverEjercicioEditor(${idx},'abajo')" ${idx===total-1?'disabled':''}>⬇️</button>
-          </div>
+          ${total>1?asaHTML('ej', idx, ej.nombre, total):''}
           <div class="ej-editor-info">
             <strong>${esc(ej.nombre)}</strong>
             <span class="ej-editor-sub">${formatDescEj(ej)}</span>
@@ -272,7 +315,7 @@ function renderFormularioDia() {
           </div>
           <div class="ej-editor-acciones">
             <button class="btn-icon btn-edit-ej" onclick="abrirFormEditarEj(${idx})" title="Editar">✏️</button>
-            <button class="btn-danger btn-icon" onclick="borrarEjercicio(${idx})" aria-label="Borrar ejercicio">🗑️</button>
+            <button class="btn-danger btn-icon" onclick="borrarEjercicio(${idx})" aria-label="Borrar ejercicio ${esc(ej.nombre)}">🗑️</button>
           </div>
         </div>
         ${ejEditandoIdx===idx?`<div class="form-edit-ejercicio" id="form-editar-${idx}">
@@ -314,6 +357,7 @@ function renderFormularioDia() {
             <button onclick="guardarEjercicioEditado(${idx})" class="btn-primary">💾 Guardar</button>
             <button onclick="cancelarEdicionEjercicio()" class="btn-secondary" aria-label="Cancelar edición">✕</button>
           </div></div>`:''}
+       </div>
       `).join('')}
     </div>
     <hr>
@@ -357,6 +401,46 @@ function renderFormularioDia() {
     <hr>
     <button onclick="volverListaDias()" class="btn-secondary">← Volver a días</button>
   </div>`;
+  habilitarOrdenar(cont.querySelector('.lista-ejercicios-editor'), { item: '.ej-item', asa: '.asa-orden', alSoltar: alSoltarEjercicio });
+  restaurarBorrador();
+}
+
+// ── Reordenar ejercicios: no se pierde lo que el usuario haya escrito sin guardar ──
+// Los ids de los campos de edición llevan el índice del ejercicio (edit-peso-2), que cambia al reordenar.
+function capturarCampos() {
+  const campos = {};
+  document.querySelectorAll('#contenido-editor [id^="ej-"], #contenido-editor [id^="edit-"]').forEach(el => {
+    if (el.type === 'checkbox') campos[el.id] = el.checked;
+    else if ('value' in el) campos[el.id] = el.value;
+  });
+  return campos;
+}
+function restaurarBorrador() {
+  const b = _borrador; _borrador = null;
+  if (!b) return;
+  Object.entries(b).forEach(([id, v]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
+  });
+}
+function alSoltarEjercicio(desde, hasta, via) {
+  const abierto = ejEditandoIdx;
+  const nuevoAbierto = abierto === null ? null : indiceTrasMover(abierto, desde, hasta);
+  const campos = capturarCampos();
+  if (!reordenarEjercicioRutina(rutinaEditandoId, diaEditando, desde, hasta)) return;
+  rutinaEditando = loadRutinaUsuario(rutinaEditandoId);
+  ejEditandoIdx = nuevoAbierto;
+  // Re-asignar los campos de edición a su índice nuevo
+  _borrador = {};
+  Object.entries(campos).forEach(([id, v]) => {
+    const m = /^(edit-[a-z]+)-(\d+)$/.exec(id);
+    if (!m) { _borrador[id] = v; return; }
+    if (nuevoAbierto !== null && Number(m[2]) === abierto) _borrador[`${m[1]}-${nuevoAbierto}`] = v;
+  });
+  dispararCambioRutina();
+  renderFormularioDia();
+  if (via === 'teclado') enfocarAsa('ej', hasta);
 }
 
 // Los pesos y el historial se asocian al nombre del ejercicio dentro del día: no puede repetirse
@@ -421,13 +505,6 @@ window.migrarDescansosDia = function() {
   if(n){ saveRutinaUsuario(rutinaEditando,rutinaEditandoId); dispararCambioRutina(); showToast(`${n} descanso(s) asignados`,'success'); renderFormularioDia(); }
 };
 
-window.moverDiaEditor = (idx,dir) => {
-  if(moverDiaRutina(rutinaEditandoId,idx,dir)){ rutinaEditando=loadRutinaUsuario(rutinaEditandoId); dispararCambioRutina(); renderEditorRutina(); }
-};
-window.moverEjercicioEditor = (idx,dir) => {
-  if(moverEjercicioRutina(rutinaEditandoId,diaEditando,idx,dir)){ rutinaEditando=loadRutinaUsuario(rutinaEditandoId); ejEditandoIdx=null; renderFormularioDia(); }
-};
-
 window.añadirEjercicioADia = function() {
   const get=(id)=>document.getElementById(id)?.value;
   const nombre=get("ej-nombre")?.trim(); const pesoV=get("ej-peso"); const seriesV=get("ej-series");
@@ -466,6 +543,8 @@ window.cambiarNombreDia = function() {
     const nuevo = (n||'').trim();
     const d = rutinaEditando.dias[diaEditando];
     if (!nuevo) { showToast('El nombre no puede estar vacío','warning'); return; }
+    if (nuevo === d.nombre) return;
+    if (nombreDiaRepetido(rutinaEditando.dias, nuevo, diaEditando)) { showToast(`Ya hay un día llamado "${nuevo}" en esta rutina`,'warning'); return; }
     window.renombrarDiaConfig?.(rutinaEditandoId, d.nombre, nuevo, d.ejercicios.map(e=>e.nombre));
     d.nombre = nuevo; saveRutinaUsuario(rutinaEditando,rutinaEditandoId); dispararCambioRutina(); renderFormularioDia(); };
   showPrompt("Nombre del día:", "", fn, rutinaEditando.dias[diaEditando].nombre);
