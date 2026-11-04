@@ -2116,6 +2116,7 @@ function _doVolverMenu() {
   ocultarTodas();
   document.getElementById("menu").classList.remove("oculto");
   cerrarSidebarRight();
+  renderizarBotonesDias();   // "Hoy / Ayer / Hace N días" de cada botón: se actualizaba solo al recargar la app
   renderizarSelectorRutinas();
   renderizarBannerDeload();
   guardarEstadoApp();
