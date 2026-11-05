@@ -320,7 +320,7 @@ function renderFormularioDia() {
         </div>
         ${ejEditandoIdx===idx?`<div class="form-edit-ejercicio" id="form-editar-${idx}">
           <h5>✏️ Editando: ${esc(ej.nombre)}</h5>
-          <input id="edit-nombre-${idx}" placeholder="Nombre *" value="${esc(ej.nombre)}" />
+          <input id="edit-nombre-${idx}" aria-label="Nombre del ejercicio" placeholder="Nombre *" value="${esc(ej.nombre)}" />
           <div class="form-row">
             <div class="form-col"><label class="form-label">Peso (kg)*</label><input id="edit-peso-${idx}" type="number" min="0" step="0.5" value="${ej.peso}" /></div>
             <div class="form-col"><label class="form-label">Series*</label><input id="edit-series-${idx}" type="number" min="1" value="${ej.series}" /></div>
@@ -363,7 +363,7 @@ function renderFormularioDia() {
     <hr>
     <h4>➕ Añadir ejercicio</h4>
     <div class="form-ejercicio">
-      <input id="ej-nombre" placeholder="Nombre *" />
+      <input id="ej-nombre" aria-label="Nombre del ejercicio nuevo" placeholder="Nombre *" />
       <div class="form-row">
         <div class="form-col"><label class="form-label">Peso*</label><input id="ej-peso" type="number" min="0" step="0.5" placeholder="0" /></div>
         <div class="form-col"><label class="form-label">Series*</label><input id="ej-series" type="number" min="1" placeholder="3" /></div>
@@ -444,6 +444,24 @@ function alSoltarEjercicio(desde, hasta, via) {
 }
 
 // Los pesos y el historial se asocian al nombre del ejercicio dentro del día: no puede repetirse
+// Valida los números de un ejercicio. Devuelve un mensaje de error o null.
+// (los min/max de los <input> son solo pistas del navegador: no impiden guardar "-1" o "2.5" series)
+function errorNumeros({ series, repsMin, repsMax, descanso, peso, alFallo }) {
+  const entero = v => v !== '' && v !== undefined && Number.isInteger(Number(v));
+  if (!entero(series) || Number(series) < 1 || Number(series) > 30) return 'Las series deben ser un número entero entre 1 y 30';
+  if (!alFallo) {
+    if (!entero(repsMin) || Number(repsMin) < 0 || Number(repsMin) > 999) return 'Las reps mínimas deben ser un número entero (0 o más)';
+    if (!entero(repsMax) || Number(repsMax) < 1 || Number(repsMax) > 999) return 'Las reps máximas deben ser un número entero (1 o más)';
+    const p = Number(peso);
+    if (peso !== '' && peso !== undefined && (!Number.isFinite(p) || p < 0 || p > 9999)) return 'El peso debe estar entre 0 y 9999 kg';
+  }
+  if (descanso !== '' && descanso !== undefined && descanso !== null) {
+    const d = Number(descanso);
+    if (!Number.isFinite(d) || d < 0 || d > 3600) return 'El descanso debe estar entre 0 y 3600 segundos';
+  }
+  return null;
+}
+
 function nombreRepetido(dia, nombre, idxPropio) {
   const n = String(nombre).trim().toLowerCase();
   return dia.ejercicios.some((ej, i) => i !== idxPropio && String(ej.nombre).trim().toLowerCase() === n);
@@ -472,6 +490,7 @@ window.guardarEjercicioEditado = function(idx) {
   if(!nombre||!series){ showToast('Completa los campos obligatorios (nombre y series)','warning'); return; }
   if(!alFallo && (peso===''||peso===undefined||!repsMin||!repsMax)){ showToast('Completa los campos obligatorios','warning'); return; }
   if(Number(repsMin)>Number(repsMax) && !alFallo){ showToast('Reps mín no puede superar reps máx','warning'); return; }
+  { const e = errorNumeros({ series, repsMin, repsMax, descanso: descV, peso, alFallo }); if (e) { showToast(e,'warning'); return; } }
   if(nombreRepetido(rutinaEditando.dias[diaEditando], nombre, idx)){ showToast(`Ya hay un ejercicio llamado "${nombre}" en este día`,'warning'); return; }
 
   const rm = alFallo ? (Number(repsMax)||30) : Number(repsMax);
@@ -516,6 +535,7 @@ window.añadirEjercicioADia = function() {
   if(!nombre||!seriesV){ showToast('Completa los campos obligatorios: nombre y series (*)','warning'); return; }
   if(!alFallo && (pesoV===''||pesoV===undefined||!rminV||!rmaxV)){ showToast('Completa todos los campos obligatorios (*)','warning'); return; }
   if(!alFallo && Number(rminV)>Number(rmaxV)){ showToast('Reps mín no puede superar reps máx','warning'); return; }
+  { const e = errorNumeros({ series: seriesV, repsMin: rminV, repsMax: rmaxV, descanso: descV, peso: pesoV, alFallo }); if (e) { showToast(e,'warning'); return; } }
   if(nombreRepetido(rutinaEditando.dias[diaEditando], nombre, -1)){ showToast(`Ya hay un ejercicio llamado "${nombre}" en este día`,'warning'); return; }
   const rm = alFallo ? (Number(rmaxV)||30) : Number(rmaxV);
   rutinaEditando.dias[diaEditando].ejercicios.push({

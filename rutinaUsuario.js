@@ -71,6 +71,27 @@ const RUTINA_BASE_ORIGINAL = {
   ]
 };
 
+// Músculo principal de los ejercicios de la Rutina Base (solo los inequívocos; el resto se deja sin asignar
+// para que lo elijas tú en el editor). Sirve para la estadística "Series por músculo".
+const MUSCULO_BASE = {
+  "Press banca": "pectoral", "Press banca inclinado": "pectoral",
+  "Press militar": "hombro", "Elevaciones laterales": "hombro",
+  "Remo con barra": "espalda", "Dominada supina": "espalda", "Dominadas prono": "espalda",
+  "Curl bíceps": "bicep", "Tríceps francés": "tricep",
+  "Sentadilla trasera": "cuadricep", "Sentadilla frontal": "cuadricep", "Sentadilla a una pierna": "cuadricep",
+  "Buenos días": "isquio", "Peso muerto rumano": "isquio",
+  "Elevación de talones": "gemelo",
+  "Elevaciones de piernas colgado": "core", "Jalón abdominal con peso": "core", "Roll-out": "core"
+};
+function asignarMusculosBase(rutina) {
+  let cambios = 0;
+  (rutina.dias || []).forEach(d => (d.ejercicios || []).forEach(e => {
+    if (!e.musculo && MUSCULO_BASE[e.nombre]) { e.musculo = MUSCULO_BASE[e.nombre]; cambios++; }
+  }));
+  return cambios;
+}
+asignarMusculosBase(RUTINA_BASE_ORIGINAL);
+
 function leerRutinas() {
   try {
     const r = JSON.parse(localStorage.getItem("rutinas_usuario"));
@@ -141,6 +162,14 @@ export function inicializarRutinaBase() {
     else r.dias.forEach(d => { if (!Array.isArray(d.ejercicios)) { d.ejercicios = []; reparado = true; } });
   });
   if (reparado) localStorage.setItem("rutinas_usuario", JSON.stringify(rutinas));
+
+  // v99: la Rutina Base guardada antes no traía músculos. Se rellenan UNA vez, solo donde estén vacíos
+  try {
+    if (!localStorage.getItem("musculosBase_v99")) {
+      localStorage.setItem("musculosBase_v99", "1");
+      if (rutinas[RUTINA_BASE_ID] && asignarMusculosBase(rutinas[RUTINA_BASE_ID])) guardarRutinas(rutinas);
+    }
+  } catch { /* sin almacenamiento: no pasa nada */ }
 }
 
 export function restaurarRutinaBase() {

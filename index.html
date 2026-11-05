@@ -36,7 +36,7 @@
 ">
   <div style="font-size:56px;margin-bottom:14px;line-height:1">🏋️</div>
   <div style="color:#ffffff;font-size:19px;font-weight:700;margin-bottom:6px">Gym Tracker</div>
-  <div style="color:#4a9eff;font-size:13px;margin-bottom:22px">Cargando...</div>
+  <div id="splash-estado" style="color:#4a9eff;font-size:13px;margin-bottom:22px">Cargando...</div>
   <div style="
     width:38px;height:38px;
     border:3px solid #2a2a2a;
@@ -50,6 +50,22 @@
   // Fallback: si app.js no quitó el splash en 20 s, mostramos mensaje de error
   // (evita quedarse con pantalla negra si el JS no carga). Si la app termina de
   // cargar más tarde, app.js quita igualmente el splash.
+  // Si el navegador bloquea el almacenamiento del sitio (cookies/datos bloqueados) la app no puede
+  // guardar nada: se avisa de inmediato en vez de quedarse en "Cargando…".
+  try { localStorage.getItem('gym_test'); } catch (e) {
+    var sp = document.getElementById('app-splash');
+    if (sp) sp.innerHTML =
+      '<div style="max-width:300px;text-align:center;padding:20px">' +
+      '<div style="font-size:40px;margin-bottom:14px">🔒</div>' +
+      '<div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:10px">Almacenamiento bloqueado</div>' +
+      '<div style="color:#aaa;font-size:13px;line-height:1.5;margin-bottom:18px">' +
+      'Tu navegador no deja a Gym Tracker guardar datos. Permite las cookies y los datos del sitio ' +
+      '(o sal del modo privado) y vuelve a abrir la app.</div>' +
+      '<button onclick="location.reload()" style="' +
+      'background:#4a9eff;color:#fff;border:none;padding:11px 26px;' +
+      'border-radius:8px;font-size:14px;cursor:pointer;font-weight:600">' +
+      '🔄 Reintentar</button></div>';
+  }
   setTimeout(function(){
     var s = document.getElementById('app-splash');
     if (!s) return;
@@ -221,9 +237,9 @@
   <div id="botones-dias" class="botones-dias"></div>
 
   <div class="menu-footer">
-    <button onclick="abrirHistorial()" class="btn-secondary">📊 Historial</button>
-    <button onclick="abrirEstadisticas()" class="btn-secondary">🏆 Stats</button>
-    <button onclick="abrirMedidas()" class="btn-secondary">📏 Medidas</button>
+    <button onclick="abrirHistorial()" class="btn-secondary"><span class="mf-ico" aria-hidden="true">📊</span><span>Historial</span></button>
+    <button onclick="abrirEstadisticas()" class="btn-secondary"><span class="mf-ico" aria-hidden="true">🏆</span><span>Stats</span></button>
+    <button onclick="abrirMedidas()" class="btn-secondary"><span class="mf-ico" aria-hidden="true">📏</span><span>Medidas</span></button>
   </div>
 </section>
 
@@ -241,7 +257,7 @@
   <!-- Modo 2 personas y notas de sesión -->
   <div class="dia-controles">
     <button id="btn-modo-personas" onclick="toggleModoDosPersonas()" class="btn-modo" title="Cambiar entre modo 1 y 2 personas">👤 1 persona</button>
-    <input id="notas-sesion-input" type="text" placeholder="📝 Nota de la sesión..." oninput="actualizarNotasSesion(this.value)" />
+    <input id="notas-sesion-input" type="text" aria-label="Nota de la sesión" placeholder="📝 Nota de la sesión..." oninput="actualizarNotasSesion(this.value)" />
   </div>
 
   <div id="contenido" class="contenido-dia"></div>
@@ -289,7 +305,7 @@
     <h2>📊 Historial</h2>
   </div>
   <div class="historial-search">
-    <input id="historial-buscar" type="text" placeholder="🔍 Buscar ejercicio, día, fecha, notas..." oninput="filtrarHistorial(this.value)" />
+    <input id="historial-buscar" type="text" aria-label="Buscar en el historial" placeholder="🔍 Buscar ejercicio, día, fecha, notas..." oninput="filtrarHistorial(this.value)" />
     <button onclick="exportarHistorialCSV()" title="Exportar CSV" style="width:auto!important;padding:10px 12px!important;margin:0!important;font-size:calc(13px*var(--fs));">📥 CSV</button>
   </div>
   <div id="lista-historial"></div>
@@ -662,12 +678,13 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
 <!-- ══════════════════════════════════════
      MODAL TEMPORIZADOR TERMINADO
 ══════════════════════════════════════ -->
-<div id="modal-timer" class="modal-overlay oculto">
-  <div class="modal-box">
+<div id="modal-timer" class="modal-overlay oculto" onclick="resetDesdeModal()">
+  <div class="modal-box" role="alertdialog" aria-modal="true" aria-label="Descanso terminado" onclick="event.stopPropagation()">
     <p style="font-size:36px; text-align:center; margin-bottom:8px;">⏰</p>
-    <p style="text-align:center; font-size:18px; font-weight:700;">¡Descanso terminado!</p>
+    <p style="text-align:center; font-size:calc(18px * var(--fs)); font-weight:700;">¡Descanso terminado!</p>
     <div class="modal-btns" style="margin-top:16px;">
       <button onclick="resetDesdeModal()" class="btn-primary">✅ Continuar</button>
+      <button onclick="masDescansoDesdeModal(30)" class="btn-secondary">➕ 30 s más</button>
     </div>
   </div>
 </div>
@@ -676,7 +693,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
      MODAL TEMPO (popup al tocar el badge)
 ══════════════════════════════════════ -->
 <div id="modal-tempo-overlay" class="modal-overlay oculto" onclick="cerrarModalTempo()">
-  <div class="modal-box" onclick="event.stopPropagation()">
+  <div class="modal-box" role="dialog" aria-modal="true" aria-label="Guía de tempo" onclick="event.stopPropagation()">
     <div id="modal-tempo-contenido"></div>
     <button onclick="cerrarModalTempo()" class="btn-primary" style="margin-top:12px;">Entendido</button>
   </div>
@@ -686,7 +703,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
      MODAL CONFIRM
 ══════════════════════════════════════ -->
 <div id="modal-confirm-overlay" class="modal-overlay oculto">
-  <div class="modal-box">
+  <div class="modal-box" role="alertdialog" aria-modal="true" aria-labelledby="modal-confirm-msg">
     <p id="modal-confirm-msg"></p>
     <div class="modal-btns">
       <button id="modal-confirm-no" class="btn-secondary">Cancelar</button>
@@ -699,9 +716,9 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
      MODAL PROMPT
 ══════════════════════════════════════ -->
 <div id="modal-prompt-overlay" class="modal-overlay oculto">
-  <div class="modal-box">
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-prompt-msg">
     <p id="modal-prompt-msg"></p>
-    <input id="modal-prompt-input" class="modal-input" />
+    <input id="modal-prompt-input" class="modal-input" aria-labelledby="modal-prompt-msg" />
     <div class="modal-btns">
       <button id="modal-prompt-cancel" class="btn-secondary">Cancelar</button>
       <button id="modal-prompt-ok" class="btn-primary">Aceptar</button>
@@ -713,7 +730,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
      MODAL ALERT
 ══════════════════════════════════════ -->
 <div id="modal-alert-overlay" class="modal-overlay oculto">
-  <div class="modal-box">
+  <div class="modal-box" role="alertdialog" aria-modal="true" aria-labelledby="modal-alert-msg">
     <p id="modal-alert-msg"></p>
     <div class="modal-btns">
       <button id="modal-alert-ok" class="btn-primary">Entendido</button>
@@ -744,7 +761,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
     <h2>📈 Progreso por ejercicio</h2>
   </div>
   <div class="progreso-selector">
-    <select id="progreso-ejercicio-select" onchange="renderGraficaProgreso()">
+    <select id="progreso-ejercicio-select" aria-label="Ejercicio a graficar" onchange="renderGraficaProgreso()">
       <option value="">Selecciona ejercicio...</option>
     </select>
   </div>
@@ -755,7 +772,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
      MODAL EDITAR DESCANSO (durante entrenamiento)
 ══════════════════════════════════════ -->
 <div id="modal-descanso-overlay" class="modal-overlay oculto" onclick="cerrarModalDescanso()">
-  <div class="modal-box" onclick="event.stopPropagation()">
+  <div class="modal-box" role="dialog" aria-modal="true" aria-label="Descanso" onclick="event.stopPropagation()">
     <div id="modal-descanso-contenido"></div>
     <button onclick="cerrarModalDescanso()" class="btn-secondary" style="margin-top:8px;">Cancelar</button>
   </div>

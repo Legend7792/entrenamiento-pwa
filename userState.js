@@ -223,7 +223,10 @@ export async function syncToCloud({ auto = false, mezclar = false } = {}) {
   const syncedLocal = localStorage.getItem("_syncedAt") || null;
   const syncedNube  = nube?._syncedAt || null;
 
-  if (nube && syncedNube !== syncedLocal) {
+  // Si la nube tiene datos y ninguno de los dos lados conoce una marca de sincronización (fila antigua + dispositivo
+  // sin sincronizar), también se trata como conflicto: así nunca se sobrescribe sin fusionar.
+  const sinMarcas = syncedNube === null && syncedLocal === null && !!nube && Object.keys(nube).length > 0;
+  if (nube && (syncedNube !== syncedLocal || sinMarcas)) {
     // Otro dispositivo (o una sesión anterior) subió datos desde la última vez que sincronicé aquí
     if (auto || !mezclar) throw errorConflicto(syncedNube);
     datos = mezclarDatos(datos, nube, 'local');

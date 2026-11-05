@@ -1484,3 +1484,36 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 .prog-ej-ref { flex-wrap: wrap; }
 .prog-ej-nombre { min-width: 0; overflow-wrap: anywhere; }
 .prog-ej-config { white-space: normal; margin-left: auto; text-align: right; }
+
+/* ── v99: mejoras visuales ── */
+/* Día "Siguiente" en el menú */
+#botones-dias button.dia-siguiente { border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
+.pill-siguiente {
+  display: inline-block; vertical-align: middle; margin-left: 6px; padding: 1px 8px; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent); font-size: calc(10px * var(--fs)); font-weight: 700;
+  letter-spacing: 0.4px; text-transform: uppercase;
+}
+
+/* Barra de series registradas */
+.progreso-sesion { margin: 4px 0 12px; }
+.progreso-sesion-texto { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: calc(13px * var(--fs)); color: var(--text-secondary); margin-bottom: 4px; }
+.progreso-sesion-texto strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.progreso-sesion-barra { height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.progreso-sesion-barra > div { height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.25s ease; }
+.progreso-sesion.completo .progreso-sesion-barra > div { background: var(--success); }
+@media (prefers-reduced-motion: reduce) { .progreso-sesion-barra > div { transition: none; } }
+
+/* Gráfica de progreso: la altura fija (160 px) era menor que la barra más alta + su número + su fecha, y todo
+   se salía por arriba (números cortados y barras pegadas al borde). Ahora la altura se ajusta al contenido. */
+.chart-bars { height: auto; padding: 4px 0 4px; }
+
+/* Menú: los tres botones de abajo con icono arriba y texto debajo, todos iguales (antes "Historial" y "Medidas" partían la línea y "Stats" no) */
+.menu-footer button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; padding: 10px 4px; font-size: calc(13px * var(--fs)); }
+.menu-footer .mf-ico { font-size: calc(20px * var(--fs)); line-height: 1.1; }
+
+/* Barras laterales cerradas: fuera del orden de tabulación y de los lectores de pantalla (antes se podía llegar con Tab a sus botones aunque no se vieran) */
+#sidebar.sidebar-closed, #sidebar-right.sidebar-right-closed { visibility: hidden; transition: transform 0.28s cubic-bezier(0.4,0,0.2,1), visibility 0s linear 0.28s; }
+#sidebar.sidebar-open, #sidebar-right.sidebar-right-open { visibility: visible; }
+
+/* v99: menú de una rutina sin días */
+.menu-sin-dias { margin: 18px 4px; padding: 14px; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-secondary); font-size: calc(14px * var(--fs)); line-height: 1.45; text-align: center; }

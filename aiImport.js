@@ -235,9 +235,9 @@ function _aiRenderDias() {
           ? `<button onclick="aiEliminarDia(${d.id})" class="btn-danger-sm" style="width:auto!important;padding:4px 8px!important;">✕ Quitar</button>`
           : ''}
       </div>
-      <input class="ai-dia-nombre" placeholder="Nombre del día (ej: Día 1 – Torso Fuerza)"
+      <input class="ai-dia-nombre" aria-label="Nombre del día" placeholder="Nombre del día (ej: Día 1 – Torso Fuerza)"
         value="${escapeHtml(d.nombre || '')}" oninput="_aiDias[${i}].nombre = this.value" />
-      <textarea class="ai-dia-texto" rows="8"
+      <textarea class="ai-dia-texto" aria-label="Ejercicios del día (texto)" rows="8"
         placeholder="Press banca con barra&#10;4x6-8 · 3 min · 3-1-1&#10;Escápulas retraídas.&#10;&#10;Dominadas pronadas&#10;4x6-8 · 3 min · 3-0-1"
         oninput="_aiDias[${i}].texto = this.value">${escapeHtml(d.texto)}</textarea>
     </div>`).join('');

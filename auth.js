@@ -297,6 +297,9 @@ window.syncBajar = async function (btn) {
     `Se FUSIONARÁ con lo de este dispositivo:\n` +
     `• Historial y medidas: se unen (no se pierde nada)\n` +
     `• Rutinas, pesos y ajustes: mandan los de la nube\n\n` +
+    (localStorage.getItem("gym_dirty") === "1"
+      ? `⚠️ Tienes cambios en este dispositivo que aún no se han subido (pesos, rutinas o ajustes). Si continúas, los de la nube los sustituirán. Si son más nuevos, cancela y pulsa antes «Subir».\n\n`
+      : ``) +
     `¿Continuar?`;
 
   showConfirm(msg, async () => {

@@ -1,4 +1,4 @@
-// app.js — Gym Tracker v99
+// app.js — Gym Tracker v102
 import "./auth.js";
 import { loadRutinaUsuario, inicializarRutinaBase, getAllRutinasUsuario, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
 import { markDirty, userState, esClaveBackup, sincronizarSiHaceFalta } from "./userState.js";
@@ -7,7 +7,7 @@ import * as audioStore from "./audioStore.js";
 import { renderizarSelectorRutinas, obtenerRutinaActiva, RUTINA_BASE_ID } from "./selectorRutinas.js";
 import "./themes.js";
 import "./editorRutinas.js";
-import { showToast, showConfirm, showPrompt, showAlert, initOfflineBanner, escapeHtml } from "./ui.js";
+import { showToast, showConfirm, showPrompt, showAlert, initOfflineBanner, escapeHtml, initEtiquetas } from "./ui.js";
 import "./aiImport.js";
 
 // ══════════════════════════════════════════════════════
@@ -29,7 +29,7 @@ if (navigator.storage && navigator.storage.persist) {
 let _wakeLock = null;
 
 async function activarWakeLock() {
-  if (!('wakeLock' in navigator)) return;
+  if (!('wakeLock' in navigator) || _wakeLock) return;
   try {
     _wakeLock = await navigator.wakeLock.request('screen');
     _wakeLock.addEventListener('release', () => { _wakeLock = null; });
@@ -49,6 +49,13 @@ document.addEventListener('visibilitychange', async () => {
     await activarWakeLock();
   }
 });
+
+// Número "seguro": finito y dentro de [min, max]; si no es un número devuelve `def`
+function numSeguro(v, min, max, def = 0) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  if (!Number.isFinite(n)) return def;
+  return Math.min(max, Math.max(min, n));
+}
 
 // Número de día según la fecha LOCAL (no depende de horario de verano: un día siempre = +1)
 function numDia(fecha) {
@@ -206,8 +213,13 @@ window.importarBackupJSON = function (input) {
       let nSesiones = 0;
       try { nSesiones = JSON.parse(data.historial || '[]').length; } catch {}
 
+      const nActuales = leerHistorialCrudo().length;
+      const avisoPerdida = nActuales > nSesiones
+        ? `\n\n🛑 OJO: ahora tienes ${nActuales} sesiones y el backup solo trae ${nSesiones}. Se perderían ${nActuales - nSesiones} sesión(es) más recientes.`
+        : '';
+      const avisoNube = userState?.uid ? `\n☁️ Con tu cuenta iniciada, la siguiente sincronización subirá también este resultado a la nube.` : '';
       showConfirm(
-        `📂 ¿Restaurar backup?\n\nSe REEMPLAZARÁN los datos de este dispositivo que estén en el backup.\n\nBackup del: ${data._exportedAt ? new Date(data._exportedAt).toLocaleString('es-ES') : 'fecha desconocida'}\nSesiones: ${nSesiones} · Claves: ${entradas.length}\n\n⚠️ Esta acción no se puede deshacer. Si quieres conservarlo todo, exporta antes un backup nuevo.`,
+        `📂 ¿Restaurar backup?\n\nSe REEMPLAZARÁN los datos de este dispositivo que estén en el backup.\n\nBackup del: ${data._exportedAt ? new Date(data._exportedAt).toLocaleString('es-ES') : 'fecha desconocida'}\nSesiones en el backup: ${nSesiones} · Ahora en este dispositivo: ${nActuales} · Claves: ${entradas.length}${avisoPerdida}${avisoNube}\n\n⚠️ Esta acción no se puede deshacer. Si quieres conservarlo todo, exporta antes un backup nuevo.`,
         () => {
           let restauradas = 0;
           for (const [key, val] of entradas) {
@@ -253,6 +265,7 @@ function iniciarAutoGuardado() {
   detenerAutoGuardado();
   _autoSaveTimer = setInterval(() => {
     if (!diaActual || !ejerciciosDia.length) return;
+    if (!ejerciciosDia.some(ej => ej.reps.some(r => r !== "" && r !== null))) return;   // nada que recuperar
     const parcial = {
       savedAt:      Date.now(),
       diaActual,
@@ -283,6 +296,8 @@ function verificarSesionParcial() {
     if (!raw) return;
     const parcial = JSON.parse(raw);
     if (!parcial?.savedAt || !parcial.ejerciciosDia?.length) return;
+    // Solo se ofrece si es del mismo día y rutina que se acaba de abrir (si no, mezclaría datos de otro día)
+    if (parcial.diaActual !== diaActual || (parcial.rutinaId && parcial.rutinaId !== obtenerRutinaActiva())) return;
 
     const hace = Date.now() - parcial.savedAt;
     const horasMax = 4 * 3600 * 1000; // 4 horas
@@ -569,10 +584,14 @@ function notificarTimerTerminado(texto = '¡Descanso terminado! Siguiente serie'
 // ══════════════════════════════════════════════════════
 // ESTADO CENTRAL
 // ══════════════════════════════════════════════════════
-let estadoApp = JSON.parse(localStorage.getItem("estadoApp")) || {
-  pantalla: "menu", diaActual: null, ejerciciosDia: null,
-  tiempoRestante: 0, tiempoFinal: null
-};
+let estadoApp = (() => {
+  let e = null;
+  try { e = JSON.parse(localStorage.getItem("estadoApp")); } catch {}
+  return (e && typeof e === 'object' && !Array.isArray(e)) ? e : {
+    pantalla: "menu", diaActual: null, ejerciciosDia: null,
+    tiempoRestante: 0, tiempoFinal: null
+  };
+})();
 
 let diaActual = null;
 let ejerciciosDia = [];
@@ -611,6 +630,7 @@ function iniciarTimerEjercicio(ejIndex, persona = 0) {
       clearInterval(ejercicioTimers[ejIndex][persona].intervalId);
       delete ejercicioTimers[ejIndex][persona];
     }
+    guardarEstadoApp();
     return;
   }
 
@@ -619,6 +639,7 @@ function iniciarTimerEjercicio(ejIndex, persona = 0) {
     delete ejercicioTimers[ejIndex][persona];
     actualizarBtnTimer(ejIndex, persona, segundos, false, false);
     audioManager.stop(timerId);
+    guardarEstadoApp();
     return;
   }
 
@@ -643,6 +664,7 @@ function iniciarTimerEjercicio(ejIndex, persona = 0) {
 
   ejercicioTimers[ejIndex][persona] = { intervalId, endTime, timerId };
   actualizarBtnTimer(ejIndex, persona, segundos, true, false);
+  guardarEstadoApp();   // para que un temporizador en marcha sobreviva a recargar la app
 }
 
 function actualizarBtnTimer(ejIndex, persona, remaining, activo, done) {
@@ -707,9 +729,17 @@ function obtenerRutinaCompleta() {
 // ══════════════════════════════════════════════════════
 // CONFIGURACIÓN
 // ══════════════════════════════════════════════════════
-let config = JSON.parse(localStorage.getItem("config")) || { pesos: {}, ejerciciosExtra: {}, descansos: {} };
-if (!config.descansos) config.descansos = {};
-if (!config.incrementos) config.incrementos = {};   // ← NUEVO
+// Lee la configuración guardada; si está corrupta o no es un objeto, parte de una vacía
+function leerConfigGuardada() {
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem("config")); } catch {}
+  if (!c || typeof c !== 'object' || Array.isArray(c)) c = {};
+  for (const k of ['pesos', 'ejerciciosExtra', 'descansos', 'incrementos']) {
+    if (!c[k] || typeof c[k] !== 'object' || Array.isArray(c[k])) c[k] = {};
+  }
+  return c;
+}
+let config = leerConfigGuardada();
 
 function guardarConfig() {
   localStorage.setItem("config", JSON.stringify(config));
@@ -717,9 +747,7 @@ function guardarConfig() {
 }
 
 function recargarConfig() {
-  config = JSON.parse(localStorage.getItem("config")) || { pesos: {}, ejerciciosExtra: {}, descansos: {} };
-  if (!config.descansos) config.descansos = {};
-  if (!config.incrementos) config.incrementos = {};   // ← NUEVO
+  config = leerConfigGuardada();
 }
 window.recargarConfig = recargarConfig;
 
@@ -840,10 +868,15 @@ let timerID = null;
 let tiempoRestante = 0;
 let tiempoFinal = null;
 let timerPausado = false;
-let timers = JSON.parse(localStorage.getItem("timers")) || [
-  { nombre: "Descanso corto", minutos: 1, segundos: 30 },
-  { nombre: "Descanso largo", minutos: 4, segundos: 0 }
-];
+let timers = (() => {
+  let t = null;
+  try { t = JSON.parse(localStorage.getItem("timers")); } catch {}
+  if (Array.isArray(t)) t = t.filter(x => x && typeof x === 'object');
+  return Array.isArray(t) ? t : [
+    { nombre: "Descanso corto", minutos: 1, segundos: 30 },
+    { nombre: "Descanso largo", minutos: 4, segundos: 0 }
+  ];
+})();
 
 function guardarTimers() { localStorage.setItem("timers", JSON.stringify(timers)); markDirty(); }
 
@@ -908,7 +941,7 @@ function añadirTimer() {
     showPrompt("Nombre del timer:", "ej: Descanso medio", nombre => {
       showPrompt("Minutos:", "0", minStr => {
         showPrompt("Segundos:", "90", segStr => {
-          timers.push({ nombre, minutos: Number(minStr) || 0, segundos: Number(segStr) || 0 });
+          timers.push({ nombre, minutos: Math.floor(numSeguro(minStr, 0, 99, 0)), segundos: Math.floor(numSeguro(segStr, 0, 59, 0)) });
           guardarTimers(); renderTimers();
           showToast("Timer añadido: " + nombre, "success");
         });
@@ -942,8 +975,8 @@ function añadirTimer() {
   btnNo.replaceWith(newNo);
   newSi.onclick = () => {
     const nombre = document.getElementById('_timer-nombre')?.value.trim() || 'Timer';
-    const min = Number(document.getElementById('_timer-min')?.value) || 0;
-    const seg = Number(document.getElementById('_timer-seg')?.value) || 0;
+    const min = Math.floor(numSeguro(document.getElementById('_timer-min')?.value, 0, 99, 0));
+    const seg = Math.floor(numSeguro(document.getElementById('_timer-seg')?.value, 0, 59, 0));
     overlay.classList.add('oculto');
     newSi.textContent = 'Confirmar'; newNo.textContent = 'Cancelar';
     if (min === 0 && seg === 0) { showToast('Duración no puede ser 0', 'warning'); return; }
@@ -960,10 +993,13 @@ function añadirTimer() {
 
 function borrarTimer(i) { timers.splice(i, 1); guardarTimers(); renderTimers(); }
 
-function iniciarTemporizador(min = 0, seg = 0) {
+function iniciarTemporizador(min = 0, seg = 0, reanudar = false) {
   if (timerID) { showToast('Ya hay un timer en marcha. Pulsa ⏹️ Reset para cambiarlo.', 'info', 2500); return; }
   pedirPermisoNotificaciones();
   const btnPausar = document.querySelector('#temporizador .btn-pausar');
+  // Solo "Reanudar" continúa un timer pausado; pulsar ▶️ en otro de la lista empieza ese (antes reanudaba el viejo)
+  min = numSeguro(min, 0, 999, 0); seg = numSeguro(seg, 0, 59 * 60 + 59, 0);
+  if (!reanudar) timerPausado = false;
   if (timerPausado && tiempoRestante > 0) {
     tiempoFinal = Date.now() + tiempoRestante * 1000;
     timerPausado = false;
@@ -973,12 +1009,14 @@ function iniciarTemporizador(min = 0, seg = 0) {
     tiempoFinal = Date.now() + tiempoRestante * 1000;
   }
   if (btnPausar) btnPausar.textContent = "⏸️ Pausar";
+  mostrarTiempo();   // se ve ya el tiempo (antes tardaba 1 s en cambiar de "Listo 0:00")
   timerID = setInterval(() => {
     tiempoRestante = Math.max(0, Math.round((tiempoFinal - Date.now()) / 1000));
     mostrarTiempo();
     if (tiempoRestante <= 0) {
       clearInterval(timerID); timerID = null; timerPausado = false;
       audioManager.play('global-timer');
+      vibrarSiActivo();
       notificarTimerTerminado('¡Timer terminado! Vuelve a la app.');
       mostrarModalTimer();
     }
@@ -989,7 +1027,7 @@ function iniciarTemporizador(min = 0, seg = 0) {
 function pausarTemporizador() {
   const btnPausar = document.querySelector('#temporizador .btn-pausar');
   if (!timerID && timerPausado) {
-    iniciarTemporizador(0, tiempoRestante);
+    iniciarTemporizador(0, tiempoRestante, true);
     if (btnPausar) btnPausar.textContent = "⏸️ Pausar";
   } else if (timerID) {
     clearInterval(timerID); timerID = null;
@@ -1146,7 +1184,13 @@ function cargarEjerciciosDia() {
   };
 
   ejerciciosDia = [...base, ...extra].map(ej => {
-    const descanso = leerCfg('descansos', nombreDia, ej.nombre) || ej.descanso || descansoInteligente(ej.repsMax);
+    // Valores guardados por versiones anteriores o a mano: series enteras ≥ 1, reps y descanso sin negativos
+    const series = Math.round(numSeguro(ej.series, 1, 30, 3));
+    const repsMin = Math.round(numSeguro(ej.repsMin, 0, 999, 0));
+    const repsMax = Math.round(numSeguro(ej.repsMax, repsMin, 999, Math.max(repsMin, 12)));
+    const descCfg = numSeguro(leerCfg('descansos', nombreDia, ej.nombre), 0, 3600, 0);
+    const descEj = numSeguro(ej.descanso, 0, 3600, 0);
+    const descanso = Math.round(descCfg || descEj || descansoInteligente(repsMax));
     const pesoGuardado = parseFloat(leerCfg('pesos', nombreDia, ej.nombre));
     const pesoTrabajo = ej.alFallo ? 0 : ((pesoGuardado >= 0 && !Number.isNaN(pesoGuardado)) ? pesoGuardado : (parseFloat(ej.peso) || 0));
     // Incremento personalizado guardado o, si no hay, uno razonable según la carga
@@ -1155,11 +1199,11 @@ function cargarEjerciciosDia() {
 
     return {
       nombre: ej.nombre,
-      series: ej.series,
-      repsMin: ej.repsMin,
-      repsMax: ej.repsMax,
+      series,
+      repsMin,
+      repsMax,
       peso: pesoTrabajo,
-      reps: Array(ej.series).fill(""),
+      reps: Array(series).fill(""),
       incremento: inc,
       noProgresar: ej.alFallo ? true : false,
       alFallo: ej.alFallo || false,
@@ -1266,7 +1310,7 @@ function renderDia() {
           ${!ej.alFallo ? `
           <div class="ejercicio-col">
             <label class="col-label">Peso (kg) <button type="button" class="btn-discos" onclick="mostrarDiscos(${i})" title="Calculadora de discos" aria-label="Calculadora de discos">🧮</button></label>
-            <input type="number" step="0.5" value="${ej.peso}" onchange="actualizarPesoBase(${i},this.value)">
+            <input type="number" inputmode="decimal" step="0.5" value="${ej.peso}" aria-label="Peso en kg de ${escapeHtml(ej.nombre)}" onchange="actualizarPesoBase(${i},this.value)">
           </div>` : ''}
           <div class="ejercicio-col">
             <label class="col-label">Objetivo</label>
@@ -1281,7 +1325,7 @@ function renderDia() {
           <div class="footer-left">
             ${!ej.alFallo ? `
             <span class="label-small">Inc.kg</span>
-            <input type="number" step="0.5" id="inc-${i}" class="input-small" value="${ej.incremento}" onchange="actualizarIncremento(${i},this.value)">
+            <input type="number" inputmode="decimal" step="0.5" id="inc-${i}" class="input-small" aria-label="Incremento de peso en kg de ${escapeHtml(ej.nombre)}" value="${ej.incremento}" onchange="actualizarIncremento(${i},this.value)">
             <label class="label-check"><input type="checkbox" id="noprog-${i}" ${ej.noProgresar ? 'checked' : ''} onchange="actualizarNoProgresar(${i},this.checked)"> No prog.</label>
             ` : `<span class="label-small" style="color:var(--text-secondary)">Al fallo técnico</span>`}
           </div>
@@ -1291,6 +1335,7 @@ function renderDia() {
   });
 
   cont.innerHTML = html;
+  actualizarProgresoSesion();
   // El dibujado completo borra los botones de "última sesión" (viven dentro de #contenido):
   // se reponen aquí para que no desaparezcan al restaurar una sesión, cambiar de modo, etc.
   renderBotonesUltimaSesion();
@@ -1308,6 +1353,7 @@ function actualizarInputsReps() {
       }
     });
   });
+  actualizarProgresoSesion();
 }
 
 window.toggleNotas = function (i) {
@@ -1395,18 +1441,41 @@ window.cerrarModalDescanso = () => document.getElementById('modal-descanso-overl
 
 function actualizarSerie(ejIndex, serieIndex, valor, input) {
   const ej = ejerciciosDia[ejIndex];
-  const reps = valor === "" ? "" : Number(valor);
+  let reps = valor === "" ? "" : numSeguro(valor, 0, 999, "");   // sin negativos ni "100" por "10"
+  const bruto = parseFloat(valor);
+  if (input && reps !== "" && (bruto < 0 || bruto > 999)) input.value = reps;   // fuera de rango: se corrige a la vista
   ej.reps[serieIndex] = reps;
   input.classList.remove("serie-ok", "serie-fail", "serie-mid");
   const c = claseSerie(ej, reps);
   if (c) input.classList.add(c);
+  actualizarProgresoSesion();
   guardarEstadoApp();
+}
+
+// Barra "Series registradas: 7 / 24" al principio del entrenamiento
+function actualizarProgresoSesion() {
+  const cont = document.getElementById("contenido");
+  if (!cont) return;
+  let el = document.getElementById("progreso-sesion");
+  const total = ejerciciosDia.reduce((a, e) => a + (e.series || 0), 0);
+  if (!total) { if (el) el.remove(); return; }
+  const hechas = ejerciciosDia.reduce((a, e) => a + (e.reps || []).slice(0, e.series).filter(r => r !== "" && r !== null && r !== undefined).length, 0);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "progreso-sesion";
+    el.className = "progreso-sesion";
+    cont.prepend(el);
+  }
+  const pct = Math.round(hechas / total * 100);
+  el.classList.toggle("completo", hechas >= total);
+  el.innerHTML = `<div class="progreso-sesion-texto"><span>✅ Series registradas</span><strong>${hechas} / ${total}</strong></div>
+    <div class="progreso-sesion-barra" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${hechas}" aria-label="Series registradas"><div style="width:${pct}%"></div></div>`;
 }
 
 function guardarPesoBase(nombre, valor) {
   const ra = obtenerRutinaCompleta();
   const nombreDia = ra[diaActual]?.nombre || diaActual;
-  escribirCfg('pesos', nombreDia, nombre, parseFloat(valor) || 0);
+  escribirCfg('pesos', nombreDia, nombre, numSeguro(valor, 0, 9999, 0));
   guardarConfig();
 }
 
@@ -1414,15 +1483,15 @@ function guardarPesoBase(nombre, valor) {
 window.actualizarPesoBase = (ejIndex, valor) => {
   const ej = ejerciciosDia[ejIndex];
   if (!ej) return;
-  ej.peso = parseFloat(valor) || 0;
+  ej.peso = numSeguro(valor, 0, 9999, 0);
   if (!deloadEstaActivo()) {
-    guardarPesoBase(ej.nombre, valor);
+    guardarPesoBase(ej.nombre, ej.peso);
   }
 };
 
 // ══════ NUEVO: Incremento personalizado se guarda en config ══════
 window.actualizarIncremento = (ejIndex, valor) => {
-  const nuevoValor = parseFloat(valor) || 0;
+  const nuevoValor = numSeguro(valor, 0, 999, 0);
   ejerciciosDia[ejIndex].incremento = nuevoValor;
 
   // Guardar en config para que persista
@@ -1456,17 +1525,34 @@ function finalizarDia() {
 function leerHistorial() {
   try {
     const h = JSON.parse(localStorage.getItem("historial"));
-    return Array.isArray(h) ? h.filter(s => s && Array.isArray(s.ejercicios)) : [];
+    return Array.isArray(h) ? h.filter(s => s && Array.isArray(s.ejercicios) && !Number.isNaN(Date.parse(s.fecha))) : [];
   } catch { return []; }
 }
 
 // Lectura segura SIN filtrar (mantiene los mismos índices que la lista guardada: se usa para
 // listar, ver detalle y borrar por posición). Si el dato está corrupto devuelve [] en vez de romper la pantalla.
+function sesionValida(s) {
+  return !!s && typeof s === 'object' && !Array.isArray(s) && typeof s.fecha === 'string' && Array.isArray(s.ejercicios);
+}
+
+// Si el historial guardado trae entradas que no son sesiones (datos corruptos, restos de una
+// versión antigua…), se apartan en "historial_descartados" (últimas 50) en vez de romper la app,
+// y se guarda la lista ya limpia para que los índices de pantalla y almacenamiento coincidan.
 function leerHistorialCrudo() {
+  let h;
+  try { h = JSON.parse(localStorage.getItem("historial") || "[]"); } catch { return []; }
+  if (!Array.isArray(h)) return [];
+  if (h.every(sesionValida)) return h;
+  const buenas = h.filter(sesionValida);
   try {
-    const h = JSON.parse(localStorage.getItem("historial") || "[]");
-    return Array.isArray(h) ? h : [];
-  } catch { return []; }
+    const malas = h.filter(s => !sesionValida(s));
+    let previas = [];
+    try { previas = JSON.parse(localStorage.getItem('historial_descartados') || '[]'); } catch {}
+    if (!Array.isArray(previas)) previas = [];
+    localStorage.setItem('historial_descartados', JSON.stringify(previas.concat(malas).slice(-50)));
+    localStorage.setItem('historial', JSON.stringify(buenas));
+  } catch {}
+  return buenas;
 }
 
 function claveSesion(s) { return `${s?.fecha}|${s?.dia}`; }
@@ -1490,8 +1576,6 @@ function _doFinalizarDia() {
 
   Object.keys(ejercicioTimers).forEach(i => cancelarTodosTimersEjercicio(Number(i)));
   audioManager.stopAll();
-  detenerAutoGuardado();
-  limpiarAutoGuardado();
 
   const rutinaActual = obtenerRutinaCompleta();
   const sesion = {
@@ -1514,15 +1598,14 @@ function _doFinalizarDia() {
   const cambiosPeso = [];
 
   ejerciciosDia.forEach(ej => {
-    const completo = ej.repsMax > 0 && ej.reps.every(r => Number(r) >= ej.repsMax);
+    const completo = ej.repsMax > 0 && ej.reps.length > 0 && ej.reps.every(r => r !== "" && Number(r) >= ej.repsMax);
     if (enDeload) {
       detalles.push(`${ej.nombre}: 💤 Deload — ${ej.reps.filter(r => r !== "").join("/")} reps a ${ej.peso}kg`);
     } else if (!ej.alFallo && completo && !ej.noProgresar) {
       const nuevoPeso = parseFloat((ej.peso + ej.incremento).toFixed(2));
-      cambiosPeso.push({ nombre: ej.nombre, pesoAnterior: ej.peso, pesoNuevo: nuevoPeso, incremento: ej.incremento });
-      ej.peso = nuevoPeso;
+      cambiosPeso.push({ ej, nombre: ej.nombre, pesoAnterior: ej.peso, pesoNuevo: nuevoPeso, incremento: ej.incremento });
       huboProgresion = true;
-      detalles.push(`${ej.nombre}: PROGRESO +${ej.incremento}kg → ${ej.peso}kg`);
+      detalles.push(`${ej.nombre}: PROGRESO +${ej.incremento}kg → ${nuevoPeso}kg`);
     } else if (ej.alFallo) {
       const maxReps = Math.max(...ej.reps.filter(r => r !== "").map(Number), 0);
       detalles.push(`${ej.nombre}: Al fallo — ${ej.reps.filter(r => r !== "").join("/")} reps (máx: ${maxReps})`);
@@ -1531,18 +1614,23 @@ function _doFinalizarDia() {
     }
   });
 
-  cambiosPeso.forEach(c => guardarPesoBase(c.nombre, c.pesoNuevo));
-
-  const historial = leerHistorial();
+  // 1º se guarda la sesión; solo si sale bien se aplica la progresión de peso y se limpia el auto-guardado
+  // (antes se hacía al revés: con el almacenamiento lleno se perdía el auto-guardado y, al reintentar, el peso subía dos veces)
+  const historial = leerHistorialCrudo();
   historial.push(sesion);
   try {
     localStorage.setItem("historial", JSON.stringify(historial));
   } catch (e) {
     _finalizando = false;
-    showToast('❌ No se pudo guardar la sesión: almacenamiento lleno. Exporta un backup y libera espacio.', 'error', 7000);
+    showToast('❌ No se pudo guardar la sesión: almacenamiento lleno. Exporta un backup y libera espacio. No se ha perdido nada de lo que escribiste.', 'error', 7000);
     return;
   }
   markDirty();
+  detenerAutoGuardado();
+  limpiarAutoGuardado();
+  try {
+    cambiosPeso.forEach(c => { c.ej.peso = c.pesoNuevo; guardarPesoBase(c.nombre, c.pesoNuevo); });
+  } catch (e) { showToast('⚠️ Sesión guardada, pero no se pudo actualizar el peso de progresión (almacenamiento lleno).', 'warning', 6000); }
 
   // ── Detección automática de Récords Personales ─────────────────────
   const historialPrevio = historial.slice(0, -1).filter(s => !s.deload); // sin esta sesión ni deloads
@@ -1566,7 +1654,7 @@ function _doFinalizarDia() {
       });
     }, 600);
   }
-  guardarConfig();
+  try { guardarConfig(); } catch (e) { /* almacenamiento lleno: la sesión ya está guardada */ }
 
   sesionActiva = false;
   guiaUltimaVisible = false;
@@ -2088,7 +2176,11 @@ async function forzarActualizacion() {
 
 function mostrarModalTimer() { document.getElementById("modal-timer")?.classList.remove("oculto"); }
 function ocultarModalTimer() { document.getElementById("modal-timer")?.classList.add("oculto"); }
+// Cerrar el aviso (botón, tocar fuera, Escape o "atrás") siempre para la alarma: antes, cerrarlo con
+// "atrás" lo ocultaba pero la alarma seguía sonando en bucle, y Escape/tocar fuera no hacían nada.
 function resetDesdeModal() { resetTemporizador(); ocultarModalTimer(); }
+// "+30 s": un descanso extra sin tener que volver a configurar el timer
+function masDescansoDesdeModal(seg) { resetTemporizador(); ocultarModalTimer(); iniciarTemporizador(0, seg); }
 
 function volverMenu(desdePopstate = false) {
   const enDia = !document.getElementById("pantalla-dia")?.classList.contains("oculto");
@@ -2232,7 +2324,26 @@ function renderizarBotonesDias() {
     }
   });
   
-  Object.keys(rutinaActual).forEach((diaKey, idx) => {
+  // Día "Siguiente": el que sigue al último entrenado de la rutina activa (solo es una pista; puedes entrenar cualquiera)
+  const claves = Object.keys(rutinaActual);
+  if (claves.length === 0) {
+    const vacio = document.createElement("p");
+    vacio.className = "menu-sin-dias";
+    vacio.textContent = "Esta rutina aún no tiene días. Añade alguno desde ☰ Menú → ✏️ Editar rutinas, o elige otra rutina arriba.";
+    contenedor.appendChild(vacio);
+    return;
+  }
+  let indiceSiguiente = -1;
+  if (claves.length > 1) {
+    let ult = null, ultIdx = -1;
+    claves.forEach((k, i) => {
+      const se = ultimaPorDia.get(rutinaActual[k].nombre);
+      if (se && (!ult || new Date(se.fecha) > new Date(ult.fecha))) { ult = se; ultIdx = i; }
+    });
+    if (ultIdx >= 0) indiceSiguiente = (ultIdx + 1) % claves.length;
+  }
+
+  claves.forEach((diaKey, idx) => {
     const dia = rutinaActual[diaKey];
     const ultimaSesion = ultimaPorDia.get(dia.nombre);
     let subtexto = '';
@@ -2241,9 +2352,12 @@ function renderizarBotonesDias() {
       subtexto = dias === 0 ? 'Hoy' : dias === 1 ? 'Ayer' : `Hace ${dias} días`;
     }
     const btn = document.createElement("button");
+    const esSiguiente = idx === indiceSiguiente;
+    const pill = esSiguiente ? ` <span class="pill-siguiente">Siguiente</span>` : '';
     btn.innerHTML = subtexto
-      ? `<span class="dia-btn-nombre">${escapeHtml(dia.nombre)}</span><span class="dia-btn-fecha">${subtexto}</span>`
-      : `<span class="dia-btn-nombre">${escapeHtml(dia.nombre)}</span><span class="dia-btn-fecha dia-btn-nueva">Sin sesiones</span>`;
+      ? `<span class="dia-btn-nombre">${escapeHtml(dia.nombre)}${pill}</span><span class="dia-btn-fecha">${subtexto}</span>`
+      : `<span class="dia-btn-nombre">${escapeHtml(dia.nombre)}${pill}</span><span class="dia-btn-fecha dia-btn-nueva">Sin sesiones</span>`;
+    if (esSiguiente) btn.classList.add("dia-siguiente");
     btn.onclick = () => abrirDia(diaKey);
     contenedor.appendChild(btn);
   });
@@ -2541,7 +2655,7 @@ const CAPAS = {
   'modal-alert-overlay':    { abierta: el => !el.classList.contains('oculto'), cerrar: () => document.getElementById('modal-alert-ok')?.click() },
   'modal-prompt-overlay':   { abierta: el => !el.classList.contains('oculto'), cerrar: () => document.getElementById('modal-prompt-cancel')?.click() },
   'modal-descanso-overlay': { abierta: el => !el.classList.contains('oculto'), cerrar: () => window.cerrarModalDescanso?.() },
-  'modal-timer':            { abierta: el => !el.classList.contains('oculto'), cerrar: ocultarModalTimer },
+  'modal-timer':            { abierta: el => !el.classList.contains('oculto'), cerrar: resetDesdeModal },
   'modal-tempo-overlay':    { abierta: el => !el.classList.contains('oculto'), cerrar: () => window.cerrarModalTempo?.() },
   'sidebar-right':          { abierta: el => el.classList.contains('sidebar-right-open'), cerrar: cerrarSidebarRight },
   'sidebar':                { abierta: el => el.classList.contains('sidebar-open'), cerrar: cerrarSidebar }
@@ -2636,6 +2750,7 @@ window.borrarTodoHistorial = borrarTodoHistorial;
 window.toggleSidebar = toggleSidebar;
 window.toggleSidebarRight = toggleSidebarRight;
 window.resetDesdeModal = resetDesdeModal;
+window.masDescansoDesdeModal = masDescansoDesdeModal;
 window.mostrarPerfil = window.mostrarPerfil || (() => { });
 
 let historialFiltro = '';
@@ -2831,6 +2946,17 @@ function renderEstadisticas() {
   }
   const rachaMejor = calcularRachaMejor(fechasUnicas);
 
+  // Semanas seguidas (lunes a domingo) con al menos una sesión. La semana en curso cuenta si ya entrenaste;
+  // si aún no, la racha sigue viva desde la semana pasada (no se "rompe" a mitad de semana).
+  // Con 3–5 entrenos por semana la racha de días consecutivos casi nunca pasa de 5; esta refleja mejor la constancia.
+  const semanaDe = d => Math.floor((d + 3) / 7);   // el día 0 (1970-01-01) fue jueves
+  const semanasConSesion = new Set(fechasUnicas.map(semanaDe));
+  let semanaCursor = semanaDe(hoy);
+  const sesionesEstaSemana = historial.filter(s => semanaDe(numDia(s.fecha)) === semanaCursor).length;
+  if (!semanasConSesion.has(semanaCursor)) semanaCursor--;
+  let semanasSeguidas = 0;
+  while (semanasConSesion.has(semanaCursor)) { semanasSeguidas++; semanaCursor--; }
+
   const primeraFecha = historial.reduce((m, s) => Math.min(m, new Date(s.fecha).getTime()), Date.now());
   const semanasTotales = Math.max(1, Math.ceil((Date.now() - primeraFecha) / (7 * 86400000)));
   const sesXSemana = (historial.length / semanasTotales).toFixed(1);
@@ -2874,6 +3000,14 @@ function renderEstadisticas() {
       <div class="stat-box">
         <span class="stat-val">${rachaMejor}</span>
         <span class="stat-lbl">Mejor racha</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-val">📅 ${semanasSeguidas}</span>
+        <span class="stat-lbl">Semanas seguidas</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-val">${sesionesEstaSemana}</span>
+        <span class="stat-lbl">Sesiones esta semana</span>
       </div>
       <div class="stat-box">
         <span class="stat-val">${totalSesiones}</span>
@@ -3413,6 +3547,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   inicializarRutinaBase();
   initOfflineBanner();
+  initEtiquetas();
   renderTimers();
   renderizarBotonesDias();
   renderizarBannerDeload();
@@ -3453,7 +3588,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
 
       // Datos de la sesión en curso que antes se perdían al reabrir la app
-      sesionStartTime = saved.sesionStartTime || Date.now();
+      // Una sesión abierta hace más de 12 h (olvidada) no debe salir como "24 h de entrenamiento"
+      sesionStartTime = (saved.sesionStartTime && Date.now() - saved.sesionStartTime < 12 * 3600 * 1000) ? saved.sesionStartTime : Date.now();
       notasSesion = saved.notasSesion || "";
       const notasEl = document.getElementById('notas-sesion-input');
       if (notasEl) notasEl.value = notasSesion;

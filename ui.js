@@ -119,6 +119,7 @@ document.addEventListener('keydown', e => {
   if (abierto('modal-confirm-overlay')) document.getElementById('modal-confirm-no')?.click();
   else if (abierto('modal-alert-overlay')) document.getElementById('modal-alert-ok')?.click();
   else if (abierto('modal-prompt-overlay')) document.getElementById('modal-prompt-cancel')?.click();
+  else if (abierto('modal-timer')) window.resetDesdeModal?.();
   else if (abierto('modal-descanso-overlay')) window.cerrarModalDescanso?.();
   else if (abierto('modal-tempo-overlay')) window.cerrarModalTempo?.();
 });
@@ -167,3 +168,30 @@ window.showConfirm = showConfirm;
 window.showPrompt  = showPrompt;
 window.showAlert   = showAlert;
 window.escapeHtml  = escapeHtml;
+
+// ─────────────────────────────────────────────
+// ETIQUETAS: une cada <label> con el campo que tiene a continuación (si no lo estaba ya),
+// para que los lectores de pantalla anuncien "Peso (kg)" al enfocar el campo.
+// Funciona también con los formularios que la app dibuja después (editor, importar con IA…).
+// ─────────────────────────────────────────────
+let _etqContador = 0;
+export function asociarEtiquetas(raiz = document) {
+  raiz.querySelectorAll('label:not([for])').forEach(l => {
+    if (l.querySelector('input, select, textarea')) return;          // ya envuelve su campo
+    const sig = l.nextElementSibling;
+    if (!sig) return;
+    const campo = sig.matches('input, select, textarea') ? sig : sig.querySelector(':scope > input, :scope > select, :scope > textarea');
+    if (!campo || campo.type === 'hidden' || campo.getAttribute('aria-label') || campo.getAttribute('aria-labelledby')) return;
+    if (!campo.id) campo.id = 'etq-' + (++_etqContador);
+    l.htmlFor = campo.id;
+  });
+}
+export function initEtiquetas() {
+  asociarEtiquetas();
+  let pendiente = false;
+  new MutationObserver(() => {
+    if (pendiente) return;
+    pendiente = true;
+    requestAnimationFrame(() => { pendiente = false; asociarEtiquetas(); });
+  }).observe(document.body, { childList: true, subtree: true });
+}
