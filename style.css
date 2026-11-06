@@ -1517,3 +1517,8 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 
 /* v99: menú de una rutina sin días */
 .menu-sin-dias { margin: 18px 4px; padding: 14px; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-secondary); font-size: calc(14px * var(--fs)); line-height: 1.45; text-align: center; }
+
+/* v104: acciones de cada medida (corregir / borrar) */
+.medida-acciones { display: flex; gap: 8px; }
+.medida-acciones button { width: auto; min-width: calc(44px * var(--ts)); min-height: calc(40px * var(--ts)); }
+.btn-edit-sm { border-color: var(--border) !important; color: var(--text-primary, var(--text)) !important; }

@@ -1,4 +1,4 @@
-// app.js — Gym Tracker v102
+// app.js — Gym Tracker v104
 import "./auth.js";
 import { loadRutinaUsuario, inicializarRutinaBase, getAllRutinasUsuario, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
 import { markDirty, userState, esClaveBackup, sincronizarSiHaceFalta } from "./userState.js";
@@ -49,6 +49,13 @@ document.addEventListener('visibilitychange', async () => {
     await activarWakeLock();
   }
 });
+
+// Texto del peso de un ejercicio guardado. Antes todo peso 0 salía como "Al fallo", también el peso corporal
+// (dominadas, fondos…) y las plantillas sin peso. Las sesiones antiguas no guardaban el dato: salen como "Sin peso".
+function etiquetaPeso(ej) {
+  if (ej.peso > 0) return `${ej.peso}kg`;
+  return ej.alFallo ? 'Al fallo' : 'Sin peso';
+}
 
 // Número "seguro": finito y dentro de [min, max]; si no es un número devuelve `def`
 function numSeguro(v, min, max, def = 0) {
@@ -109,6 +116,19 @@ function vibrarSiActivo() {
   if (localStorage.getItem('vibrarAlTerminar') !== 'true') return;
   if (!navigator.vibrate) return;
   navigator.vibrate([200, 100, 200]);
+}
+
+// Descanso automático (opcional, desactivado por defecto): al anotar una serie arranca el temporizador de ese ejercicio
+function descansoAutoActivo() { return localStorage.getItem('descansoAuto') === 'true'; }
+window.toggleDescansoAuto = function (activo) {
+  try { localStorage.setItem('descansoAuto', activo ? 'true' : 'false'); } catch {}
+  showToast(activo ? '⏱ El descanso arrancará solo al anotar una serie' : 'Descanso manual (pulsa ⏱ para empezar)', 'info', 2500);
+};
+function iniciarDescansoAuto(ejIndex) {
+  const btn = document.getElementById(`timer-ej-${ejIndex}`);
+  if (btn?.classList.contains('timer-ej-done')) iniciarTimerEjercicio(ejIndex, 0);   // 1ª pulsación: para la alarma anterior
+  if (ejercicioTimers[ejIndex]?.[0]) return;                                           // ya hay un descanso en marcha
+  iniciarTimerEjercicio(ejIndex, 0);
 }
 
 window.toggleVibracion = function (activo) {
@@ -359,7 +379,7 @@ window.compartirResumen = async function () {
   const fecha  = new Date(sesion.fecha).toLocaleDateString('es-ES');
   const dur    = sesion.duracionMin ? ` · ⏱️ ${sesion.duracionMin} min` : '';
   const ejList = sesion.ejercicios
-    .map(ej => `  • ${ej.nombre}: ${ej.peso > 0 ? ej.peso + 'kg' : 'Al fallo'} (${ej.reps.filter(r=>r!=='').join('/')} reps)`)
+    .map(ej => `  • ${ej.nombre}: ${etiquetaPeso(ej)} (${ej.reps.filter(r=>r!=='').join('/')} reps)`)
     .join('\n');
 
   const texto = `🏋️ Gym Tracker — ${sesion.dia}\n📅 ${fecha}${dur}\n\n${ejList}\n\n💪 ¡Sesión completada!`;
@@ -468,12 +488,22 @@ class AudioManager {
       if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       const arrayBuffer = await file.arrayBuffer();
       const buffer = await this.ctx.decodeAudioData(arrayBuffer.slice(0));
-      // Guardar en IndexedDB (admite los 5 MB; localStorage no)
-      await audioStore.guardarAudio(arrayBuffer, file.name, file.type);
+      // 5 MB de MP3 pueden ser más de 40 min, que al decodificar ocupan cientos de MB de memoria: se limita la duración
+      if (buffer.duration > 30) {
+        showToast(`El audio dura ${Math.round(buffer.duration)} s. Para la alarma usa uno de 30 s o menos.`, 'warning', 5000);
+        return false;
+      }
+      // Ya decodificado, el sonido se usa aunque luego falle guardarlo (antes se descartaba todo)
       this.bufferPersonalizado = buffer;
       this.nombrePersonalizado = file.name;
       actualizarNombreAudio(file.name);
-      showToast('Audio guardado correctamente', 'success');
+      // Guardar en IndexedDB (admite los 5 MB; localStorage no)
+      try {
+        await audioStore.guardarAudio(arrayBuffer, file.name, file.type);
+        showToast('Audio guardado correctamente', 'success');
+      } catch {
+        showToast('Se usará el audio ahora, pero no se pudo guardar: al cerrar la app volverá el sonido predeterminado.', 'warning', 6000);
+      }
       return true;
     } catch (e) {
       showToast('No se pudo cargar o guardar el audio. Prueba con otro archivo (MP3/WAV/OGG).', 'error');
@@ -1444,12 +1474,18 @@ function actualizarSerie(ejIndex, serieIndex, valor, input) {
   let reps = valor === "" ? "" : numSeguro(valor, 0, 999, "");   // sin negativos ni "100" por "10"
   const bruto = parseFloat(valor);
   if (input && reps !== "" && (bruto < 0 || bruto > 999)) input.value = reps;   // fuera de rango: se corrige a la vista
+  const previa = ej.reps[serieIndex];
   ej.reps[serieIndex] = reps;
   input.classList.remove("serie-ok", "serie-fail", "serie-mid");
   const c = claseSerie(ej, reps);
   if (c) input.classList.add(c);
   actualizarProgresoSesion();
   guardarEstadoApp();
+  // Descanso automático: solo al pasar de "vacía" a anotada, si quedan series por hacer (tras la última no hace falta)
+  if (descansoAutoActivo() && !modoDosPersonas && (previa === "" || previa === null || previa === undefined)
+      && reps !== "" && reps > 0 && ej.reps.some(r => r === "" || r === null || r === undefined)) {
+    iniciarDescansoAuto(ejIndex);
+  }
 }
 
 // Barra "Series registradas: 7 / 24" al principio del entrenamiento
@@ -1484,7 +1520,7 @@ window.actualizarPesoBase = (ejIndex, valor) => {
   const ej = ejerciciosDia[ejIndex];
   if (!ej) return;
   ej.peso = numSeguro(valor, 0, 9999, 0);
-  if (!deloadEstaActivo()) {
+  if (!ej._esDeload) {   // en deload el peso mostrado es el 70 %: no debe pasar a ser el peso base
     guardarPesoBase(ej.nombre, ej.peso);
   }
 };
@@ -1585,10 +1621,12 @@ function _doFinalizarDia() {
     notas: notasSesion,
     duracionMin: sesionStartTime ? Math.max(1, Math.round((Date.now() - sesionStartTime) / 60000)) : null,
     ejercicios: (ejerciciosDia.some(ejercicioHecho) ? ejerciciosDia.filter(ejercicioHecho) : ejerciciosDia)
-      .map(ej => ({ nombre: ej.nombre, peso: ej.peso, reps: [...ej.reps] })),
+      .map(ej => ({ nombre: ej.nombre, peso: ej.peso, reps: [...ej.reps], ...(ej.alFallo ? { alFallo: true } : {}) })),
     tiempoHIT: obtenerTiempoHIT() || null,
     tipoHIT: hitTipo || null,
-    deload: deloadEstaActivo() // las sesiones de deload no cuentan como récords ni en las gráficas
+    // Se decide por cómo se CARGÓ la sesión (pesos al 70 %), no por el reloj al finalizar: si el deload caduca o se
+    // activa a mitad de sesión, los pesos 70 % ya no acababan en la config como peso de trabajo.
+    deload: ejerciciosDia.some(e => e._esDeload) // las sesiones de deload no cuentan como récords ni en las gráficas
   };
 
   let huboProgresion = false;
@@ -1709,7 +1747,7 @@ function mostrarPantallaResumen(sesion, huboProgresion, detalles, enDeload = fal
     <div class="resumen-seccion">
       <h3>📋 DETALLE COMPLETO</h3>
       ${sesion.ejercicios.map(ej => {
-      const pesoLabel = ej.peso > 0 ? `${ej.peso}kg` : 'Al fallo';
+      const pesoLabel = etiquetaPeso(ej);
       const repsLabel = ej.reps.filter(r => r !== "").join(' / ') || '—';
       return `<div class="resumen-item">
           <span class="item-nombre">${escapeHtml(ej.nombre)}</span>
@@ -1799,16 +1837,69 @@ function verDetalle(index, opciones = {}) {
       ${s.duracionMin ? `<p style="color:var(--text-secondary);font-size:calc(13px*var(--fs));">⏱️ Duración: <strong>${s.duracionMin} min</strong></p>` : ''}
       ${s.notas ? `<p class="resumen-notas">"${escapeHtml(s.notas)}"</p>` : ''}
       ${s.tiempoHIT ? `<p class="detalle-hit">⏲️ HIT (${escapeHtml(s.tipoHIT || 'Cardio')}): ${formatearTiempo(s.tiempoHIT)}</p>` : ''}
+      ${s.editada ? `<p style="color:var(--text-secondary);font-size:calc(12px*var(--fs));">✏️ Editada el ${new Date(s.editada).toLocaleDateString('es-ES')}</p>` : ''}
     </div>
     ${s.ejercicios.map(ej => {
-    const pesoLabel = ej.peso > 0 ? `${ej.peso}kg` : 'Al fallo';
+    const pesoLabel = etiquetaPeso(ej);
     const repsLabel = ej.reps.filter(r => r !== '' && r !== null && r !== undefined).join(' / ') || '—';
     return `<div class="ejercicio-detalle">
         <strong>${escapeHtml(ej.nombre)}</strong>
         <span>${pesoLabel} — ${repsLabel} reps</span>
       </div>`;
-  }).join('')}`;
+  }).join('')}
+    <button onclick="editarSesionHistorial(${index})" class="btn-secondary" style="margin-top:14px;">✏️ Corregir esta sesión</button>`;
 }
+
+// Corregir una sesión ya guardada (un "100" en vez de "10", un peso mal puesto, una nota…).
+// No toca los pesos de progresión ni la configuración: solo corrige el registro del historial.
+window.editarSesionHistorial = function (index) {
+  const s = leerHistorialCrudo()[index];
+  if (!s) return;
+  const cont = document.getElementById("detalle-sesion");
+  cont.innerHTML = `
+    <div class="detalle-header">
+      <p>${new Date(s.fecha).toLocaleString('es-ES')}</p>
+      <p class="resumen-dia">${escapeHtml(s.dia)}</p>
+      <p style="color:var(--text-secondary);font-size:calc(13px*var(--fs));">✏️ Corrigiendo la sesión. Los pesos de progresión de tus rutinas no cambian.</p>
+    </div>
+    ${s.ejercicios.map((ej, i) => `
+      <div class="ejercicio-detalle" style="flex-direction:column;align-items:stretch;gap:8px;">
+        <strong>${escapeHtml(ej.nombre)}</strong>
+        <label style="display:flex;align-items:center;gap:8px;font-size:calc(13px*var(--fs));">Peso (kg)
+          <input type="number" id="ed-peso-${i}" inputmode="decimal" step="0.5" min="0" max="9999" value="${ej.peso > 0 ? ej.peso : ''}" style="flex:1;" aria-label="Peso de ${escapeHtml(ej.nombre)}">
+        </label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${ej.reps.map((r, j) => `<input type="number" id="ed-rep-${i}-${j}" inputmode="numeric" min="0" max="999" value="${r === '' || r === null || r === undefined ? '' : r}" style="width:calc(56px*var(--ts));" aria-label="Repeticiones serie ${j + 1} de ${escapeHtml(ej.nombre)}">`).join('')}
+        </div>
+      </div>`).join('')}
+    <label style="display:block;margin-top:12px;font-size:calc(13px*var(--fs));">Notas
+      <textarea id="ed-notas" rows="3" maxlength="500" style="width:100%;margin-top:4px;" aria-label="Notas de la sesión">${escapeHtml(s.notas || '')}</textarea>
+    </label>
+    <div class="modal-btns" style="margin-top:14px;">
+      <button onclick="guardarEdicionSesion(${index})" class="btn-primary">💾 Guardar cambios</button>
+      <button onclick="verDetalle(${index}, { desdeDia: _detalleDesdeDia })" class="btn-secondary">Cancelar</button>
+    </div>`;
+};
+
+window.guardarEdicionSesion = function (index) {
+  const historial = leerHistorialCrudo();
+  const s = historial[index];
+  if (!s) return;
+  const ejercicios = s.ejercicios.map((ej, i) => {
+    const pesoTxt = document.getElementById(`ed-peso-${i}`)?.value;
+    const reps = ej.reps.map((r, j) => {
+      const v = document.getElementById(`ed-rep-${i}-${j}`)?.value;
+      return v === undefined ? r : (v === '' ? '' : numSeguro(v, 0, 999, ''));
+    });
+    return { ...ej, peso: pesoTxt === '' || pesoTxt === undefined ? 0 : numSeguro(pesoTxt, 0, 9999, 0), reps };
+  });
+  historial[index] = { ...s, ejercicios, notas: (document.getElementById('ed-notas')?.value || '').slice(0, 500), editada: new Date().toISOString() };
+  try { localStorage.setItem('historial', JSON.stringify(historial)); }
+  catch { showToast('No se pudo guardar (almacenamiento lleno)', 'error'); return; }
+  markDirty();
+  showToast('✅ Sesión corregida', 'success');
+  verDetalle(index, { desdeDia: _detalleDesdeDia });
+};
 
 function borrarTodoHistorial() {
   showConfirm("¿Borrar todo el historial?\nNo se puede deshacer.", () => {
@@ -1858,6 +1949,7 @@ function abrirMedidas() {
   navPush();
   ocultarTodas();
   document.getElementById("pantalla-medidas").classList.remove("oculto");
+  cancelarEdicionMedida();
   cargarMedidas();
 }
 
@@ -1902,9 +1994,35 @@ function htmlGraficaPesoCorporal(h) {
   </div>`;
 }
 
+let _medidaEditando = null;   // fecha (ISO) de la medida que se está corrigiendo, o null
+
+// Corregir una medida ya guardada: sube sus valores al formulario y "Guardar" la sustituye (misma fecha)
+window.editarMedida = function (indice) {
+  const m = leerMedidas()[indice];
+  if (!m) return;
+  _medidaEditando = m.fecha;
+  ["peso", "altura", "cintura", "cadera", "pecho", "brazo_relajado", "brazo_contraido", "muslo"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = (m[id] !== null && m[id] !== undefined) ? m[id] : "";
+  });
+  const btn = document.getElementById("btn-guardar-medidas");
+  if (btn) btn.textContent = "💾 Guardar corrección";
+  const cancel = document.getElementById("btn-cancelar-edicion-medida");
+  if (cancel) cancel.classList.remove("oculto");
+  document.getElementById("peso")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  showToast(`Corrigiendo la medida del ${new Date(m.fecha).toLocaleDateString('es-ES')}: cambia los valores y pulsa Guardar`, "info", 4000);
+};
+window.cancelarEdicionMedida = function () {
+  _medidaEditando = null;
+  ["peso", "altura", "cintura", "cadera", "pecho", "brazo_relajado", "brazo_contraido", "muslo"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+  const btn = document.getElementById("btn-guardar-medidas"); if (btn) btn.textContent = "💾 Guardar medidas";
+  document.getElementById("btn-cancelar-edicion-medida")?.classList.add("oculto");
+};
+
 function guardarMedidas() {
   const campos = ["peso", "altura", "cintura", "cadera", "pecho", "brazo_relajado", "brazo_contraido", "muslo"];
-  const nuevaMedida = { fecha: new Date().toISOString() };
+  const editando = _medidaEditando;
+  const nuevaMedida = editando ? { fecha: editando, editada: new Date().toISOString() } : { fecha: new Date().toISOString() };
   let algun = false, invalido = false;
   campos.forEach(id => {
     const v = document.getElementById(id)?.value;
@@ -1914,14 +2032,21 @@ function guardarMedidas() {
     if (n !== null) algun = true;
   });
   if (invalido) { showToast("Revisa los valores: deben ser números mayores que 0", "warning"); return; }
+  const RANGOS = { peso: [20, 400, 'El peso', 'kg'], altura: [100, 250, 'La altura', 'cm'], cintura: [30, 250, 'La cintura', 'cm'], cadera: [30, 250, 'La cadera', 'cm'], pecho: [30, 250, 'El pecho', 'cm'], brazo_relajado: [10, 100, 'El brazo relajado', 'cm'], brazo_contraido: [10, 100, 'El brazo contraído', 'cm'], muslo: [20, 150, 'El muslo', 'cm'] };
+  for (const id of campos) {
+    const n = nuevaMedida[id], r = RANGOS[id];
+    if (n !== null && r && (n < r[0] || n > r[1])) { showToast(`${r[2]} debe estar entre ${r[0]} y ${r[1]} ${r[3]} (¿una coma o un cero de más?)`, "warning", 4500); return; }
+  }
   if (!algun)   { showToast("Escribe al menos una medida", "warning"); return; }
   const h = leerMedidas();
-  h.push(nuevaMedida);
+  const posicion = editando ? h.findIndex(x => x.fecha === editando) : -1;
+  if (posicion >= 0) h[posicion] = nuevaMedida; else h.push(nuevaMedida);
   try { localStorage.setItem("historialMedidas", JSON.stringify(h)); }
   catch { showToast("No se pudo guardar (almacenamiento lleno)", "error"); return; }
   markDirty();
-  showToast("Medidas guardadas", "success");
+  showToast(editando ? "Medida corregida" : "Medidas guardadas", "success");
   campos.forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+  cancelarEdicionMedida();
   cargarMedidas();
 }
 
@@ -1952,7 +2077,10 @@ function cargarMedidas() {
     <div class="medida-item">
       <div class="medida-item-header">
         <strong>${new Date(m.fecha).toLocaleDateString('es-ES')}</strong>
-        <button class="btn-danger-sm" onclick="borrarMedidaIndividual(${iReal})" title="Borrar esta medida" aria-label="Borrar esta medida">🗑️</button>
+        <span class="medida-acciones">
+          <button class="btn-danger-sm btn-edit-sm" onclick="editarMedida(${iReal})" title="Corregir esta medida" aria-label="Corregir esta medida">✏️</button>
+          <button class="btn-danger-sm" onclick="borrarMedidaIndividual(${iReal})" title="Borrar esta medida" aria-label="Borrar esta medida">🗑️</button>
+        </span>
       </div>
       ${m.peso !== null && m.peso !== undefined ? `<p>Peso: ${escapeHtml(String(m.peso))} kg${delta}</p>` : ''}
       ${imc ? `<p>IMC: ${imc.valor} (${imc.categoria})</p>` : ''}
@@ -2218,6 +2346,8 @@ function _doVolverMenu() {
   liberarOrientacion();
   detenerAutoGuardado();
   limpiarAutoGuardado();
+  resetHIT();   // el cronómetro HIT no debe seguir contando (ni guardarse) en otro día
+  if (_versionPendiente) setTimeout(() => avisarNuevaVersion(_versionPendiente), 400);
 }
 
 function toggleSidebar() {
@@ -2557,7 +2687,7 @@ function aplicarFactorDeload(ejercicios) {
   if (!deloadEstaActivo()) return ejercicios;
   return ejercicios.map(ej => ({
     ...ej,
-    peso: parseFloat((ej.peso * 0.70).toFixed(2)),
+    peso: ej.peso > 0 ? Math.max(0.5, Math.round(ej.peso * 0.70 / 0.5) * 0.5) : 0,   // múltiplos de 0,5 kg (antes salían 15,75 kg)
     series: Math.max(1, Math.ceil(ej.series * 0.60)),
     _esDeload: true
   }));
@@ -2824,7 +2954,7 @@ window.exportarHistorialCSV = function () {
         new Date(s.fecha).toLocaleString('es-ES'),
         s.dia,
         ej.nombre,
-        ej.peso > 0 ? ej.peso : 'Al fallo',
+        ej.peso > 0 ? ej.peso : (ej.alFallo ? 'Al fallo' : 'Sin peso'),
         ej.reps.filter(r => r !== '').join(' / '),
         s.notas || '',
         s.tiempoHIT ? formatearTiempo(s.tiempoHIT) : '',
@@ -3193,6 +3323,20 @@ window.addEventListener("cambio-rutina", () => {
   renderizarBotonesDias();
   renderizarBannerDeload();
   renderizarSelectorRutinas();
+  // Importar o borrar una rutina mientras hay una sesión en curso la dejaba con ejercicios de una rutina y guardada
+  // en otra (y vaciaba las series). La sesión sigue con SU rutina; la nueva no se activa hasta terminar.
+  if (diaActual && sesionActiva && _rutinaCargadaId && _rutinaCargadaId !== obtenerRutinaActiva()) {
+    const existe = _rutinaCargadaId === RUTINA_BASE_KEY || !!getAllRutinasUsuario()[_rutinaCargadaId];
+    if (existe) {
+      try { localStorage.setItem('rutinaActiva', _rutinaCargadaId); } catch {}
+      renderizarSelectorRutinas(); renderizarBotonesDias(); renderizarBannerDeload();
+      showToast('Tienes una sesión en curso: la rutina nueva queda guardada, pero no se activa hasta que termines. Elígela luego en el selector.', 'info', 6000);
+      return;
+    }
+    showToast('La rutina de tu sesión en curso se eliminó: se cierra la sesión.', 'warning', 5000);
+    _doVolverMenu();
+    return;
+  }
   if (diaActual) {
     // Editar la rutina (editor) con un entrenamiento abierto recargaba los ejercicios y borraba las repeticiones
     // escritas. Se conservan (por nombre de ejercicio) si la rutina activa sigue siendo la misma.
@@ -3211,8 +3355,13 @@ function cargarNotasProgresion() {
   catch { return {}; }
 }
 
+let _avisoNotasLlenas = false;
 function guardarNotasProgresion(datos) {
-  localStorage.setItem('notasProgresion', JSON.stringify(datos));
+  try { localStorage.setItem('notasProgresion', JSON.stringify(datos)); }
+  catch {
+    if (!_avisoNotasLlenas) { _avisoNotasLlenas = true; showToast('No se pudo guardar la nota (almacenamiento lleno). Exporta un backup y libera espacio.', 'error', 6000); setTimeout(() => { _avisoNotasLlenas = false; }, 8000); }
+    return;
+  }
   if (typeof markDirty === 'function' && userState?.uid) markDirty();
 }
 
@@ -3401,6 +3550,19 @@ window.guardarNotaProg = function (tipo, valor, diaNombre = '') {
 // ══════════════════════════════════════════════════════
 let swRegistration = null;
 let _recargarAlCambiarSW = false;
+let _versionPendiente = null;   // service worker nuevo esperando a que el usuario acepte
+
+// Pregunta si actualizar. Con una sesión en curso no se interrumpe con un diálogo: se pregunta al volver al menú.
+function avisarNuevaVersion(worker) {
+  if (!worker) return;
+  _versionPendiente = worker;
+  if (sesionActiva) return;
+  const nw = _versionPendiente; _versionPendiente = null;
+  showConfirm('🎉 Nueva versión disponible. ¿Actualizar ahora?', () => {
+    _recargarAlCambiarSW = true;
+    nw.postMessage({ type: 'SKIP_WAITING' });
+  }, () => {}, 'Actualizar', 'Luego');
+}
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js')
@@ -3408,16 +3570,15 @@ if ('serviceWorker' in navigator) {
       if (!reg) return;            // registro bloqueado (modo privado, política del navegador…)
       swRegistration = reg;
 
+      // Si el usuario eligió "Luego" en una visita anterior, el SW nuevo sigue en espera y "updatefound" no se
+      // repite: sin esto no volvía a salir el aviso.
+      if (reg.waiting && navigator.serviceWorker.controller) avisarNuevaVersion(reg.waiting);
+
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
         if (!nw) return;
         nw.addEventListener('statechange', () => {
-          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-            showConfirm('🎉 Nueva versión disponible. ¿Actualizar ahora?', () => {
-              _recargarAlCambiarSW = true;
-              nw.postMessage({ type: 'SKIP_WAITING' });
-            }, () => {}, 'Actualizar', 'Luego');
-          }
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) avisarNuevaVersion(nw);
         });
       });
     }).catch(err => console.error('SW error:', err));
@@ -3451,6 +3612,15 @@ let _swHealthCheckTimer = null;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   clearTimeout(_swHealthCheckTimer);
+  // Una PWA instalada que vuelve de segundo plano no "navega", así que el navegador puede tardar horas en
+  // buscar una versión nueva: se pide al volver a la app (como mucho cada 30 min).
+  try {
+    const ahora = Date.now();
+    if (swRegistration && ahora - (window.__ultimaBusquedaSW || 0) > 30 * 60 * 1000 && navigator.onLine) {
+      window.__ultimaBusquedaSW = ahora;
+      swRegistration.update().catch(() => {});
+    }
+  } catch {}
   _swHealthCheckTimer = setTimeout(() => {
     if (navigator.serviceWorker?.controller) {
       navigator.serviceWorker.controller.postMessage({ type: 'HEALTH_CHECK' });
@@ -3557,6 +3727,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Inicializar toggle de vibración con el valor guardado
   const chkVib = document.getElementById('toggle-vibracion');
   if (chkVib) chkVib.checked = localStorage.getItem('vibrarAlTerminar') === 'true';
+  const chkAuto = document.getElementById('toggle-descanso-auto');
+  if (chkAuto) chkAuto.checked = descansoAutoActivo();
 
   // Inicializar slider de amplificación de audio
   const gainSlider = document.getElementById('audio-gain-slider');
@@ -3628,7 +3800,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (sel) sel.value = hitTipo;
       hitAcumulado = saved.hitAcumulado || 0;
       if (saved.hitActivo) {
-        if (saved.hitInicio) hitAcumulado += Math.max(0, Math.round((Date.now() - saved.hitInicio) / 1000));
+        // Con la app cerrada el cronómetro no puede haber contado más de 3 h (si no, se guardaba un "HIT de 20 h")
+        if (saved.hitInicio) hitAcumulado += Math.min(3 * 3600, Math.max(0, Math.round((Date.now() - saved.hitInicio) / 1000)));
         iniciarHIT();
       } else {
         const el = document.getElementById("tiempo-hit");

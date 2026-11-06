@@ -371,7 +371,8 @@
         <input id="muslo" type="number" step="0.5" placeholder="58" />
       </div>
     </div>
-    <button onclick="guardarMedidas()" class="btn-primary">💾 Guardar medidas</button>
+    <button id="btn-guardar-medidas" onclick="guardarMedidas()" class="btn-primary">💾 Guardar medidas</button>
+    <button id="btn-cancelar-edicion-medida" onclick="cancelarEdicionMedida()" class="btn-secondary oculto">Cancelar corrección</button>
   </div>
 
   <h3>Historial</h3>
@@ -405,6 +406,14 @@
 
   <div class="audio-vibracion">
     <label class="audio-toggle-label">
+      <input type="checkbox" id="toggle-descanso-auto" onchange="toggleDescansoAuto(this.checked)">
+      <span class="audio-toggle-text">⏱ Iniciar el descanso al anotar una serie</span>
+    </label>
+    <p class="audio-toggle-hint">Al escribir las reps de una serie arranca solo el temporizador de ese ejercicio (no tras la última serie ni en modo 2 personas). Puedes pararlo tocando el botón ⏱.</p>
+  </div>
+
+  <div class="audio-vibracion">
+    <label class="audio-toggle-label">
       <input type="checkbox" id="toggle-vibracion" onchange="toggleVibracion(this.checked)">
       <span class="audio-toggle-text">📳 Vibrar al terminar el timer</span>
     </label>
@@ -426,7 +435,7 @@
   </div>
 
   <div class="audio-info">
-    <p>📌 Formatos: MP3, WAV, OGG · Máximo 5MB</p>
+    <p>📌 Formatos: MP3, WAV, OGG · Máximo 5MB y 30 segundos</p>
     <p>El audio se reproduce en bucle hasta que pares el temporizador.</p>
   </div>
 </section>

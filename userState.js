@@ -73,7 +73,9 @@ function unirListas(clave, a, b) {
   [...a, ...b].forEach(x => {
     if (!x || !x.fecha) return;
     const k = CLAVE_LISTA[clave](x);
+    // Misma sesión/medida en ambos lados: gana la versión corregida más recientemente (campo "editada"); si no, la local
     if (!mapa.has(k)) mapa.set(k, x);
+    else if ((x.editada || '') > (mapa.get(k).editada || '')) mapa.set(k, x);
   });
   return [...mapa.values()].sort((x, y) => new Date(x.fecha) - new Date(y.fecha));
 }

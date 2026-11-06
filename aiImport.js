@@ -177,8 +177,14 @@ Reglas:
 Rutina a parsear:
 ${texto}`;
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  // Con datos móviles flojos el fetch puede quedarse colgado para siempre: se corta a los 90 s
+  const ctrl = new AbortController();
+  const temporizador = setTimeout(() => ctrl.abort(), 90000);
+  let response;
+  try {
+  response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
+    signal: ctrl.signal,
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
@@ -188,10 +194,14 @@ ${texto}`;
     },
     body: JSON.stringify({
       model: MODELO_IA,
-      max_tokens: 4000,
+      max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }]
     })
   });
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('La IA tardó más de 90 segundos en responder. Revisa tu conexión e inténtalo de nuevo.');
+    throw new Error('No se pudo conectar con la IA. Revisa tu conexión a internet e inténtalo de nuevo.');
+  } finally { clearTimeout(temporizador); }
 
   if (!response.ok) {
     let msg = `Error API: ${response.status}`;
@@ -201,6 +211,7 @@ ${texto}`;
   }
 
   const data = await response.json();
+  if (data.stop_reason === 'max_tokens') throw new Error('La rutina es demasiado larga para procesarla de una vez. Impórtala en varias partes (unos pocos días cada vez).');
   const texto_respuesta = (data.content || []).map(c => c.text || '').join('');
 
   // Extraer el JSON aunque venga con ```json o con texto alrededor
