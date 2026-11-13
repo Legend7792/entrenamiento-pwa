@@ -1,6 +1,6 @@
-// app.js — Gym Tracker v104
+// app.js — Gym Tracker v105
 import "./auth.js";
-import { loadRutinaUsuario, inicializarRutinaBase, getAllRutinasUsuario, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
+import { loadRutinaUsuario, saveRutinaUsuario, inicializarRutinaBase, getAllRutinasUsuario, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
 import { markDirty, userState, esClaveBackup, sincronizarSiHaceFalta } from "./userState.js";
 import { navPush, navLimpiar, navAtras, navRegistrarPop, navVigilarCapas, navTopePantalla } from "./nav.js";
 import * as audioStore from "./audioStore.js";
@@ -9,6 +9,11 @@ import "./themes.js";
 import "./editorRutinas.js";
 import { showToast, showConfirm, showPrompt, showAlert, initOfflineBanner, escapeHtml, initEtiquetas } from "./ui.js";
 import "./aiImport.js";
+import { MUSCULOS_MAP, etiquetaSubzona } from "./musculos.js";
+import { evaluarProgresion, objetivoReps, aplicarIntensidad, repsContables, descansoTrasSerie, metodoIntPorId, nombreProg, metodoProgPorId, htmlGuiaMetodos, indicesNormales } from "./metodos.js";
+import { fraseAleatoria, frasesActivas, todasLasFrases, leerFrasesPropias, FRASES } from "./frases.js";
+import { renderNutricion, htmlGuiaNutricion } from "./nutricion.js";
+import { abrirPantallaRanking, actualizarRankingSilencioso } from "./ranking.js";
 
 // ══════════════════════════════════════════════════════
 // PERSISTENCIA DE ALMACENAMIENTO (evita que el navegador borre la caché)
@@ -124,11 +129,19 @@ window.toggleDescansoAuto = function (activo) {
   try { localStorage.setItem('descansoAuto', activo ? 'true' : 'false'); } catch {}
   showToast(activo ? '⏱ El descanso arrancará solo al anotar una serie' : 'Descanso manual (pulsa ⏱ para empezar)', 'info', 2500);
 };
-function iniciarDescansoAuto(ejIndex) {
+function iniciarDescansoAuto(ejIndex, serieIdx) {
   const btn = document.getElementById(`timer-ej-${ejIndex}`);
   if (btn?.classList.contains('timer-ej-done')) iniciarTimerEjercicio(ejIndex, 0);   // 1ª pulsación: para la alarma anterior
   if (ejercicioTimers[ejIndex]?.[0]) return;                                           // ya hay un descanso en marcha
-  iniciarTimerEjercicio(ejIndex, 0);
+  iniciarTimerEjercicio(ejIndex, 0, descansoTrasSerie(ejerciciosDia[ejIndex], serieIdx));   // descanso propio de esa serie (rest-pause, drop sets…)
+}
+
+// Descanso del botón ⏱ en modo manual: el de la última serie anotada (o el del ejercicio si no hay)
+function segundosManual(ej) {
+  if (!ej.descansosSerie) return ej.descanso || 90;
+  let ultima = -1;
+  (ej.reps || []).forEach((r, i) => { if (r !== "" && r !== null && r !== undefined) ultima = i; });
+  return ultima >= 0 && ultima < ej.series - 1 ? descansoTrasSerie(ej, ultima) : (ej.descanso || 90);
 }
 
 window.toggleVibracion = function (activo) {
@@ -137,21 +150,7 @@ window.toggleVibracion = function (activo) {
   showToast(activo ? '📳 Vibración activada' : '🔕 Vibración desactivada', 'info');
 };
 
-// ══════════════════════════════════════════════════════
-// MAPA DE GRUPOS MUSCULARES
-// ══════════════════════════════════════════════════════
-const MUSCULOS_MAP = {
-  pectoral:   '🫀 Pectoral',
-  espalda:    '🔙 Espalda',
-  hombro:     '💪 Hombro',
-  bicep:      '💪 Bícep',
-  tricep:     '💪 Trícep',
-  cuadricep:  '🦵 Cuádr.',
-  isquio:     '🦵 Isquio.',
-  gluteo:     '🍑 Glúteo',
-  gemelo:     '🦶 Gemelo',
-  core:       '🎯 Core'
-};
+// (El mapa de grupos musculares vive ahora en musculos.js)
 
 // ══════════════════════════════════════════════════════
 // A2HS — Prompt de instalación (Add to Home Screen)
@@ -404,6 +403,50 @@ window.compartirResumen = async function () {
 // ══════════════════════════════════════════════════════
 // AUDIO - Sistema modular con instancias independientes
 // ══════════════════════════════════════════════════════
+// Sonidos integrados: se generan por código (sin archivos). Cada uno dura ~1,2 s y se repite en bucle como el beep.
+// Cada nota: [inicio s, duración s, frecuencia Hz, volumen]. "tipo": forma de onda.
+const SONIDOS_INTEGRADOS = [
+  { id: 'campana',  nombre: '🔔 Campana',        tipo: 'campana', notas: [[0, 1.2, 523.25, 0.5]] },
+  { id: 'gong',     nombre: '🥁 Gong grave',     tipo: 'campana', notas: [[0, 1.2, 196, 0.6]] },
+  { id: 'digital',  nombre: '📟 Digital (3 pitidos)', tipo: 'cuadrada', notas: [[0, 0.12, 880, 0.3], [0.2, 0.12, 880, 0.3], [0.4, 0.12, 880, 0.3]] },
+  { id: 'reloj',    nombre: '⏰ Despertador',     tipo: 'cuadrada', notas: [[0, 0.07, 1500, 0.25], [0.12, 0.07, 1500, 0.25], [0.24, 0.07, 1500, 0.25], [0.36, 0.07, 1500, 0.25]] },
+  { id: 'alerta',   nombre: '🚨 Alerta (dos tonos)', tipo: 'seno', notas: [[0, 0.3, 660, 0.5], [0.3, 0.3, 880, 0.5], [0.6, 0.3, 660, 0.5], [0.9, 0.3, 880, 0.5]] },
+  { id: 'xilofono', nombre: '🎶 Xilófono (do-mi-sol)', tipo: 'xilo', notas: [[0, 0.4, 523.25, 0.5], [0.25, 0.4, 659.25, 0.5], [0.5, 0.5, 783.99, 0.5]] },
+  { id: 'arcade',   nombre: '🕹️ Arcade',         tipo: 'cuadrada', notas: [[0, 0.08, 523.25, 0.22], [0.09, 0.08, 659.25, 0.22], [0.18, 0.08, 783.99, 0.22], [0.27, 0.08, 1046.5, 0.22], [0.4, 0.2, 783.99, 0.22]] },
+  { id: 'suave',    nombre: '🌙 Suave (doble tono)', tipo: 'seno', notas: [[0, 0.5, 440, 0.4], [0.5, 0.6, 587.33, 0.4]] }
+];
+
+function generarBufferSonido(ctx, def) {
+  const sr = ctx.sampleRate, dur = 1.2;
+  const buf = ctx.createBuffer(1, Math.round(sr * dur), sr);
+  const d = buf.getChannelData(0);
+  for (const [t0, len, f, vol] of def.notas) {
+    const ini = Math.round(t0 * sr), n = Math.min(Math.round(len * sr), d.length - ini);
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      let v;
+      if (def.tipo === 'campana') {
+        // parciales inarmónicos con decaimiento exponencial (suena a metal)
+        v = (Math.sin(2 * Math.PI * f * t) + 0.5 * Math.sin(2 * Math.PI * f * 2.76 * t) * Math.exp(-3 * t)
+          + 0.3 * Math.sin(2 * Math.PI * f * 5.4 * t) * Math.exp(-6 * t)) * Math.exp(-3.2 * t) * 0.7;
+      } else if (def.tipo === 'xilo') {
+        v = (Math.sin(2 * Math.PI * f * t) + 0.25 * Math.sin(2 * Math.PI * f * 3 * t) * Math.exp(-12 * t)) * Math.exp(-7 * t);
+      } else if (def.tipo === 'cuadrada') {
+        v = Math.sin(2 * Math.PI * f * t) >= 0 ? 1 : -1;
+        const a = Math.min(1, t / 0.004), r = Math.min(1, (len - t) / 0.01);   // ataque y salida cortos para evitar "clics"
+        v *= Math.max(0, Math.min(a, r));
+      } else {
+        v = Math.sin(2 * Math.PI * f * t);
+        const a = Math.min(1, t / 0.01), r = Math.min(1, (len - t) / 0.05);
+        v *= Math.max(0, Math.min(a, r));
+      }
+      d[ini + i] += v * vol;
+    }
+  }
+  for (let i = 0; i < d.length; i++) d[i] = Math.max(-1, Math.min(1, d[i]));
+  return buf;
+}
+
 class AudioManager {
   constructor() {
     this.ctx = null;
@@ -412,7 +455,45 @@ class AudioManager {
     this.bufferBeep = null;
     this.bufferPersonalizado = null;
     this.nombrePersonalizado = null;
+    this.buffersIntegrados = {};
     this.activeSources = new Map();
+  }
+
+  // Sonido elegido: 'beep' | 'personalizado' | id de un sonido integrado. Sin elección guardada se mantiene el
+  // comportamiento anterior (audio propio si existe; si no, el beep).
+  get sonidoId() {
+    let v = null;
+    try { v = localStorage.getItem('audioSonido'); } catch {}
+    if (v === 'personalizado') return this.bufferPersonalizado ? v : 'beep';
+    if (v === 'beep') return 'beep';
+    if (v && SONIDOS_INTEGRADOS.some(x => x.id === v)) return v;
+    return this.bufferPersonalizado ? 'personalizado' : 'beep';
+  }
+
+  fijarSonido(id) {
+    try { localStorage.setItem('audioSonido', id); } catch {}
+    if (typeof markDirty === 'function') markDirty();
+  }
+
+  bufferActual() {
+    const id = this.sonidoId;
+    if (id === 'personalizado') return this.bufferPersonalizado;
+    if (id !== 'beep') {
+      if (!this.ctx) return this.bufferBeep;
+      if (!this.buffersIntegrados[id]) {
+        const def = SONIDOS_INTEGRADOS.find(x => x.id === id);
+        if (def) this.buffersIntegrados[id] = generarBufferSonido(this.ctx, def);
+      }
+      return this.buffersIntegrados[id] || this.bufferBeep;
+    }
+    return this.bufferBeep;
+  }
+
+  nombreActual() {
+    const id = this.sonidoId;
+    if (id === 'personalizado') return this.nombrePersonalizado || 'Audio personalizado';
+    if (id === 'beep') return 'Beep (predeterminado)';
+    return (SONIDOS_INTEGRADOS.find(x => x.id === id) || {}).nombre || 'Beep (predeterminado)';
   }
 
   async init() {
@@ -439,7 +520,7 @@ class AudioManager {
 
   play(timerId) {
     if (!this.ctx) return;
-    const buf = this.bufferPersonalizado || this.bufferBeep;
+    const buf = this.bufferActual();
     if (!buf) return;
     if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
     this.stop(timerId);
@@ -496,7 +577,8 @@ class AudioManager {
       // Ya decodificado, el sonido se usa aunque luego falle guardarlo (antes se descartaba todo)
       this.bufferPersonalizado = buffer;
       this.nombrePersonalizado = file.name;
-      actualizarNombreAudio(file.name);
+      this.fijarSonido('personalizado');
+      refrescarListaSonidos();
       // Guardar en IndexedDB (admite los 5 MB; localStorage no)
       try {
         await audioStore.guardarAudio(arrayBuffer, file.name, file.type);
@@ -519,7 +601,7 @@ class AudioManager {
       if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       this.bufferPersonalizado = await this.ctx.decodeAudioData(reg.datos.slice(0));
       this.nombrePersonalizado = reg.nombre;
-      actualizarNombreAudio(reg.nombre);
+      refrescarListaSonidos();
     } catch {
       // Audio dañado: volver al beep sin tocar nada más
       this.bufferPersonalizado = null;
@@ -534,7 +616,8 @@ class AudioManager {
       localStorage.removeItem('audioPersonalizadoNombre');
       this.bufferPersonalizado = null;
       this.nombrePersonalizado = null;
-      actualizarNombreAudio('Beep (predeterminado)');
+      this.fijarSonido('beep');
+      refrescarListaSonidos();
       showToast('Audio restaurado', 'success');
     });
   }
@@ -569,6 +652,44 @@ function actualizarNombreAudio(nombre) {
   const el = document.getElementById('nombre-audio-display');
   if (el) el.textContent = nombre;
 }
+
+// Lista de sonidos: elegir (radio) y escuchar (▶, 1,5 s)
+function refrescarListaSonidos() {
+  actualizarNombreAudio(audioManager.nombreActual());
+  const cont = document.getElementById('lista-sonidos');
+  if (!cont) return;
+  const actual = audioManager.sonidoId;
+  const filas = [{ id: 'beep', nombre: '🔊 Beep (predeterminado)' }];
+  if (audioManager.bufferPersonalizado) filas.push({ id: 'personalizado', nombre: '📁 ' + (audioManager.nombrePersonalizado || 'Audio personalizado') });
+  SONIDOS_INTEGRADOS.forEach(x => filas.push({ id: x.id, nombre: x.nombre }));
+  cont.innerHTML = filas.map(f => `
+    <div class="sonido-op${f.id === actual ? ' activo' : ''}">
+      <label><input type="radio" name="sonido-elegido" value="${escapeHtml(f.id)}"${f.id === actual ? ' checked' : ''} onchange="elegirSonido(this.value)"> <span>${escapeHtml(f.nombre)}</span></label>
+      <button class="btn-secondary" onclick="escucharSonido('${escapeHtml(f.id)}')" aria-label="Escuchar ${escapeHtml(f.nombre)}">▶</button>
+    </div>`).join('');
+}
+window.elegirSonido = function (id) {
+  audioManager.fijarSonido(id);
+  refrescarListaSonidos();
+  audioManager.probar();
+};
+window.escucharSonido = function (id) {
+  // Escucha sin cambiar la elección guardada
+  audioManager.desbloquear();
+  const t = 'prueba-lista';
+  audioManager.stop(t);
+  const buf = id === 'beep' ? audioManager.bufferBeep
+    : id === 'personalizado' ? audioManager.bufferPersonalizado
+    : (() => { const def = SONIDOS_INTEGRADOS.find(x => x.id === id); if (!def || !audioManager.ctx) return null;
+        return audioManager.buffersIntegrados[id] || (audioManager.buffersIntegrados[id] = generarBufferSonido(audioManager.ctx, def)); })();
+  if (!buf || !audioManager.ctx) return;
+  const src = audioManager.ctx.createBufferSource();
+  src.buffer = buf; src.loop = true;
+  src.connect(audioManager.gainNode || audioManager.ctx.destination);
+  src.start();
+  audioManager.activeSources.set(t, src);
+  setTimeout(() => audioManager.stop(t), 1500);
+};
 
 window.cargarAudioPersonalizado = cargarAudioPersonalizado;
 window.resetearAudioPorDefecto = resetearAudioPorDefecto;
@@ -642,11 +763,12 @@ function getTimerId(ejIndex, persona) {
   return `ej-${ejIndex}-p${persona}`;
 }
 
-function iniciarTimerEjercicio(ejIndex, persona = 0) {
+function iniciarTimerEjercicio(ejIndex, persona = 0, segundosForzados = 0) {
   const ej = ejerciciosDia[ejIndex];
   if (!ej) return;
   pedirPermisoNotificaciones();
-  const segundos = ej.descanso || 90;
+  const segundosBase = ej.descanso || 90;
+  const segundos = segundosForzados > 0 ? segundosForzados : segundosManual(ej);
   const timerId = getTimerId(ejIndex, persona);
 
   if (!ejercicioTimers[ejIndex]) ejercicioTimers[ejIndex] = {};
@@ -655,7 +777,7 @@ function iniciarTimerEjercicio(ejIndex, persona = 0) {
   const btn = document.getElementById(id);
   if (btn?.classList.contains('timer-ej-done')) {
     audioManager.stop(timerId);
-    actualizarBtnTimer(ejIndex, persona, segundos, false, false);
+    actualizarBtnTimer(ejIndex, persona, segundosBase, false, false);
     if (ejercicioTimers[ejIndex][persona]) {
       clearInterval(ejercicioTimers[ejIndex][persona].intervalId);
       delete ejercicioTimers[ejIndex][persona];
@@ -667,7 +789,7 @@ function iniciarTimerEjercicio(ejIndex, persona = 0) {
   if (ejercicioTimers[ejIndex][persona]) {
     clearInterval(ejercicioTimers[ejIndex][persona].intervalId);
     delete ejercicioTimers[ejIndex][persona];
-    actualizarBtnTimer(ejIndex, persona, segundos, false, false);
+    actualizarBtnTimer(ejIndex, persona, segundosBase, false, false);
     audioManager.stop(timerId);
     guardarEstadoApp();
     return;
@@ -764,7 +886,7 @@ function leerConfigGuardada() {
   let c = null;
   try { c = JSON.parse(localStorage.getItem("config")); } catch {}
   if (!c || typeof c !== 'object' || Array.isArray(c)) c = {};
-  for (const k of ['pesos', 'ejerciciosExtra', 'descansos', 'incrementos']) {
+  for (const k of ['pesos', 'ejerciciosExtra', 'descansos', 'incrementos', 'metodoEstado']) {
     if (!c[k] || typeof c[k] !== 'object' || Array.isArray(c[k])) c[k] = {};
   }
   return c;
@@ -813,7 +935,7 @@ window.fijarPesoConfig = function (rutinaId, nombreDia, nombreEj, peso) {
 
 // Llamado por el editor al renombrar un ejercicio o un día: conserva pesos, descansos e incrementos
 window.migrarClavesConfig = function (rutinaId, dia, ejViejo, diaNuevo, ejNuevo) {
-  ['pesos', 'descansos', 'incrementos'].forEach(tabla => {
+  ['pesos', 'descansos', 'incrementos', 'metodoEstado'].forEach(tabla => {
     const v = leerCfg(tabla, dia, ejViejo, rutinaId);
     if (v !== undefined) {
       escribirCfg(tabla, diaNuevo, ejNuevo, v, rutinaId);
@@ -852,7 +974,7 @@ window.renombrarDiaConfig = function (rutinaId, diaViejo, diaNuevo, nombresEjerc
 // que tiene ahora el original (todo se guarda por nombre de día, así que hay que copiarlo).
 window.copiarConfigDia = function (rutinaId, diaOrigen, diaNuevo, nombresEjercicios) {
   (nombresEjercicios || []).forEach(n => {
-    ['pesos', 'descansos', 'incrementos'].forEach(tabla => {
+    ['pesos', 'descansos', 'incrementos', 'metodoEstado'].forEach(tabla => {
       const v = leerCfg(tabla, diaOrigen, n, rutinaId);
       if (v !== undefined) escribirCfg(tabla, diaNuevo, n, v, rutinaId);
     });
@@ -860,6 +982,19 @@ window.copiarConfigDia = function (rutinaId, diaOrigen, diaNuevo, nombresEjercic
   // Ejercicios añadidos a mano a ese día (si los hay)
   const extra = config.ejerciciosExtra?.[diaOrigen];
   if (extra?.length) { config.ejerciciosExtra[diaNuevo] = JSON.parse(JSON.stringify(extra)); }
+  guardarConfig();
+};
+
+// El editor copió días de OTRA rutina: lleva pesos, descansos, incrementos y estado de los métodos a la rutina de destino
+window.copiarConfigEntreRutinas = function (rutOrigen, diaOrigen, rutDestino, diaNuevo, nombresEjercicios) {
+  (nombresEjercicios || []).forEach(n => {
+    ['pesos', 'descansos', 'incrementos', 'metodoEstado'].forEach(tabla => {
+      const v = leerCfg(tabla, diaOrigen, n, rutOrigen);
+      if (v !== undefined) escribirCfg(tabla, diaNuevo, n, JSON.parse(JSON.stringify(v)), rutDestino);
+    });
+  });
+  const extra = config.ejerciciosExtra?.[diaOrigen];
+  if (extra?.length && !config.ejerciciosExtra?.[diaNuevo]) config.ejerciciosExtra[diaNuevo] = JSON.parse(JSON.stringify(extra));
   guardarConfig();
 };
 
@@ -1124,17 +1259,15 @@ function obtenerTiempoHIT() {
 // NAVEGACIÓN
 // ══════════════════════════════════════════════════════
 function ocultarTodas() {
-  ['pantalla-auth', 'pantalla-perfil', 'pantalla-dia', 'pantalla-historial',
-    'pantalla-detalle', 'pantalla-medidas', 'pantalla-audio',
-    'pantalla-editor', 'pantalla-resumen', 'pantalla-ai-import', 'pantalla-guia-tempo',
-    'pantalla-estadisticas', 'pantalla-progreso', 'pantalla-progresion-rutina',
-    'menu'].forEach(id => document.getElementById(id)?.classList.add('oculto'));
+  // Todas las pantallas (section#pantalla-*) y el menú: así una pantalla nueva no hay que añadirla a una lista
+  document.querySelectorAll('section[id^="pantalla-"], #menu').forEach(el => el.classList.add('oculto'));
 }
 
 function abrirDia(diaKey) {
   desbloquearAudioPorGesto();
   guardarEstadoApp();
   diaActual = diaKey;
+  altOverride = {};
   lastEjerciciosDiaHash = null; // siempre dibujar de cero al entrar
   navPush();
   ocultarTodas();
@@ -1198,13 +1331,54 @@ function incrementoPorDefecto(peso) {
   return 2.5;
 }
 
+// ── Alternancia de ejercicios dentro de un día (v105) ──
+// Los ejercicios del mismo día con el mismo "grupo" (campo alt) se turnan: cada sesión aparece solo el que se hizo
+// hace más tiempo (o el que nunca se hizo). El elegido ocupa el lugar del primero del grupo para que los índices no cambien.
+let altOverride = {};   // grupo (minúsculas) → nombre elegido a mano en esta sesión
+
+function ultimaVezEjercicio(nombreDia, nombreEj) {
+  const activa = obtenerRutinaActiva();
+  let ultima = 0;
+  leerHistorialCrudo().forEach(sesion => {
+    if (sesion.dia !== nombreDia) return;
+    if (sesion.rutinaId && sesion.rutinaId !== activa) return;
+    const e = (sesion.ejercicios || []).find(x => x.nombre === nombreEj);
+    if (e && ejercicioHecho(e)) ultima = Math.max(ultima, Date.parse(sesion.fecha) || 0);
+  });
+  return ultima;
+}
+
+function elegirAlternativas(base, nombreDia) {
+  const grupos = new Map();
+  base.forEach((ej, i) => {
+    const g = (ej.alt || '').trim().toLowerCase();
+    if (!g) return;
+    if (!grupos.has(g)) grupos.set(g, []);
+    grupos.get(g).push(i);
+  });
+  const sustituir = new Map();   // índice del primero del grupo → ejercicio elegido
+  const omitir = new Set();
+  grupos.forEach((idxs, g) => {
+    if (idxs.length < 2) return;
+    let elegido = idxs.find(i => base[i].nombre === altOverride[g]);
+    if (elegido === undefined) {
+      let mejor = Infinity;
+      idxs.forEach(i => { const t = ultimaVezEjercicio(nombreDia, base[i].nombre); if (t < mejor) { mejor = t; elegido = i; } });
+    }
+    sustituir.set(idxs[0], { ...base[elegido], _alt: { grupo: g, opciones: idxs.map(i => base[i].nombre) } });
+    idxs.slice(1).forEach(i => omitir.add(i));
+  });
+  return base.map((ej, i) => sustituir.get(i) || ej).filter((_, i) => !omitir.has(i));
+}
+
 function cargarEjerciciosDia() {
   const rutinaActual = obtenerRutinaCompleta();
   if (!rutinaActual[diaActual]) return;
   _rutinaCargadaId = obtenerRutinaActiva();
   const nombreDia = rutinaActual[diaActual].nombre;
-  const base = rutinaActual[diaActual].ejercicios || [];
+  const base = elegirAlternativas(rutinaActual[diaActual].ejercicios || [], nombreDia);
   const extra = config.ejerciciosExtra?.[nombreDia] || [];
+  const metodoRutina = loadRutinaUsuario(_rutinaCargadaId)?.metodoProg || 'doble';
 
   const descansoInteligente = (repsMax) => {
     if (!repsMax || repsMax <= 5) return 180;
@@ -1227,9 +1401,15 @@ function cargarEjerciciosDia() {
     const incrementoGuardado = leerCfg('incrementos', nombreDia, ej.nombre);
     const inc = ej.alFallo ? 0 : (incrementoGuardado !== undefined ? incrementoGuardado : incrementoPorDefecto(pesoTrabajo));
 
-    return {
+    // Método de progresión: el del ejercicio o, si no tiene, el de la rutina. Su estado (escalón, series extra) vive en config.
+    const metodoProgId = ej.alFallo ? 'ninguna' : (ej.metodoProg?.id || metodoRutina);
+    const estadoMetodo = leerCfg('metodoEstado', nombreDia, ej.nombre) || {};
+    const extraSeries = (metodoProgId === 'triple' && !ej.alFallo) ? Math.max(0, Math.round(Number(estadoMetodo.extra) || 0)) : 0;
+
+    const nuevo = {
       nombre: ej.nombre,
-      series,
+      series: Math.min(30, series + extraSeries),
+      seriesBase: series,
       repsMin,
       repsMax,
       peso: pesoTrabajo,
@@ -1240,13 +1420,46 @@ function cargarEjerciciosDia() {
       descanso,
       tempo: ej.tempo || "",
       notas: ej.notas || "",
-      musculo: ej.musculo || ""
+      musculo: ej.musculo || "",
+      subzona: ej.subzona || "",
+      notasEj: ej.notasEj || "",
+      calentamiento: ej.calentamiento === true,
+      msgMin: ej.msgMin || "",
+      metodoProgId,
+      metodoProgParams: ej.metodoProg?.params || null,
+      metodoInt: ej.metodoInt || null,
+      alt: ej._alt || null
     };
+    nuevo.objetivoOk = objetivoReps(nuevo, estadoMetodo);   // reps a partir de las cuales la casilla se pinta de "cumplida"
+    return nuevo;
   });
 
   ejerciciosDia = aplicarFactorDeload(ejerciciosDia);
-  ejerciciosDia.forEach(ej => { ej.reps = Array(ej.series).fill(""); });
+  ejerciciosDia.forEach(ej => {
+    ej.tipos = Array(ej.series).fill('n');
+    // Los métodos de intensidad no se aplican en deload ni en ejercicios "al fallo"
+    if (!ej._esDeload && ej.metodoInt) aplicarIntensidad(ej, ej.metodoInt);
+    if (ej.metodoIntId === 'gvt') ej.objetivoOk = 10;
+    ej.reps = Array(ej.series).fill("");
+  });
 }
+
+// Cambia a mano, solo para esta sesión, la alternativa que toca (si todavía no anotaste nada en ese ejercicio)
+window.cambiarAlternativa = function (i) {
+  const ej = ejerciciosDia[i];
+  if (!ej?.alt) return;
+  if (ej.reps.some(r => r !== "" && r !== null && r !== undefined)) { showToast('Borra las repeticiones de este ejercicio antes de cambiar de alternativa', 'warning'); return; }
+  const ops = ej.alt.opciones;
+  const siguiente = ops[(ops.indexOf(ej.nombre) + 1) % ops.length];
+  const guardadas = new Map(ejerciciosDia.map(e => [e.nombre, e.reps.slice()]));
+  altOverride[ej.alt.grupo] = siguiente;
+  cargarEjerciciosDia();
+  ejerciciosDia.forEach(e => { const g = guardadas.get(e.nombre); if (g && g.length === e.reps.length) e.reps = g; });
+  lastEjerciciosDiaHash = null;
+  renderDia();
+  guardarEstadoApp();
+  showToast(`Hoy: ${siguiente}`, 'info', 2000);
+};
 
 // ══════════════════════════════════════════════════════
 // RENDERIZAR DÍA - Optimizado con diffing parcial
@@ -1257,17 +1470,72 @@ function calcularHashEjercicios() {
   // Incluir modoDosPersonas para que cambiar de modo fuerce re-renderizado de los timers
   const modoPrefix = modoDosPersonas ? '2p' : '1p';
   // Incluye todo lo que se dibuja (antes faltaban tempo, notas y músculo → pantalla desactualizada)
-  return modoPrefix + '|' + ejerciciosDia.map(e => [e.nombre, e.series, e.repsMin, e.repsMax, e.peso, e.descanso, e.alFallo, e.tempo, e.notas, e.musculo, e.incremento, e.noProgresar].join('~')).join('|');
+  return modoPrefix + '|' + ejerciciosDia.map(e => [e.nombre, e.series, e.repsMin, e.repsMax, e.peso, e.descanso, e.alFallo, e.tempo, e.notas, e.musculo, e.incremento, e.noProgresar, e.subzona, e.notasEj, e.calentamiento, e.metodoProgId, e.metodoIntId, e.objetivoOk, (e.tipos || []).join(''), (e.pistas || []).join(','), e.notaMetodo, e.alt ? e.alt.opciones.join('/') : ''].join('~')).join('|');
 }
 
 // Clase CSS de una serie según las reps escritas
-function claseSerie(ej, rep) {
+function claseSerie(ej, rep, idx = 0) {
   if (ej.alFallo || rep === "" || rep === null || rep === undefined) return "";
+  if (ej.tipos && ej.tipos[idx] && ej.tipos[idx] !== 'n') return "";   // mini-series, bajadas y serie viuda no tienen rango
   const n = Number(rep);
-  if (n >= ej.repsMax) return "serie-ok";
+  if (n >= (ej.objetivoOk ?? ej.repsMax)) return "serie-ok";
   if (n < ej.repsMin) return "serie-fail";
   return "serie-mid";
 }
+
+// Texto del "Objetivo" según el método de progresión de la sesión
+function objetivoTexto(ej) {
+  const rango = `${ej.repsMin}${ej.repsMax !== ej.repsMin ? '-' + ej.repsMax : ''}`;
+  if (ej.metodoIntId === 'gvt') return `${ej.series}×10`;
+  const base = ej.tipos ? ej.tipos.filter(t => t === 'n').length : ej.series;
+  if (ej.metodoProgId === 'escalera' && ej.repsMax !== ej.repsMin) return `${base}×${rango} · hoy ${ej.objetivoOk}`;
+  if (ej.metodoProgId === 'lineal') return `${base}×${ej.repsMin}`;
+  if (ej.metodoProgId === 'triple' && ej.series > ej.seriesBase && !ej._esDeload) return `${base}×${rango} (+${ej.series - ej.seriesBase})`;
+  return `${base}×${rango}` + (ej.series > base ? ` +${ej.series - base}` : '');
+}
+
+window.mostrarInfoMetodo = function (i) {
+  const ej = ejerciciosDia[i];
+  if (!ej) return;
+  const prog = metodoProgPorId(ej.metodoProgId);
+  const inte = ej.metodoIntId ? metodoIntPorId(ej.metodoIntId) : null;
+  const parte = (titulo, m) => `<h4 style="margin:10px 0 4px;">${escapeHtml(titulo)}: ${escapeHtml(m.nombre)}</h4><p style="margin:0;">${escapeHtml(m.resumen)}</p><p class="import-hint">${escapeHtml(m.detalle)}</p>`;
+  const overlay = document.getElementById('modal-tempo-overlay');
+  const cont = document.getElementById('modal-tempo-contenido');
+  if (!overlay || !cont) return;
+  cont.innerHTML = `<h3>⚙️ ${escapeHtml(ej.nombre)}</h3>${inte ? parte('Intensidad', inte) : ''}${parte('Progresión', prog)}`;
+  overlay.classList.remove('oculto');
+};
+
+// Guarda un campo del ejercicio en la rutina activa (o entre los ejercicios añadidos a mano) y refresca la pantalla
+function guardarCampoEjercicio(nombreEj, campo, valor) {
+  const ra = obtenerRutinaCompleta();
+  const nombreDia = ra[diaActual]?.nombre;
+  const id = obtenerRutinaActiva();
+  const rutinaData = loadRutinaUsuario(id);
+  const aplicar = ej => { if (valor) ej[campo] = valor; else delete ej[campo]; };
+  let hecho = false;
+  const dia = rutinaData?.dias?.find(d => d.nombre === nombreDia);
+  const ej = dia?.ejercicios?.find(e => e.nombre === nombreEj);
+  if (ej) { aplicar(ej); saveRutinaUsuario(rutinaData, id); hecho = true; }
+  else {
+    const extra = config.ejerciciosExtra?.[nombreDia]?.find(e => e.nombre === nombreEj);
+    if (extra) { aplicar(extra); guardarConfig(); hecho = true; }
+  }
+  return hecho;
+}
+
+window.editarNotaEj = function (i) {
+  const ej = ejerciciosDia[i];
+  if (!ej) return;
+  showPrompt(`Nota para «${ej.nombre}» (escribe un guion - para borrarla)`, 'Ej: asiento en el hueco 4', texto => {
+    const limpio = texto.trim() === '-' ? '' : texto.trim().slice(0, 200);
+    if (!guardarCampoEjercicio(ej.nombre, 'notasEj', limpio)) { showToast('No se pudo guardar la nota', 'error'); return; }
+    ej.notasEj = limpio;
+    renderDia();
+    guardarEstadoApp();
+  }, ej.notasEj || '');
+};
 
 function renderDia() {
   const cont = document.getElementById("contenido");
@@ -1294,9 +1562,14 @@ function renderDia() {
   ejerciciosDia.forEach((ej, i) => {
     let seriesHTML = "";
     for (let s = 0; s < ej.series; s++) {
-      seriesHTML += `<input type="number" inputmode="numeric" min="0" max="${ej.alFallo ? 999 : Math.max(ej.repsMax, 1) + 20}"
-        id="rep-${i}-${s}" placeholder="S${s + 1}" value="${ej.reps[s]}" class="${claseSerie(ej, ej.reps[s])}"
-        aria-label="Repeticiones serie ${s + 1} de ${escapeHtml(ej.nombre)}"
+      const tipo = ej.tipos?.[s] || 'n';
+      const extraTipo = tipo !== 'n';
+      const pista = ej.pistas?.[s] || '';
+      const nombreTipo = { mini: 'mini-serie', drop: 'bajada', widow: 'serie viuda' }[tipo] || 'serie';
+      const maxReps = ej.alFallo ? 999 : (tipo === 'widow' ? 999 : Math.max(ej.repsMax, 1) + 20);
+      seriesHTML += `<input type="number" inputmode="numeric" min="0" max="${maxReps}"
+        id="rep-${i}-${s}" placeholder="${escapeHtml(pista || `S${s + 1}`)}" value="${ej.reps[s]}" class="${claseSerie(ej, ej.reps[s], s)}${extraTipo ? ' serie-extra' : ''}"
+        aria-label="Repeticiones ${nombreTipo} ${s + 1} de ${escapeHtml(ej.nombre)}"
         oninput="actualizarSerie(${i},${s},this.value,this)">`;
     }
 
@@ -1322,11 +1595,18 @@ function renderDia() {
       <div class="ejercicio" data-ej-index="${i}">
         <div class="ejercicio-header">
           <h3>${escapeHtml(ej.nombre)}</h3>
-          <div class="ejercicio-badges">
-            ${ej.tempo ? `<span class="badge-tempo" onclick="mostrarGuiaTempoEj(${i})" title="Ver guía de tempo" role="button" tabindex="0">${escapeHtml(ej.tempo)} ❓</span>` : ''}
-            ${ej.alFallo ? `<span class="badge-fallo">Al fallo</span>` : ''}
-            ${!ej.alFallo && ej.peso >= 20 ? `<span class="badge-tempo" onclick="mostrarCalentamiento(${i})" title="Series de aproximación sugeridas" role="button" tabindex="0">🔥 Calentar</span>` : ''}
-            ${ej.musculo ? `<span class="badge-musculo">${escapeHtml(MUSCULOS_MAP[ej.musculo] || ej.musculo)}</span>` : ''}
+          <div class="ejercicio-derecha">
+            <div class="ejercicio-badges">
+              ${ej.tempo ? `<span class="badge-tempo" onclick="mostrarGuiaTempoEj(${i})" title="Ver guía de tempo" role="button" tabindex="0">${escapeHtml(ej.tempo)} ❓</span>` : ''}
+              ${ej.alFallo ? `<span class="badge-fallo">Al fallo</span>` : ''}
+              ${ej.calentamiento && !ej.alFallo && ej.peso > 0 ? `<span class="badge-tempo" onclick="mostrarCalentamiento(${i})" title="Series de aproximación sugeridas" role="button" tabindex="0">🔥 Calentar</span>` : ''}
+              ${ej.metodoIntId ? `<span class="badge-metodo" onclick="mostrarInfoMetodo(${i})" title="Método de intensidad" role="button" tabindex="0">${escapeHtml(metodoIntPorId(ej.metodoIntId)?.nombre.split(' (')[0] || '')} ❓</span>` : ''}
+              ${ej.metodoProgId && !['doble', 'ninguna'].includes(ej.metodoProgId) && !ej.alFallo ? `<span class="badge-metodo" onclick="mostrarInfoMetodo(${i})" title="Método de progresión" role="button" tabindex="0">📈 ${escapeHtml(nombreProg(ej.metodoProgId).split(' (')[0])}</span>` : ''}
+              ${ej.alt ? `<span class="badge-alt" onclick="cambiarAlternativa(${i})" title="Alternar con: ${escapeHtml(ej.alt.opciones.filter(n => n !== ej.nombre).join(', '))}" role="button" tabindex="0">🔄 Alternar</span>` : ''}
+              ${ej.musculo ? `<span class="badge-musculo">${escapeHtml(MUSCULOS_MAP[ej.musculo] || ej.musculo)}</span>` : ''}
+              ${ej.musculo && ej.subzona && etiquetaSubzona(ej.musculo, ej.subzona) ? `<span class="badge-sub" title="Subzona enfatizada">${escapeHtml(etiquetaSubzona(ej.musculo, ej.subzona))}</span>` : ''}
+            </div>
+            <div class="notas-ej${ej.notasEj ? '' : ' vacia'}" onclick="editarNotaEj(${i})" role="button" tabindex="0" title="Tu nota para este ejercicio (toca para editar)">${ej.notasEj ? '📝 ' + escapeHtml(ej.notasEj) : '📝 Añadir nota'}</div>
           </div>
         </div>
 
@@ -1344,12 +1624,13 @@ function renderDia() {
           </div>` : ''}
           <div class="ejercicio-col">
             <label class="col-label">Objetivo</label>
-            <p class="objetivo-texto">${ej.alFallo ? `${ej.series}×Al fallo` : `${ej.series}×${ej.repsMin}${ej.repsMax !== ej.repsMin ? '-' + ej.repsMax : ''}`}</p>
+            <p class="objetivo-texto">${ej.alFallo ? `${ej.series}×Al fallo` : objetivoTexto(ej)}</p>
             ${!ej.alFallo && ej.peso > 0 ? `<p class="rm-estimado">1RM ≈ ${calcular1RM(ej.peso, ej.repsMax)}kg</p>` : ''}
           </div>
         </div>
 
         <div class="series">${seriesHTML}</div>
+        ${ej.notaMetodo ? `<p class="nota-metodo">⚙️ ${escapeHtml(ej.notaMetodo)}</p>` : ''}
 
         <div class="ejercicio-footer">
           <div class="footer-left">
@@ -1378,7 +1659,7 @@ function actualizarInputsReps() {
       if (input && input.value !== String(rep)) {
         input.value = rep;
         input.classList.remove("serie-ok", "serie-fail", "serie-mid");
-        const c = claseSerie(ej, rep);
+        const c = claseSerie(ej, rep, s);
         if (c) input.classList.add(c);
       }
     });
@@ -1477,16 +1758,57 @@ function actualizarSerie(ejIndex, serieIndex, valor, input) {
   const previa = ej.reps[serieIndex];
   ej.reps[serieIndex] = reps;
   input.classList.remove("serie-ok", "serie-fail", "serie-mid");
-  const c = claseSerie(ej, reps);
+  const c = claseSerie(ej, reps, serieIndex);
   if (c) input.classList.add(c);
+  programarAvisoMinimo(ejIndex, serieIndex, input);
   actualizarProgresoSesion();
   guardarEstadoApp();
   // Descanso automático: solo al pasar de "vacía" a anotada, si quedan series por hacer (tras la última no hace falta)
   if (descansoAutoActivo() && !modoDosPersonas && (previa === "" || previa === null || previa === undefined)
       && reps !== "" && reps > 0 && ej.reps.some(r => r === "" || r === null || r === undefined)) {
-    iniciarDescansoAuto(ejIndex);
+    iniciarDescansoAuto(ejIndex, serieIndex);
   }
 }
+
+// ── Mensaje cuando una serie queda por debajo del mínimo de reps ──
+// Se muestra pasado un instante desde la última tecla (para no avisar de "1" cuando vas a escribir "10").
+const _avisoMinTimers = {};
+const _avisoMinUltimo = {};
+const MSG_MIN_DEFECTO = 'No llegaste al mínimo de repeticiones. Revisa el peso o descansa un poco más antes de la próxima serie.';
+
+function mensajeMinimo(ej) {
+  if (ej.msgMin) return ej.msgMin;
+  let lineas = [];
+  try { lineas = (localStorage.getItem('msgMinGlobal') || '').split('\n').map(l => l.trim()).filter(Boolean); } catch {}
+  if (!lineas.length) return MSG_MIN_DEFECTO;
+  return lineas[Math.floor(Math.random() * lineas.length)];
+}
+
+function programarAvisoMinimo(ejIndex, serieIndex, input) {
+  const clave = `${ejIndex}-${serieIndex}`;
+  clearTimeout(_avisoMinTimers[clave]);
+  const ej = ejerciciosDia[ejIndex];
+  if (!ej || ej.alFallo || !(ej.repsMin > 0)) return;
+  if (ej.tipos?.[serieIndex] && ej.tipos[serieIndex] !== 'n') return;
+  let activo = true;
+  try { activo = localStorage.getItem('msgMinActivo') !== 'false'; } catch {}
+  if (!activo) return;
+  _avisoMinTimers[clave] = setTimeout(() => {
+    const e = ejerciciosDia[ejIndex];
+    const v = e?.reps[serieIndex];
+    if (!e || v === "" || v === null || v === undefined || !(Number(v) < e.repsMin)) { delete _avisoMinUltimo[clave]; return; }
+    if (_avisoMinUltimo[clave] === v) return;
+    _avisoMinUltimo[clave] = v;
+    showToast(mensajeMinimo(e), 'warning', 5000);
+    const inp = document.getElementById(`rep-${ejIndex}-${serieIndex}`) || input;
+    inp?.classList.add('serie-sacude');
+    setTimeout(() => inp?.classList.remove('serie-sacude'), 400);
+  }, 900);
+}
+window.probarMsgMin = function () {
+  const falso = { msgMin: '' };
+  showToast(mensajeMinimo(falso), 'warning', 5000);
+};
 
 // Barra "Series registradas: 7 / 24" al principio del entrenamiento
 function actualizarProgresoSesion() {
@@ -1604,6 +1926,19 @@ function registrarBorrados(sesiones) {
 
 let _finalizando = false;
 
+let avisosMetodoSesion = [];
+
+// ── Récords: borrarlos NO toca el historial ──
+// Se guarda una fecha de corte: solo las sesiones posteriores cuentan para los récords (todos, o por ejercicio).
+function leerCorteRecords() {
+  try { const c = JSON.parse(localStorage.getItem('recordsCorte')); return (c && typeof c === 'object' && !Array.isArray(c)) ? c : {}; }
+  catch { return {}; }
+}
+function corteRecord(nombre) {
+  const c = leerCorteRecords();
+  return Math.max(Date.parse(c.todos) || 0, Date.parse(c.ej?.[nombre]) || 0);
+}
+
 function _doFinalizarDia() {
   // Evita dos sesiones idénticas por doble toque
   if (_finalizando) return;
@@ -1621,7 +1956,9 @@ function _doFinalizarDia() {
     notas: notasSesion,
     duracionMin: sesionStartTime ? Math.max(1, Math.round((Date.now() - sesionStartTime) / 60000)) : null,
     ejercicios: (ejerciciosDia.some(ejercicioHecho) ? ejerciciosDia.filter(ejercicioHecho) : ejerciciosDia)
-      .map(ej => ({ nombre: ej.nombre, peso: ej.peso, reps: [...ej.reps], ...(ej.alFallo ? { alFallo: true } : {}) })),
+      .map(ej => ({ nombre: ej.nombre, peso: ej.peso, reps: [...ej.reps], ...(ej.alFallo ? { alFallo: true } : {}),
+        // Tipo de cada serie solo si hay alguna que no sea normal (mini-series, bajadas…): las estadísticas las tratan aparte
+        ...(ej.tipos?.some(t => t !== 'n') ? { tipos: [...ej.tipos] } : {}) })),
     tiempoHIT: obtenerTiempoHIT() || null,
     tipoHIT: hitTipo || null,
     // Se decide por cómo se CARGÓ la sesión (pesos al 70 %), no por el reloj al finalizar: si el deload caduca o se
@@ -1635,20 +1972,30 @@ function _doFinalizarDia() {
 
   const cambiosPeso = [];
 
+  const cambiosEstado = [];   // estado de los métodos (escalón de la escalera, series extra) que cambia tras esta sesión
+  avisosMetodoSesion = [];
+
   ejerciciosDia.forEach(ej => {
-    const completo = ej.repsMax > 0 && ej.reps.length > 0 && ej.reps.every(r => r !== "" && Number(r) >= ej.repsMax);
     if (enDeload) {
       detalles.push(`${ej.nombre}: 💤 Deload — ${ej.reps.filter(r => r !== "").join("/")} reps a ${ej.peso}kg`);
-    } else if (!ej.alFallo && completo && !ej.noProgresar) {
-      const nuevoPeso = parseFloat((ej.peso + ej.incremento).toFixed(2));
-      cambiosPeso.push({ ej, nombre: ej.nombre, pesoAnterior: ej.peso, pesoNuevo: nuevoPeso, incremento: ej.incremento });
-      huboProgresion = true;
-      detalles.push(`${ej.nombre}: PROGRESO +${ej.incremento}kg → ${nuevoPeso}kg`);
     } else if (ej.alFallo) {
       const maxReps = Math.max(...ej.reps.filter(r => r !== "").map(Number), 0);
       detalles.push(`${ej.nombre}: Al fallo — ${ej.reps.filter(r => r !== "").join("/")} reps (máx: ${maxReps})`);
     } else {
-      detalles.push(`${ej.nombre}: NO progresó`);
+      // Cada ejercicio decide con su método (doble, lineal, escalera, triple…); solo cuentan las series "normales"
+      const estadoPrevio = leerCfg('metodoEstado', sesion.dia, ej.nombre) || {};
+      const ev = evaluarProgresion({ ...ej, metodoProg: undefined }, estadoPrevio);
+      if (JSON.stringify(ev.estado) !== JSON.stringify(estadoPrevio)) cambiosEstado.push({ nombre: ej.nombre, estado: ev.estado });
+      if (ev.progresa && !ej.noProgresar) {
+        const nuevoPeso = ev.pesoNuevo;
+        cambiosPeso.push({ ej, nombre: ej.nombre, pesoAnterior: ej.peso, pesoNuevo: nuevoPeso, incremento: ej.incremento });
+        huboProgresion = true;
+        detalles.push(`${ej.nombre}: PROGRESO +${ej.incremento}kg → ${nuevoPeso}kg`);
+        if (ev.texto) avisosMetodoSesion.push(`${ej.nombre}: ${ev.texto}`);
+      } else {
+        detalles.push(`${ej.nombre}: NO progresó`);
+        if (ev.texto) avisosMetodoSesion.push(`${ej.nombre}: ${ev.texto}`);
+      }
     }
   });
 
@@ -1664,9 +2011,14 @@ function _doFinalizarDia() {
     return;
   }
   markDirty();
+  setTimeout(actualizarRankingSilencioso, 1500);   // si participas en el ranking, sube tus puntos nuevos (solo con conexión)
   detenerAutoGuardado();
   limpiarAutoGuardado();
   try {
+    cambiosEstado.forEach(c => {
+      if (Object.keys(c.estado).length) escribirCfg('metodoEstado', sesion.dia, c.nombre, c.estado);
+      else if (config.metodoEstado) delete config.metodoEstado[claveEj(sesion.dia, c.nombre)];
+    });
     cambiosPeso.forEach(c => { c.ej.peso = c.pesoNuevo; guardarPesoBase(c.nombre, c.pesoNuevo); });
   } catch (e) { showToast('⚠️ Sesión guardada, pero no se pudo actualizar el peso de progresión (almacenamiento lleno).', 'warning', 6000); }
 
@@ -1676,7 +2028,9 @@ function _doFinalizarDia() {
   sesion.ejercicios.forEach(ej => {
     if (sesion.deload) return;
     if (!ej.peso || ej.peso <= 0 || !ejercicioHecho(ej)) return;
+    const corte = corteRecord(ej.nombre);   // récords borrados por el usuario: solo cuentan las sesiones posteriores
     const previos = historialPrevio
+      .filter(s => !corte || Date.parse(s.fecha) > corte)
       .flatMap(s => s.ejercicios)
       .filter(e => e.nombre === ej.nombre && e.peso > 0 && ejercicioHecho(e));
     if (previos.length === 0) return; // Primera vez — no es PR porque no hay referencia
@@ -1706,6 +2060,17 @@ function _doFinalizarDia() {
   guardarEstadoApp();   // ya no estamos en el día: si se cierra la app aquí no debe reabrirse un día vacío
 }
 
+// Frase estoica al azar, destacada arriba del resumen (se puede desactivar en 💬 Mensajes y frases)
+function htmlFraseResumen() {
+  if (!frasesActivas()) return '';
+  const f = fraseAleatoria();
+  if (!f) return '';
+  return `<blockquote class="frase-card" aria-label="Frase del día">
+      <p class="frase-texto">“${escapeHtml(f.t)}”</p>
+      <p class="frase-autor">— <strong>${escapeHtml(f.a || 'Anónimo')}</strong>${f.o ? `, <em>${escapeHtml(f.o)}</em>` : ''}${f.propia ? '' : ' <span class="frase-adapt">(adaptación)</span>'}</p>
+    </blockquote>`;
+}
+
 function mostrarPantallaResumen(sesion, huboProgresion, detalles, enDeload = false) {
   const pantalla = document.getElementById('pantalla-resumen');
   const contenido = document.getElementById('resumen-contenido');
@@ -1718,6 +2083,7 @@ function mostrarPantallaResumen(sesion, huboProgresion, detalles, enDeload = fal
   const alFallo = detalles.filter(d => d.includes('Al fallo'));
 
   contenido.innerHTML = `
+    ${htmlFraseResumen()}
     <div class="resumen-header">
       <div class="resumen-emoji">${huboProgresion ? '🚀' : '💪'}</div>
       <h2>${huboProgresion ? '¡Progreso registrado!' : '¡Sesión completada!'}</h2>
@@ -1742,6 +2108,12 @@ function mostrarPantallaResumen(sesion, huboProgresion, detalles, enDeload = fal
       const m = d.match(/(.+): PROGRESO \+(\S+) → (\S+)/);
       return m ? `<div class="resumen-item resumen-ok"><span class="item-nombre">${escapeHtml(m[1])}</span><span class="item-detalle">+${m[2]} → <strong>${m[3]}</strong></span></div>` : `<div class="resumen-item resumen-ok">${escapeHtml(d)}</div>`;
     }).join('')}
+    </div>` : ''}
+
+    ${avisosMetodoSesion.length ? `
+    <div class="resumen-seccion">
+      <h3>⚙️ PRÓXIMA SESIÓN</h3>
+      ${avisosMetodoSesion.map(t => `<div class="resumen-item">${escapeHtml(t)}</div>`).join('')}
     </div>` : ''}
 
     <div class="resumen-seccion">
@@ -1951,6 +2323,7 @@ function abrirMedidas() {
   document.getElementById("pantalla-medidas").classList.remove("oculto");
   cancelarEdicionMedida();
   cargarMedidas();
+  pintarEstadoRecordatorioMedidas();
 }
 
 function leerMedidas() {
@@ -2048,6 +2421,8 @@ function guardarMedidas() {
   campos.forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   cancelarEdicionMedida();
   cargarMedidas();
+  pintarEstadoRecordatorioMedidas();
+  renderizarBannerMedidas();
 }
 
 function cargarMedidas() {
@@ -2126,7 +2501,7 @@ function abrirConfigAudio() {
   navPush();
   ocultarTodas();
   document.getElementById("pantalla-audio").classList.remove("oculto");
-  actualizarNombreAudio(audioManager.nombrePersonalizado || 'Beep (predeterminado)');
+  refrescarListaSonidos();
 }
 window.abrirConfigAudio = abrirConfigAudio;
 
@@ -2265,9 +2640,100 @@ function abrirGuiaTempo() {
   cerrarSidebar();
   navPush();
   ocultarTodas();
+  // Métodos de progresión/intensidad/descanso y guía de nutrición: se dibujan desde sus módulos
+  const din = document.getElementById("guia-dinamica");
+  if (din) din.innerHTML = htmlGuiaMetodos() + htmlGuiaNutricion();
   document.getElementById("pantalla-guia-tempo").classList.remove("oculto");
 }
 window.abrirGuiaTempo = abrirGuiaTempo;
+window.irAGuia = function (id) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+// ── Ranking global ──
+window.abrirRanking = function () {
+  cerrarSidebar();
+  guardarEstadoApp();
+  navPush();
+  ocultarTodas();
+  document.getElementById("pantalla-ranking").classList.remove("oculto");
+  abrirPantallaRanking();
+};
+
+// ── Nutrición ──
+window.abrirNutricion = function () {
+  cerrarSidebar();
+  guardarEstadoApp();
+  navPush();
+  ocultarTodas();
+  document.getElementById("pantalla-nutricion").classList.remove("oculto");
+  renderNutricion();
+};
+
+// ── Mensajes (mínimo de reps) y frases ──
+function _pintarFrasePrueba() {
+  const cont = document.getElementById('frase-prueba');
+  if (!cont) return;
+  const f = fraseAleatoria();
+  cont.innerHTML = f ? `<p class="frase-texto">“${escapeHtml(f.t)}”</p>
+    <p class="frase-autor">— <strong>${escapeHtml(f.a || 'Anónimo')}</strong>${f.o ? `, <em>${escapeHtml(f.o)}</em>` : ''}${f.propia ? '' : ' <span class="frase-adapt">(adaptación)</span>'}</p>` : '<p class="texto-vacio">No hay frases.</p>';
+}
+function _pintarContadorFrases() {
+  const el = document.getElementById('frases-contador');
+  if (!el) return;
+  const propias = leerFrasesPropias().length;
+  el.textContent = `${FRASES.length} frases incluidas + ${propias} tuya${propias !== 1 ? 's' : ''}.`;
+}
+window.abrirMensajes = function () {
+  cerrarSidebar();
+  guardarEstadoApp();
+  navPush();
+  ocultarTodas();
+  document.getElementById("pantalla-mensajes").classList.remove("oculto");
+  let g = '', activoMin = true, propias = '';
+  try { g = localStorage.getItem('msgMinGlobal') || ''; activoMin = localStorage.getItem('msgMinActivo') !== 'false'; propias = localStorage.getItem('frasesPropias') || ''; } catch {}
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('msg-min-global', g);
+  set('frases-propias', propias);
+  const c1 = document.getElementById('msg-min-activo'); if (c1) c1.checked = activoMin;
+  const c2 = document.getElementById('frases-activas'); if (c2) c2.checked = frasesActivas();
+  _pintarFrasePrueba();
+  _pintarContadorFrases();
+};
+function _guardarTexto(clave, valor) {
+  try { if (valor) localStorage.setItem(clave, valor); else localStorage.removeItem(clave); markDirty(); return true; }
+  catch { showToast('No se pudo guardar', 'error'); return false; }
+}
+window.guardarMsgMinGlobal = function () {
+  const txt = (document.getElementById('msg-min-global')?.value || '').split('\n').map(l => l.trim()).filter(Boolean).slice(0, 50).map(l => l.slice(0, 200)).join('\n');
+  if (_guardarTexto('msgMinGlobal', txt)) showToast(txt ? 'Mensajes guardados' : 'Sin mensajes propios: se usará el mensaje por defecto', 'success');
+};
+window.toggleMsgMin = function (activo) {
+  try { localStorage.setItem('msgMinActivo', activo ? 'true' : 'false'); markDirty(); } catch {}
+  showToast(activo ? 'Avisos de mínimo activados' : 'Avisos de mínimo desactivados', 'info', 2000);
+};
+window.toggleFrases = function (activo) {
+  try { localStorage.setItem('frasesActivas', activo ? 'true' : 'false'); markDirty(); } catch {}
+  showToast(activo ? 'Se mostrará una frase al finalizar' : 'No se mostrarán frases', 'info', 2000);
+};
+window.otraFrase = _pintarFrasePrueba;
+window.guardarFrasesPropias = function () {
+  const txt = (document.getElementById('frases-propias')?.value || '').split('\n').map(l => l.trim()).filter(Boolean).slice(0, 200).map(l => l.slice(0, 300)).join('\n');
+  if (_guardarTexto('frasesPropias', txt)) { _pintarContadorFrases(); showToast('Frases guardadas', 'success'); }
+};
+
+// ── Cuadros de repeticiones cumplidas: color del tema (por defecto) o verde clásico ──
+function aplicarSerieVerde() {
+  let v = false;
+  try { v = localStorage.getItem('serieColorTema') === 'verde'; } catch {}
+  document.documentElement.classList.toggle('serie-verde', v);
+  const chk = document.getElementById('toggle-serie-verde'); if (chk) chk.checked = v;
+}
+window.toggleSerieVerde = function (verde) {
+  try { localStorage.setItem('serieColorTema', verde ? 'verde' : 'tema'); markDirty(); } catch {}
+  aplicarSerieVerde();
+};
 
 async function hayConexionReal() {
   if (!navigator.onLine) return false;
@@ -2613,6 +3079,91 @@ window.iniciarDeload = function () {
 };
 
 function renderizarBannerDeload() {
+  _renderizarBannerDeloadInterno();
+  renderizarBannerMedidas();
+}
+
+// ── Recordatorio para medirse (mejora 14) ─────────────────
+// 'recordatorioMedidas' = { activo, semanas, base, posponer }
+//   base    = fecha desde la que se cuenta (se fija al activarlo o al saltar un ciclo)
+//   posponer = no mostrar el aviso hasta esa fecha ("recordar en 3 días")
+// Se cuenta desde lo MÁS RECIENTE entre la última medida guardada y "base". Solo avisa al abrir la app/menú.
+function leerRecordatorioMedidas() {
+  let r = {};
+  try { r = JSON.parse(localStorage.getItem('recordatorioMedidas') || '{}') || {}; } catch {}
+  const semanas = Math.min(26, Math.max(1, parseInt(r.semanas, 10) || 4));
+  return { activo: r.activo === true, semanas, base: r.base || null, posponer: r.posponer || null };
+}
+function escribirRecordatorioMedidas(r) {
+  try { localStorage.setItem('recordatorioMedidas', JSON.stringify(r)); markDirty(); return true; }
+  catch { showToast('No se pudo guardar', 'error'); return false; }
+}
+// { vencido, dias (desde la referencia), fechaLimite } | null si está desactivado
+function estadoRecordatorioMedidas() {
+  const r = leerRecordatorioMedidas();
+  if (!r.activo) return null;
+  const ms = [r.base, ...leerMedidas().map(m => m.fecha)].map(f => Date.parse(f)).filter(Number.isFinite);
+  const ref = ms.length ? Math.max(...ms) : null;
+  if (ref === null) return null;
+  const limite = ref + r.semanas * 7 * 86400000;
+  const pospuesto = r.posponer && Date.parse(r.posponer) > Date.now();
+  return { vencido: Date.now() >= limite && !pospuesto, dias: Math.floor((Date.now() - ref) / 86400000), limite, semanas: r.semanas, hayMedidas: leerMedidas().length > 0 };
+}
+function pintarEstadoRecordatorioMedidas() {
+  const r = leerRecordatorioMedidas();
+  const chk = document.getElementById('recordatorio-medidas-activo');
+  const num = document.getElementById('recordatorio-medidas-semanas');
+  const est = document.getElementById('recordatorio-medidas-estado');
+  if (chk) chk.checked = r.activo;
+  if (num && document.activeElement !== num) num.value = r.semanas;
+  if (!est) return;
+  const e = estadoRecordatorioMedidas();
+  est.textContent = !e ? 'Desactivado.'
+    : e.vencido ? `Toca medirse: han pasado ${e.dias} días desde la última referencia.`
+    : `Próximo aviso: ${new Date(e.limite).toLocaleDateString('es-ES')}.`;
+}
+window.guardarRecordatorioMedidas = function () {
+  const antes = leerRecordatorioMedidas();
+  const activo = !!document.getElementById('recordatorio-medidas-activo')?.checked;
+  const bruto = Number(document.getElementById('recordatorio-medidas-semanas')?.value);
+  const semanas = Number.isFinite(bruto) ? Math.min(26, Math.max(1, Math.round(bruto))) : antes.semanas;
+  // Al activarlo (o cambiar de desactivado a activado) se empieza a contar desde hoy
+  const base = (activo && !antes.activo) ? new Date().toISOString() : antes.base;
+  if (escribirRecordatorioMedidas({ activo, semanas, base, posponer: null })) {
+    pintarEstadoRecordatorioMedidas();
+    renderizarBannerMedidas();
+  }
+};
+window.recordatorioMedirAhora = function () { abrirMedidas(); };
+window.recordatorioPosponer = function () {
+  const r = leerRecordatorioMedidas();
+  r.posponer = new Date(Date.now() + 3 * 86400000).toISOString();
+  if (escribirRecordatorioMedidas(r)) { renderizarBannerMedidas(); showToast('Te lo recordaré en 3 días', 'info'); }
+};
+window.recordatorioSaltar = function () {
+  const r = leerRecordatorioMedidas();
+  r.base = new Date().toISOString(); r.posponer = null;
+  if (escribirRecordatorioMedidas(r)) { renderizarBannerMedidas(); showToast(`Saltado: el próximo aviso será en ${r.semanas} semana${r.semanas !== 1 ? 's' : ''}`, 'info'); }
+};
+function renderizarBannerMedidas() {
+  const cont = document.getElementById('medidas-banner');
+  if (!cont) return;
+  const e = estadoRecordatorioMedidas();
+  if (!e || !e.vencido) { cont.innerHTML = ''; return; }
+  const semTxt = Math.max(1, Math.round(e.dias / 7));
+  cont.innerHTML = `
+    <div class="banner-medidas">
+      <p>📏 <strong>Toca medirse.</strong> ${e.hayMedidas ? `Han pasado unas ${semTxt} semana${semTxt !== 1 ? 's' : ''} desde tu última referencia` : `Elegiste medirte cada ${e.semanas} semana${e.semanas !== 1 ? 's' : ''}`}: mide y compara para ver tu progreso real.</p>
+      <div class="modal-btns">
+        <button class="btn-primary" onclick="recordatorioMedirAhora()">📏 Medirme ahora</button>
+        <button class="btn-secondary" onclick="recordatorioPosponer()">En 3 días</button>
+        <button class="btn-secondary" onclick="recordatorioSaltar()">Saltar</button>
+      </div>
+    </div>`;
+}
+window.renderizarBannerMedidas = renderizarBannerMedidas;
+
+function _renderizarBannerDeloadInterno() {
   verificarFinDeload();
   const banner = document.getElementById("deload-banner");
   if (!banner) return;
@@ -3055,6 +3606,30 @@ function htmlAsistencia(fechasUnicas, hoy) {
   </div>`;
 }
 
+let _recordsMostrados = [];
+
+// Borrar récords = fijar una fecha de corte. NO se toca el historial ni las gráficas: solo deja de contar lo anterior.
+window.borrarRecords = function () {
+  showConfirm('¿Borrar TODOS los récords de peso?\n\nTu historial de sesiones y las gráficas no se tocan. Los récords se volverán a formar con tus próximas sesiones.', () => {
+    try { localStorage.setItem('recordsCorte', JSON.stringify({ todos: new Date().toISOString(), ej: {} })); markDirty(); }
+    catch { showToast('No se pudo guardar', 'error'); return; }
+    showToast('Récords borrados', 'success');
+    renderEstadisticas();
+  }, null, 'Borrar récords');
+};
+window.borrarRecordEj = function (i) {
+  const nombre = _recordsMostrados[i];
+  if (!nombre) return;
+  showConfirm(`¿Borrar el récord de "${nombre}"?\n\nEl historial no se toca.`, () => {
+    const c = leerCorteRecords();
+    c.ej = (c.ej && typeof c.ej === 'object') ? c.ej : {};
+    c.ej[nombre] = new Date().toISOString();
+    try { localStorage.setItem('recordsCorte', JSON.stringify(c)); markDirty(); }
+    catch { showToast('No se pudo guardar', 'error'); return; }
+    renderEstadisticas();
+  }, null, 'Borrar');
+};
+
 function renderEstadisticas() {
   const cont = document.getElementById('stats-contenido');
   if (!cont) return;
@@ -3094,7 +3669,7 @@ function renderEstadisticas() {
   const totalSesiones = historial.length;
   let totalVolumen = 0;
   historial.forEach(s => s.ejercicios.forEach(ej => {
-    const repsTotal = ej.reps.filter(r => r !== '').reduce((a, r) => a + Number(r), 0);
+    const repsTotal = repsContables(ej).filter(r => r !== '').reduce((a, r) => a + Number(r), 0);   // sin bajadas ni serie viuda (otro peso)
     totalVolumen += (ej.peso || 0) * repsTotal;
   }));
 
@@ -3102,6 +3677,7 @@ function renderEstadisticas() {
   historial.forEach(s => {
     s.ejercicios.forEach(ej => {
       if (!ej.peso || ej.peso <= 0 || s.deload || !ejercicioHecho(ej)) return;
+      if (Date.parse(s.fecha) <= corteRecord(ej.nombre)) return;   // récords borrados: solo cuentan las sesiones posteriores
       if (!records[ej.nombre] || ej.peso > records[ej.nombre].peso) {
         records[ej.nombre] = { peso: ej.peso, fecha: s.fecha };
       }
@@ -3110,6 +3686,7 @@ function renderEstadisticas() {
   const topRecords = Object.entries(records)
     .sort((a, b) => b[1].peso - a[1].peso)
     .slice(0, 8);
+  _recordsMostrados = topRecords.map(([n]) => n);
 
   const diasCount = {};
   historial.forEach(s => { diasCount[s.dia] = (diasCount[s.dia] || 0) + 1; });
@@ -3163,15 +3740,19 @@ function renderEstadisticas() {
 
     ${topRecords.length > 0 ? `
     <div class="stats-seccion">
-      <h3>🏆 Récords de peso</h3>
+      <div class="stats-seccion-cab">
+        <h3>🏆 Récords de peso</h3>
+        <button class="btn-secondary" onclick="borrarRecords()" title="Borra solo los récords; el historial y las gráficas no cambian">🗑️ Borrar récords</button>
+      </div>
       <div class="records-list">
-        ${topRecords.map(([nombre, data]) => `
+        ${topRecords.map(([nombre, data], i) => `
           <div class="record-item">
             <span class="record-nombre">${escapeHtml(nombre)}</span>
             <div style="text-align:right">
               <span class="record-val">${data.peso} kg</span><br>
               <span class="record-fecha">${new Date(data.fecha).toLocaleDateString('es-ES')}</span>
             </div>
+            <button class="record-quitar" onclick="borrarRecordEj(${i})" aria-label="Borrar el récord de ${escapeHtml(nombre)}" title="Borrar solo este récord">✕</button>
           </div>`).join('')}
       </div>
     </div>` : ''}
@@ -3249,7 +3830,7 @@ window.renderGraficaProgreso = function () {
   const datos = datosEj
     .map(s => {
       const ej = s.ejercicios.find(e => e.nombre === nombre && ejercicioHecho(e));
-      const repsLista = (ej.reps || []).filter(r => r !== '').map(Number);
+      const repsLista = repsContables(ej).filter(r => r !== '').map(Number);   // sin bajadas ni serie viuda
       const repsTotal = repsLista.reduce((a, r) => a + r, 0);
       const mejor1RM = Math.max(0, ...repsLista.map(r => calcular1RM(ej.peso || 0, r) || 0));
       return {
@@ -3602,6 +4183,7 @@ if ('serviceWorker' in navigator) {
 // y pedir al SW que compruebe la caché
 window.addEventListener('online', () => {
   sincronizarSiHaceFalta();
+  setTimeout(actualizarRankingSilencioso, 2500);
   if (navigator.serviceWorker?.controller) {
     navigator.serviceWorker.controller.postMessage({ type: 'HEALTH_CHECK' });
   }
@@ -3715,6 +4297,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Paneles laterales y diálogos: cada uno que se abre añade su entrada de historial ("atrás" lo cierra)
   navVigilarCapas(Object.entries(CAPAS).map(([id, d]) => ({ id, abierta: d.abierta })));
 
+  aplicarSerieVerde();
   inicializarRutinaBase();
   initOfflineBanner();
   initEtiquetas();
@@ -3834,5 +4417,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Subir cambios que quedaron pendientes (sin pisar datos más nuevos de otro dispositivo)
   setTimeout(() => sincronizarSiHaceFalta(), 4000);
+  setTimeout(actualizarRankingSilencioso, 6000);
   setTimeout(recordarBackupSiHaceFalta, 9000);
 });

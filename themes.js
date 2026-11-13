@@ -13,7 +13,8 @@ export const TEMAS = {
       "--border": "#333333",
       "--success": "#4caf50",
       "--warning": "#ff9800",
-      "--danger": "#f44336"
+      "--danger": "#f44336",
+      "--serie-ok": "#4a9eff"
     }
   },
   claro: {
@@ -27,7 +28,8 @@ export const TEMAS = {
       "--border": "#dddddd",
       "--success": "#4caf50",
       "--warning": "#ff9800",
-      "--danger": "#f44336"
+      "--danger": "#f44336",
+      "--serie-ok": "#2196f3"
     }
   },
   morado: {
@@ -97,7 +99,8 @@ export const TEMAS = {
       "--border": "#1a1a1a",
       "--success": "#00e676",
       "--warning": "#ffea00",
-      "--danger": "#ff1744"
+      "--danger": "#ff1744",
+      "--serie-ok": "#00e5ff"
     }
   },
   naranja: {
@@ -125,7 +128,8 @@ export const TEMAS = {
       "--border": "#3a3a3c",
       "--success": "#30d158",
       "--warning": "#ffd60a",
-      "--danger": "#ff453a"
+      "--danger": "#ff453a",
+      "--serie-ok": "#aeaeb2"
     }
   },
   cyan: {
@@ -216,6 +220,10 @@ export function aplicarTema(idTema, { sincronizar = false } = {}) {
   const v = tema.variables;
   root.style.setProperty("--on-accent",  textoSobre(v["--accent"]));
   root.style.setProperty("--on-success", textoSobre(v["--success"]));
+  // Color de la casilla de repeticiones cumplida: el del tema (si no define uno propio, el de éxito)
+  const serieOk = v["--serie-ok"] || v["--success"];
+  root.style.setProperty("--serie-ok", serieOk);
+  root.style.setProperty("--on-serie-ok", textoSobre(serieOk));
   root.style.setProperty("--on-danger",  textoSobre(v["--danger"]));
   root.style.setProperty("--on-warning", textoSobre(v["--warning"]));
   // Variantes para usar el color como TEXTO (en temas claros u oscuros con poco contraste)

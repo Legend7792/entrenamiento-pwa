@@ -1,4 +1,5 @@
-// rutinaUsuario.js — v99
+// rutinaUsuario.js — v105
+import { PROGRESION, metodoIntPorId } from "./metodos.js";
 export const RUTINA_BASE_ID = "rutina_base";
 
 const RUTINA_BASE_ORIGINAL = {
@@ -104,12 +105,37 @@ function guardarRutinas(rutinas) {
   if (typeof window !== 'undefined' && window.markDirty) window.markDirty();
 }
 
+// Campos opcionales de un ejercicio (v105): calentamiento, notas propias, subzona, métodos y alternancia.
+// Solo se copian si tienen valor válido; así una rutina antigua queda igual que estaba.
+function numParam(v, min, max) { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : undefined; }
+export function normalizarCamposExtra(e, out) {
+  if (e.calentamiento === true) out.calentamiento = true;
+  if (typeof e.notasEj === 'string' && e.notasEj.trim()) out.notasEj = e.notasEj.trim().slice(0, 200);
+  if (typeof e.subzona === 'string' && e.subzona) out.subzona = e.subzona.slice(0, 30);
+  if (typeof e.alt === 'string' && e.alt.trim()) out.alt = e.alt.trim().slice(0, 40);
+  if (typeof e.msgMin === 'string' && e.msgMin.trim()) out.msgMin = e.msgMin.trim().slice(0, 160);
+  if (e.metodoProg && typeof e.metodoProg === 'object' && PROGRESION.some(p => p.id === e.metodoProg.id)) {
+    const mp = { id: e.metodoProg.id };
+    const em = numParam(e.metodoProg.params?.extraMax, 0, 5);
+    if (mp.id === 'triple' && em !== undefined) mp.params = { extraMax: em };
+    out.metodoProg = mp;
+  }
+  const mi = e.metodoInt && typeof e.metodoInt === 'object' ? metodoIntPorId(e.metodoInt.id) : null;
+  if (mi) {
+    const params = {};
+    mi.params.forEach(par => { const v = numParam(e.metodoInt.params?.[par.id], par.min, par.max); if (v !== undefined) params[par.id] = v; });
+    out.metodoInt = { id: mi.id, params };
+  }
+  return out;
+}
+
 // Normaliza una rutina importada: garantiza estructura mínima válida y números sanos
 export function normalizarRutina(r) {
   if (!r || typeof r !== 'object' || typeof r.nombre !== 'string' || !r.nombre.trim() || !Array.isArray(r.dias)) return null;
   const num = (v, d, min = 0) => { const n = Number(v); return Number.isFinite(n) && n >= min ? n : d; };
   const out = { nombre: r.nombre.trim().slice(0, 80), dias: [] };
   if (r.tieneDeload === true) out.tieneDeload = true;
+  if (typeof r.metodoProg === 'string' && PROGRESION.some(p => p.id === r.metodoProg)) out.metodoProg = r.metodoProg;
   const diasUsados = new Set();   // dos días con el mismo nombre compartirían pesos, notas e historial
   for (const d of r.dias) {
     if (!d || typeof d !== 'object') continue;
@@ -131,7 +157,7 @@ export function normalizarRutina(r) {
       let nombreEj = e.nombre.trim().slice(0, 74), n = 1, candidato = nombreEj;
       while (usados.has(candidato.toLowerCase())) candidato = `${nombreEj} (${++n})`;
       usados.add(candidato.toLowerCase());
-      dia.ejercicios.push({
+      dia.ejercicios.push(normalizarCamposExtra(e, {
         nombre: candidato,
         peso: num(e.peso, 0),
         series: Math.max(1, Math.round(num(e.series, 3, 1))),
@@ -141,7 +167,7 @@ export function normalizarRutina(r) {
         notas: String(e.notas || '').slice(0, 500),
         alFallo: e.alFallo === true,
         musculo: typeof e.musculo === 'string' ? e.musculo : ''
-      });
+      }));
     }
     out.dias.push(dia);
   }
@@ -312,4 +338,25 @@ export function duplicarDiaRutina(rutinaId, diaIndex) {
   rutina.dias.splice(diaIndex + 1, 0, copia);
   saveRutinaUsuario(rutina, rutinaId);
   return { indice: diaIndex + 1, nombre: copia.nombre, nombreOrigen: origen.nombre, ejercicios: (copia.ejercicios || []).map(e => e.nombre) };
+}
+
+
+// Copia días completos de una rutina a otra (copia profunda). `indices` = posiciones de los días en la rutina de origen.
+// Devuelve [{ nombreOrigen, nombre, ejercicios: [nombres] }] (el nombre puede cambiar para no repetir uno ya existente) o null.
+export function copiarDiasEntreRutinas(origenId, indices, destinoId) {
+  const origen = loadRutinaUsuario(origenId);
+  const destino = loadRutinaUsuario(destinoId);
+  if (!origen?.dias || !destino?.dias || !Array.isArray(indices) || !indices.length) return null;
+  const hechos = [];
+  indices.forEach(i => {
+    const d = origen.dias[i];
+    if (!d) return;
+    const copia = JSON.parse(JSON.stringify(d));
+    if (nombreDiaRepetido(destino.dias, copia.nombre)) copia.nombre = nombreCopiaDia(destino.dias, copia.nombre);
+    destino.dias.push(copia);
+    hechos.push({ nombreOrigen: d.nombre, nombre: copia.nombre, ejercicios: (copia.ejercicios || []).map(e => e.nombre) });
+  });
+  if (!hechos.length) return null;
+  saveRutinaUsuario(destino, destinoId);
+  return hechos;
 }

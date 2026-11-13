@@ -115,6 +115,14 @@
     </label>
   </div>
 
+  <div class="sidebar-section">
+    <label class="sidebar-label">🟩 Cuadros de repeticiones</label>
+    <label class="check-texto-grande">
+      <input type="checkbox" id="toggle-serie-verde" onchange="toggleSerieVerde(this.checked)">
+      <span>Series cumplidas en verde clásico (si no, usan el color del tema)</span>
+    </label>
+  </div>
+
   <div class="sidebar-section sidebar-btns">
     <button onclick="toggleSidebar(); abrirEditorRutinas()">✏️ Editar rutinas</button>
     <button onclick="toggleSidebar(); abrirPantallaImport()">🤖 Importar con IA</button>
@@ -122,6 +130,9 @@
     <button onclick="toggleSidebar(); abrirEstadisticas()">🏆 Estadísticas</button>
     <button onclick="toggleSidebar(); abrirProgreso()">📈 Progreso ejercicios</button>
     <button onclick="toggleSidebar(); abrirMedidas()">📏 Medidas corporales</button>
+    <button onclick="toggleSidebar(); abrirNutricion()">🍽️ Nutrición (calorías y macros)</button>
+    <button onclick="toggleSidebar(); abrirRanking()">🏅 Ranking y nivel</button>
+    <button onclick="toggleSidebar(); abrirMensajes()">💬 Mensajes y frases</button>
     <button onclick="toggleSidebar(); abrirConfigAudio()">🔔 Sonido temporizador</button>
     <button onclick="toggleSidebar(); abrirGuiaTempo()">📖 Guía y Conceptos</button>
     <button onclick="toggleSidebar(); abrirNotasProgresion()">📋 Notas de progresión</button>
@@ -234,6 +245,7 @@
   </div>
 
   <div id="deload-banner"></div>
+  <div id="medidas-banner"></div>
   <div id="botones-dias" class="botones-dias"></div>
 
   <div class="menu-footer">
@@ -375,6 +387,20 @@
     <button id="btn-cancelar-edicion-medida" onclick="cancelarEdicionMedida()" class="btn-secondary oculto">Cancelar corrección</button>
   </div>
 
+  <div class="medidas-form" id="medidas-recordatorio">
+    <h3>🔔 Recordatorio para medirme</h3>
+    <label class="audio-toggle-label">
+      <input type="checkbox" id="recordatorio-medidas-activo" onchange="guardarRecordatorioMedidas()">
+      <span class="audio-toggle-text">Recomendarme medirme cada</span>
+    </label>
+    <div class="recordatorio-fila">
+      <input id="recordatorio-medidas-semanas" type="number" inputmode="numeric" min="1" max="26" step="1" value="4" aria-label="Semanas entre mediciones" onchange="guardarRecordatorioMedidas()">
+      <span>semanas</span>
+    </div>
+    <p class="audio-toggle-hint" id="recordatorio-medidas-estado"></p>
+    <p class="audio-toggle-hint">El aviso aparece en el menú al abrir la app. Una app web no puede avisarte sola con la app cerrada sin un servidor.</p>
+  </div>
+
   <h3>Historial</h3>
   <div id="lista-medidas"></div>
   <button onclick="borrarTodoHistorialMedidas()" class="btn-danger-sm">🗑️ Borrar historial medidas</button>
@@ -392,6 +418,11 @@
   <div class="audio-card">
     <p class="audio-label">Sonido actual:</p>
     <p id="nombre-audio-display" class="audio-nombre">Beep (predeterminado)</p>
+  </div>
+
+  <div class="audio-card">
+    <p class="audio-label">Sonidos integrados (se generan en el dispositivo, sin descargas):</p>
+    <div id="lista-sonidos" class="lista-sonidos"></div>
   </div>
 
   <div class="audio-acciones">
@@ -500,6 +531,10 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
   <div class="pantalla-header">
     <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
     <h2>📖 Guía de Entrenamiento</h2>
+  </div>
+  <div class="guia-atajos">
+    <button class="btn-secondary" onclick="irAGuia('guia-metodos')">🧰 Métodos</button>
+    <button class="btn-secondary" onclick="irAGuia('guia-nutricion')">🍽️ Nutrición</button>
   </div>
 
   <!-- TEMPO -->
@@ -669,6 +704,9 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
     </div>
   </div>
 
+  <!-- Métodos y nutrición: se dibujan desde metodos.js y nutricion.js -->
+  <div id="guia-dinamica"></div>
+
   <button onclick="abrirNotasProgresion()" class="btn-secondary" style="margin-top:4px;">📋 Mis notas de progresión por rutina →</button>
   <button onclick="volverMenu()" class="btn-secondary" style="margin-top:8px;">← Volver al menú</button>
 </section>
@@ -682,6 +720,67 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
     <h2>📋 Progresión por rutina</h2>
   </div>
   <div id="progresion-rutina-contenido"></div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA NUTRICIÓN
+══════════════════════════════════════ -->
+<section id="pantalla-nutricion" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
+    <h2>🍽️ Nutrición</h2>
+  </div>
+  <div id="nutricion-contenido"></div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA RANKING
+══════════════════════════════════════ -->
+<section id="pantalla-ranking" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
+    <h2>🏅 Ranking y nivel</h2>
+  </div>
+  <div id="ranking-contenido"></div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PANTALLA MENSAJES Y FRASES
+══════════════════════════════════════ -->
+<section id="pantalla-mensajes" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
+    <h2>💬 Mensajes y frases</h2>
+  </div>
+
+  <div class="audio-card">
+    <h3>⚠️ Si no llegas al mínimo de reps</h3>
+    <p class="audio-toggle-hint" style="margin-left:0;">Cada vez que anotes una serie por debajo del mínimo del ejercicio, la app mostrará un mensaje. Escribe uno por línea y se elegirá uno al azar. Si lo dejas vacío usa un mensaje por defecto. Cada ejercicio puede tener además el suyo propio (en el editor de rutinas), que tiene prioridad.</p>
+    <textarea id="msg-min-global" rows="4" maxlength="600" aria-label="Mensajes cuando no llegas al mínimo de repeticiones" placeholder="Ej: ¡Más fuerte, esa no cuenta!"></textarea>
+    <div class="modal-btns">
+      <button onclick="guardarMsgMinGlobal()" class="btn-primary">💾 Guardar</button>
+      <button onclick="probarMsgMin()" class="btn-secondary">▶️ Probar</button>
+    </div>
+    <label class="audio-toggle-label">
+      <input type="checkbox" id="msg-min-activo" onchange="toggleMsgMin(this.checked)">
+      <span class="audio-toggle-text">Mostrar estos mensajes</span>
+    </label>
+  </div>
+
+  <div class="audio-card">
+    <h3>🏛️ Frases al terminar el entrenamiento</h3>
+    <p class="audio-toggle-hint" style="margin-left:0;">Se muestra una frase al azar arriba de la pantalla de resumen. Incluye frases de Marco Aurelio, Séneca y Epicteto (adaptaciones libres al español de obras de dominio público). Puedes añadir las tuyas.</p>
+    <label class="audio-toggle-label">
+      <input type="checkbox" id="frases-activas" onchange="toggleFrases(this.checked)">
+      <span class="audio-toggle-text">Mostrar una frase al finalizar</span>
+    </label>
+    <div id="frase-prueba" class="frase-card" style="margin-top:10px;"></div>
+    <button onclick="otraFrase()" class="btn-secondary">🔀 Ver otra frase</button>
+    <label class="form-label" for="frases-propias" style="margin-top:12px;">Mis frases (una por línea; opcional: «texto — autor»)</label>
+    <textarea id="frases-propias" rows="5" maxlength="6000" placeholder="La constancia vence al talento — Yo"></textarea>
+    <button onclick="guardarFrasesPropias()" class="btn-primary">💾 Guardar mis frases</button>
+    <p id="frases-contador" class="audio-toggle-hint" style="margin-left:0;"></p>
+  </div>
 </section>
 
 <!-- ══════════════════════════════════════

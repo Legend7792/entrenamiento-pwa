@@ -4,12 +4,15 @@ import {
   saveRutinaUsuario, loadRutinaUsuario, getAllRutinasUsuario,
   deleteRutinaUsuario, generarIdRutina, RUTINA_BASE_ID,
   restaurarRutinaBase, reordenarEjercicioRutina, reordenarDiaRutina, duplicarDiaRutina,
-  nombreDiaRepetido, duplicarRutina, exportarRutinaJSON, importarRutinaDesdeJSON, normalizarRutina
+  nombreDiaRepetido, duplicarRutina, exportarRutinaJSON, importarRutinaDesdeJSON, normalizarRutina,
+  copiarDiasEntreRutinas
 } from "./rutinaUsuario.js";
 import { habilitarOrdenar } from "./ordenar.js";
 import { PLANTILLAS } from "./plantillas.js";
 import { renderizarSelectorRutinas } from "./selectorRutinas.js";
 import { navPush, navLimpiar, navAtras, navCerrar, navTope } from "./nav.js";
+import { opcionesMusculo, opcionesSubzona } from "./musculos.js";
+import { PROGRESION, INTENSIDAD, metodoIntPorId, nombreProg } from "./metodos.js";
 
 // Escapado seguro para texto y atributos (incluye comillas)
 const esc = escapeHtml;
@@ -39,11 +42,7 @@ function indiceTrasMover(i, desde, hasta) {
 
 window.abrirEditorRutinas = function () {
   navPush();
-  ['pantalla-auth','pantalla-perfil','pantalla-dia','pantalla-historial',
-   'pantalla-detalle','pantalla-medidas','pantalla-audio','pantalla-resumen',
-   'pantalla-ai-import','pantalla-guia-tempo','pantalla-estadisticas',
-   'pantalla-progreso','pantalla-progresion-rutina','menu'
-  ].forEach(id => document.getElementById(id)?.classList.add('oculto'));
+  document.querySelectorAll('section[id^="pantalla-"], #menu').forEach(el => el.classList.add('oculto'));
   document.getElementById("pantalla-editor").classList.remove("oculto");
   renderListaRutinas();
 };
@@ -191,6 +190,14 @@ function renderEditorRutina() {
     </small>
   </div>
 
+  <div class="config-rutina-deload">
+    <label class="form-label" for="rutina-metodo-prog">📈 Método de progresión de la rutina</label>
+    <select id="rutina-metodo-prog" onchange="cambiarMetodoProgRutina(this.value)">
+      ${PROGRESION.map(p => `<option value="${esc(p.id)}" ${(rutinaEditando.metodoProg||'doble')===p.id?'selected':''}>${esc(p.nombre)}</option>`).join('')}
+    </select>
+    <small class="deload-toggle-hint">${esc(PROGRESION.find(p => p.id === (rutinaEditando.metodoProg||'doble')).resumen)} Cada ejercicio puede usar otro método en sus opciones avanzadas.</small>
+  </div>
+
   <div class="lista-dias">
     ${rutinaEditando.dias.length===0
       ? `<p class="texto-vacio">Sin días. Añade uno abajo.</p>`
@@ -202,7 +209,8 @@ function renderEditorRutina() {
             <button onclick="duplicarDia(${i})" class="btn-secondary" title="Duplicar este día" aria-label="Duplicar el día ${esc(d.nombre)}">📑</button>
             <button class="btn-danger" onclick="borrarDia(${i})" aria-label="Borrar el día ${esc(d.nombre)}">🗑️</button>
           </div></div>`).join('')}
-  </div><button onclick="añadirNuevoDia()">➕ Añadir día</button>`;
+  </div><button onclick="añadirNuevoDia()">➕ Añadir día</button>
+  <button onclick="abrirCopiarDias()" class="btn-secondary">📥 Copiar días de otra rutina</button>`;
   habilitarOrdenar(cont.querySelector('.lista-dias'), { item: '.dia-card', asa: '.asa-orden', alSoltar: alSoltarDia });
 }
 
@@ -225,6 +233,59 @@ window.duplicarDia = function(i) {
   const tarjeta = document.querySelectorAll('.lista-dias .dia-card')[r.indice];
   if (tarjeta) { tarjeta.classList.add('dia-nuevo'); tarjeta.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
   showToast(`Día duplicado: «${r.nombre}»`, 'success');
+};
+
+window.cambiarMetodoProgRutina = function(id) {
+  if (!PROGRESION.some(p => p.id === id)) return;
+  if (id === 'doble') delete rutinaEditando.metodoProg; else rutinaEditando.metodoProg = id;
+  saveRutinaUsuario(rutinaEditando, rutinaEditandoId);
+  dispararCambioRutina();
+  renderEditorRutina();
+  showToast(`Progresión de la rutina: ${nombreProg(id)}`, 'success');
+};
+
+// ── Copiar días completos desde otra rutina ──
+let _copiarOrigenId = null;
+window.abrirCopiarDias = function() {
+  const otras = Object.entries(getAllRutinasUsuario()).filter(([id, r]) => id !== rutinaEditandoId && r?.dias?.length);
+  if (!otras.length) { showToast('No hay otra rutina con días para copiar','info'); return; }
+  navPush({ pantalla: 'editor', nivel: 'dia' });
+  _copiarOrigenId = otras[0][0];
+  renderCopiarDias();
+};
+
+function renderCopiarDias() {
+  const otras = Object.entries(getAllRutinasUsuario()).filter(([id, r]) => id !== rutinaEditandoId && r?.dias?.length);
+  const origen = loadRutinaUsuario(_copiarOrigenId);
+  const cont = document.getElementById('contenido-editor');
+  cont.innerHTML = `<div class="gestor-rutinas"><h3>📥 Copiar días a «${esc(rutinaEditando.nombre)}»</h3>
+    <label class="form-label" for="copiar-origen">Copiar desde la rutina</label>
+    <select id="copiar-origen" onchange="cambiarOrigenCopia(this.value)">
+      ${otras.map(([id, r]) => `<option value="${esc(id)}" ${id === _copiarOrigenId ? 'selected' : ''}>${esc(r.nombre)}</option>`).join('')}
+    </select>
+    <p class="import-hint">Se copian los ejercicios, tempos, notas, métodos y descansos, junto con los pesos de trabajo actuales. Si el nombre del día ya existe aquí, la copia se llamará «… (copia)».</p>
+    <div class="lista-rutinas">
+      ${origen.dias.map((d, i) => `<label class="rutina-card" style="cursor:pointer;">
+        <div class="rutina-card-info"><h4><input type="checkbox" class="copiar-dia-check" value="${i}"> 📅 ${esc(d.nombre)}</h4><p>${d.ejercicios.length} ejercicio(s)</p></div></label>`).join('')}
+    </div>
+    <div class="botones-editor-rutinas">
+      <button onclick="confirmarCopiarDias()">📥 Copiar los días marcados</button>
+      <button onclick="volverListaDias()" class="btn-secondary">← Cancelar</button>
+    </div></div>`;
+}
+window.cambiarOrigenCopia = function(id) { _copiarOrigenId = id; renderCopiarDias(); };
+window.confirmarCopiarDias = function() {
+  const indices = [...document.querySelectorAll('.copiar-dia-check:checked')].map(c => Number(c.value));
+  if (!indices.length) { showToast('Marca al menos un día','warning'); return; }
+  const origen = loadRutinaUsuario(_copiarOrigenId);
+  const hechos = copiarDiasEntreRutinas(_copiarOrigenId, indices, rutinaEditandoId);
+  if (!hechos) { showToast('No se pudo copiar','error'); return; }
+  // Pesos, descansos e incrementos de trabajo van por nombre de día y de ejercicio: se llevan a la rutina de destino
+  hechos.forEach((h, k) => window.copiarConfigEntreRutinas?.(_copiarOrigenId, h.nombreOrigen, rutinaEditandoId, h.nombre, h.ejercicios));
+  rutinaEditando = loadRutinaUsuario(rutinaEditandoId);
+  dispararCambioRutina();
+  showToast(`${hechos.length} día(s) copiado(s) desde «${origen.nombre}»`,'success');
+  volverListaDias();
 };
 
 window.cambiarNombreRutina = function() {
@@ -275,13 +336,143 @@ function descansoInteligente(repsMax) {
 }
 window.descansoInteligente = descansoInteligente;
 
+
+// ─────────────────────────────────────────────────
+// CAMPOS AVANZADOS DE UN EJERCICIO (v105)
+// ids: edición → edit-<campo>-<idx> · alta → ej-<campo>   (campo = letras minúsculas, ver capturarCampos)
+// ─────────────────────────────────────────────────
+const idc = (modo, campo, idx) => modo === 'edit' ? `edit-${campo}-${idx}` : `ej-${campo}`;
+
+function paramsIntHTML(modo, idx, metodoId, valores = {}) {
+  const m = metodoIntPorId(metodoId);
+  if (!m || !m.params.length) return '';
+  const campos = ['mintuno', 'mintdos'];
+  return `<div class="metodo-param">${m.params.map((par, i) => `
+    <div class="form-col"><label class="form-label" for="${idc(modo, campos[i], idx)}">${esc(par.etiqueta)}</label>
+      <input id="${idc(modo, campos[i], idx)}" type="number" inputmode="numeric" min="${par.min}" max="${par.max}" value="${esc(valores[par.id] ?? par.defecto)}"></div>`).join('')}</div>`;
+}
+
+function tieneAvanzado(ej) {
+  return !!(ej.calentamiento || ej.notasEj || ej.subzona || ej.alt || ej.msgMin || ej.metodoProg || ej.metodoInt);
+}
+
+function bloqueMusculoHTML(modo, idx, ej) {
+  return `<div class="form-row">
+    <div class="form-col"><label class="form-label" for="${idc(modo, 'musculo', idx)}">Grupo muscular</label>
+      <select id="${idc(modo, 'musculo', idx)}" onchange="actualizarSubzonas('${modo}', ${idx})">${opcionesMusculo(ej.musculo || '', esc)}</select></div>
+    <div class="form-col"><label class="form-label" for="${idc(modo, 'subzona', idx)}">Subzona (opcional)</label>
+      <select id="${idc(modo, 'subzona', idx)}">${opcionesSubzona(ej.musculo || '', ej.subzona || '', esc)}</select></div>
+  </div>`;
+}
+
+function bloqueAvanzadoHTML(modo, idx, ej) {
+  const mp = ej.metodoProg || null;
+  const mi = ej.metodoInt || null;
+  return `<details class="metodos-ej" ${tieneAvanzado(ej) ? 'open' : ''}>
+    <summary>⚙️ Opciones avanzadas del ejercicio</summary>
+    <label class="form-label" for="${idc(modo, 'notasej', idx)}">📝 Nota del ejercicio (se muestra a la derecha, bajo el músculo)</label>
+    <input id="${idc(modo, 'notasej', idx)}" maxlength="200" placeholder="Ej: asiento en el hueco 4, agarre estrecho" value="${esc(ej.notasEj || '')}">
+    <label class="form-label-check"><input type="checkbox" id="${idc(modo, 'cal', idx)}" ${ej.calentamiento ? 'checked' : ''}> 🔥 Mostrar calentamiento sugerido en este ejercicio</label>
+
+    <label class="form-label" for="${idc(modo, 'alt', idx)}">🔄 Alternar con otros ejercicios (nombre del grupo)</label>
+    <input id="${idc(modo, 'alt', idx)}" maxlength="40" placeholder="Ej: Press de pecho" value="${esc(ej.alt || '')}">
+    <small class="import-hint">Los ejercicios del mismo día con el mismo nombre de grupo se turnan: cada sesión aparece solo el que hiciste hace más tiempo (o el que nunca hiciste).</small>
+
+    <label class="form-label" for="${idc(modo, 'mprog', idx)}">📈 Método de progresión</label>
+    <select id="${idc(modo, 'mprog', idx)}" onchange="actualizarParamsProg('${modo}', ${idx})">
+      <option value="">Usar el de la rutina</option>
+      ${PROGRESION.map(p => `<option value="${esc(p.id)}" ${mp?.id === p.id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}
+    </select>
+    <div id="${idc(modo, 'mprogparams', idx)}">${mp?.id === 'triple' ? paramsProgHTML(modo, idx, mp.params?.extraMax) : ''}</div>
+
+    <label class="form-label" for="${idc(modo, 'mint', idx)}">🔥 Método de intensidad</label>
+    <select id="${idc(modo, 'mint', idx)}" onchange="actualizarParamsInt('${modo}', ${idx})">
+      <option value="">Ninguno</option>
+      ${INTENSIDAD.map(m => `<option value="${esc(m.id)}" ${mi?.id === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}
+    </select>
+    <div id="${idc(modo, 'mintparams', idx)}">${mi ? paramsIntHTML(modo, idx, mi.id, mi.params) : ''}</div>
+    <small class="import-hint">Cambia las series y los descansos de este ejercicio al abrir el día. Más información en 📖 Guía → Métodos.</small>
+
+    <label class="form-label" for="${idc(modo, 'msgmin', idx)}">⚠️ Mensaje si no llegas al mínimo de reps (opcional)</label>
+    <input id="${idc(modo, 'msgmin', idx)}" maxlength="160" placeholder="Si lo dejas vacío se usa el mensaje general" value="${esc(ej.msgMin || '')}">
+  </details>`;
+}
+
+function paramsProgHTML(modo, idx, extraMax) {
+  return `<div class="metodo-param"><div class="form-col"><label class="form-label" for="${idc(modo, 'mprogx', idx)}">Series extra máximas</label>
+    <input id="${idc(modo, 'mprogx', idx)}" type="number" inputmode="numeric" min="0" max="5" value="${esc(extraMax ?? 2)}"></div></div>`;
+}
+
+window.actualizarSubzonas = function (modo, idx) {
+  const mus = document.getElementById(idc(modo, 'musculo', idx))?.value || '';
+  const sub = document.getElementById(idc(modo, 'subzona', idx));
+  if (sub) sub.innerHTML = opcionesSubzona(mus, '', esc);
+};
+window.actualizarParamsProg = function (modo, idx) {
+  const id = document.getElementById(idc(modo, 'mprog', idx))?.value;
+  const cont = document.getElementById(idc(modo, 'mprogparams', idx));
+  if (cont) cont.innerHTML = id === 'triple' ? paramsProgHTML(modo, idx, 2) : '';
+};
+window.actualizarParamsInt = function (modo, idx) {
+  const id = document.getElementById(idc(modo, 'mint', idx))?.value;
+  const cont = document.getElementById(idc(modo, 'mintparams', idx));
+  if (cont) cont.innerHTML = id ? paramsIntHTML(modo, idx, id) : '';
+};
+
+// Lee los campos avanzados del formulario. Devuelve { campos } con los valores listos (undefined = quitar) o { error }.
+function leerAvanzado(modo, idx) {
+  const v = campo => document.getElementById(idc(modo, campo, idx));
+  const out = {};
+  const nota = v('notasej')?.value.trim();
+  out.notasEj = nota ? nota.slice(0, 200) : undefined;
+  out.calentamiento = v('cal')?.checked ? true : undefined;
+  const sub = v('subzona')?.value;
+  out.subzona = sub || undefined;
+  const alt = v('alt')?.value.trim();
+  out.alt = alt ? alt.slice(0, 40) : undefined;
+  const msg = v('msgmin')?.value.trim();
+  out.msgMin = msg ? msg.slice(0, 160) : undefined;
+
+  const mp = v('mprog')?.value;
+  if (mp) {
+    out.metodoProg = { id: mp };
+    if (mp === 'triple') {
+      const x = Number(v('mprogx')?.value);
+      if (!Number.isInteger(x) || x < 0 || x > 5) return { error: 'Las series extra máximas deben ser un número entero entre 0 y 5' };
+      out.metodoProg.params = { extraMax: x };
+    }
+  } else out.metodoProg = undefined;
+
+  const mi = v('mint')?.value;
+  if (mi) {
+    const def = metodoIntPorId(mi);
+    const params = {};
+    const campos = ['mintuno', 'mintdos'];
+    for (let i = 0; i < def.params.length; i++) {
+      const par = def.params[i];
+      const n = Number(v(campos[i])?.value);
+      if (!Number.isInteger(n) || n < par.min || n > par.max) return { error: `${par.etiqueta}: debe ser un número entero entre ${par.min} y ${par.max}` };
+      params[par.id] = n;
+    }
+    out.metodoInt = { id: mi, params };
+  } else out.metodoInt = undefined;
+  return { campos: out };
+}
+
+// Aplica los campos leídos sobre un ejercicio (los undefined se eliminan)
+function aplicarAvanzado(ej, campos) {
+  Object.entries(campos).forEach(([k, val]) => { if (val === undefined) delete ej[k]; else ej[k] = val; });
+  return ej;
+}
+
 function formatDescEj(ej) {
   const desc = ej.descanso
     ? `⏱ ${Math.floor(ej.descanso/60)}:${String(ej.descanso%60).padStart(2,'0')}`
     : `<span class="sin-descanso">⚠️ sin descanso</span>`;
+  const extra = `${ej.calentamiento?' · 🔥':''}${ej.alt?` · 🔄 ${esc(ej.alt)}`:''}${ej.metodoInt?` · ⚙️ ${esc(metodoIntPorId(ej.metodoInt.id)?.nombre.split(' (')[0] || '')}`:''}${ej.metodoProg?` · 📈 ${esc(nombreProg(ej.metodoProg.id))}`:''}`;
   return ej.alFallo
-    ? `${ej.series}×Al fallo &nbsp;${desc}${ej.tempo?` · ${esc(ej.tempo)}`:''}${ej.notas?' · 📋':''}`
-    : `${ej.series}×${ej.repsMin}-${ej.repsMax} — ${ej.peso}kg &nbsp;${desc}${ej.tempo?` · ${esc(ej.tempo)}`:''}`;
+    ? `${ej.series}×Al fallo &nbsp;${desc}${ej.tempo?` · ${esc(ej.tempo)}`:''}${ej.notas?' · 📋':''}${extra}`
+    : `${ej.series}×${ej.repsMin}-${ej.repsMax} — ${ej.peso}kg &nbsp;${desc}${ej.tempo?` · ${esc(ej.tempo)}`:''}${extra}`;
 }
 
 function renderFormularioDia() {
@@ -333,26 +524,11 @@ function renderFormularioDia() {
             <div class="form-col"><label class="form-label">⏱ Descanso (seg)</label><input id="edit-desc-${idx}" type="number" min="0" value="${ej.descanso||''}" placeholder="90" /></div>
             <div class="form-col"><label class="form-label">Tempo</label><input id="edit-tempo-${idx}" placeholder="3-1-1" value="${esc(ej.tempo||'')}" /></div>
           </div>
-          <div class="form-row">
-            <div class="form-col"><label class="form-label">Grupo muscular</label>
-              <select id="edit-musculo-${idx}">
-                <option value="">— Sin especificar —</option>
-                <option value="pectoral"  ${ej.musculo==='pectoral'  ?'selected':''}>🫀 Pectoral</option>
-                <option value="espalda"   ${ej.musculo==='espalda'   ?'selected':''}>🔙 Espalda</option>
-                <option value="hombro"    ${ej.musculo==='hombro'    ?'selected':''}>💪 Hombro</option>
-                <option value="bicep"     ${ej.musculo==='bicep'     ?'selected':''}>💪 Bícep</option>
-                <option value="tricep"    ${ej.musculo==='tricep'    ?'selected':''}>💪 Trícep</option>
-                <option value="cuadricep" ${ej.musculo==='cuadricep' ?'selected':''}>🦵 Cuádricep</option>
-                <option value="isquio"    ${ej.musculo==='isquio'    ?'selected':''}>🦵 Isquiotibial</option>
-                <option value="gluteo"    ${ej.musculo==='gluteo'    ?'selected':''}>🍑 Glúteo</option>
-                <option value="gemelo"    ${ej.musculo==='gemelo'    ?'selected':''}>🦶 Gemelo</option>
-                <option value="core"      ${ej.musculo==='core'      ?'selected':''}>🎯 Core/Abdomen</option>
-              </select>
-            </div>
-          </div>
+          ${bloqueMusculoHTML("edit", idx, ej)}
           <label class="form-label">Notas técnicas</label>
           <textarea id="edit-notas-${idx}" rows="2">${esc(ej.notas||'')}</textarea>
           <label class="form-label-check"><input type="checkbox" id="edit-fallo-${idx}" ${ej.alFallo?'checked':''}> Al fallo</label>
+          ${bloqueAvanzadoHTML("edit", idx, ej)}
           <div class="form-edit-btns">
             <button onclick="guardarEjercicioEditado(${idx})" class="btn-primary">💾 Guardar</button>
             <button onclick="cancelarEdicionEjercicio()" class="btn-secondary" aria-label="Cancelar edición">✕</button>
@@ -376,26 +552,11 @@ function renderFormularioDia() {
         <div class="form-col"><label class="form-label">⏱ Descanso (seg)</label><input id="ej-descanso" type="number" min="0" placeholder="90" /></div>
         <div class="form-col"><label class="form-label">Tempo</label><input id="ej-tempo" placeholder="3-1-1" /></div>
       </div>
-      <div class="form-row">
-        <div class="form-col"><label class="form-label">Grupo muscular</label>
-          <select id="ej-musculo">
-            <option value="">— Sin especificar —</option>
-            <option value="pectoral">🫀 Pectoral</option>
-            <option value="espalda">🔙 Espalda</option>
-            <option value="hombro">💪 Hombro</option>
-            <option value="bicep">💪 Bícep</option>
-            <option value="tricep">💪 Trícep</option>
-            <option value="cuadricep">🦵 Cuádricep</option>
-            <option value="isquio">🦵 Isquiotibial</option>
-            <option value="gluteo">🍑 Glúteo</option>
-            <option value="gemelo">🦶 Gemelo</option>
-            <option value="core">🎯 Core/Abdomen</option>
-          </select>
-        </div>
-      </div>
+      ${bloqueMusculoHTML("alta", 0, {})}
       <label class="form-label">Notas técnicas</label>
       <textarea id="ej-notas" rows="2" placeholder="Indicaciones de ejecución..."></textarea>
       <label class="form-label-check"><input type="checkbox" id="ej-fallo"> Al fallo</label>
+      ${bloqueAvanzadoHTML("alta", 0, {})}
       <button onclick="añadirEjercicioADia()">➕ Añadir</button>
     </div>
     <hr>
@@ -495,17 +656,19 @@ window.guardarEjercicioEditado = function(idx) {
 
   const rm = alFallo ? (Number(repsMax)||30) : Number(repsMax);
   const musculoV = get(`edit-musculo-${idx}`)?.value || '';
+  const av = leerAvanzado('edit', idx);
+  if (av.error) { showToast(av.error,'warning'); return; }
   const diaObj = rutinaEditando.dias[diaEditando];
   const viejo = diaObj.ejercicios[idx];
   const nuevoPeso = alFallo ? 0 : (Number(peso)||0);
   const nuevoDescanso = descV ? Number(descV) : (viejo.descanso||descansoInteligente(rm));
-  diaObj.ejercicios[idx]={
+  diaObj.ejercicios[idx]=aplicarAvanzado({
     ...viejo,
     nombre, peso:nuevoPeso,
     series:Number(series), repsMin:Number(repsMin), repsMax:rm,
     descanso: nuevoDescanso,
     tempo:tempoV, notas:notasV, alFallo, musculo:musculoV
-  };
+  }, av.campos);
   // Los pesos/descansos guardados en la configuración tienen prioridad al entrenar:
   // se conservan al renombrar y se actualizan si el usuario los cambió aquí.
   if (nombre !== viejo.nombre) window.migrarClavesConfig?.(rutinaEditandoId, diaObj.nombre, viejo.nombre, diaObj.nombre, nombre);
@@ -538,12 +701,14 @@ window.añadirEjercicioADia = function() {
   { const e = errorNumeros({ series: seriesV, repsMin: rminV, repsMax: rmaxV, descanso: descV, peso: pesoV, alFallo }); if (e) { showToast(e,'warning'); return; } }
   if(nombreRepetido(rutinaEditando.dias[diaEditando], nombre, -1)){ showToast(`Ya hay un ejercicio llamado "${nombre}" en este día`,'warning'); return; }
   const rm = alFallo ? (Number(rmaxV)||30) : Number(rmaxV);
-  rutinaEditando.dias[diaEditando].ejercicios.push({
+  const av = leerAvanzado('alta', 0);
+  if (av.error) { showToast(av.error,'warning'); return; }
+  rutinaEditando.dias[diaEditando].ejercicios.push(aplicarAvanzado({
     nombre, peso:alFallo?0:(Number(pesoV)||0), series:Number(seriesV),
     repsMin:Number(rminV), repsMax:rm,
     descanso:descV?Number(descV):descansoInteligente(rm),
     tempo:tempoV||'', notas:notasV||'', alFallo:alFallo||false, musculo:musculoV
-  });
+  }, av.campos));
   saveRutinaUsuario(rutinaEditando,rutinaEditandoId);
   dispararCambioRutina();
   showToast(`"${nombre}" añadido`,'success');
@@ -582,11 +747,7 @@ window.volverListaRutinas = () => {
 window.editorSubirNivel = (nivel) => { if (nivel === 'dia') _irListaDias(); else _irListaRutinas(); };
 window.volverMenuDesdeEditor = function() {
   navLimpiar();   // quita la entrada de historial que añadió abrirEditorRutinas
-  ['pantalla-editor','pantalla-auth','pantalla-perfil','pantalla-dia',
-   'pantalla-historial','pantalla-detalle','pantalla-medidas','pantalla-audio',
-   'pantalla-resumen','pantalla-ai-import','pantalla-guia-tempo',
-   'pantalla-estadisticas','pantalla-progreso','pantalla-progresion-rutina'
-  ].forEach(id => document.getElementById(id)?.classList.add('oculto'));
+  document.querySelectorAll('section[id^="pantalla-"]').forEach(el => el.classList.add('oculto'));
   document.getElementById("menu").classList.remove("oculto");
   rutinaEditando=rutinaEditandoId=diaEditando=ejEditandoIdx=null;
   dispararCambioRutina();

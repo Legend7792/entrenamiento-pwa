@@ -17,9 +17,15 @@ const CLAVES_SYNC = new Set([
   'historial', 'historialMedidas', 'config', 'rutinas_usuario', 'rutinaActiva',
   'notasProgresion', 'tema', 'timers', 'vibrarAlTerminar', 'audioGain', 'modoDosPersonas',
   'historialBorrados',  // lápidas: sesiones borradas a propósito (formato "fecha|dia")
-  'medidasBorradas'     // lápidas: medidas borradas a propósito (la fecha del registro)
+  'medidasBorradas',    // lápidas: medidas borradas a propósito (la fecha del registro)
+  // v105
+  'recordsCorte',       // fecha desde la que cuentan los récords (borrar récords no toca el historial)
+  'recordatorioMedidas', 'audioSonido', 'serieColorTema',
+  'msgMinGlobal', 'msgMinActivo', 'frasesActivas', 'frasesPropias',
+  'nutricionPerfil', 'alimentosPropios',
+  'rankingPerfil'       // participar en el ranking + apodo
 ]);
-const PREFIJOS_SYNC = ['deloadState_'];
+const PREFIJOS_SYNC = ['deloadState_', 'nutricionDia_'];
 
 export function esClaveSincronizable(k) {
   return CLAVES_SYNC.has(k) || PREFIJOS_SYNC.some(p => k.startsWith(p));
@@ -30,7 +36,9 @@ const CLAVES_NO_BACKUP = new Set([
   'userState', 'anthropic_api_key', 'estadoApp', 'gym_sesion_parcial',
   'gym_dirty', 'gym_ultimoUid', 'gym_modoLocal', 'gym_bienvenida', '_syncedAt',
   'audioPersonalizado', 'audioPersonalizadoNombre',
-  'gym_ultimoBackup', 'gym_backupSnooze'
+  'gym_ultimoBackup', 'gym_backupSnooze',
+  'fraseUltima',  // solo evita repetir la misma frase seguida
+  'rankingCache'  // última descarga del ranking (solo este dispositivo)
 ]);
 export function esClaveBackup(k) {
   return !CLAVES_NO_BACKUP.has(k) && !k.startsWith('supabase.') && !k.startsWith('sb-');
@@ -101,6 +109,24 @@ export function mezclarValor(clave, vLocal, vRemoto, prioridad) {
     return JSON.stringify(unirListas(clave, a, b));
   }
 
+  // Récords borrados: gana siempre la fecha de corte MÁS RECIENTE (así un récord borrado no reaparece al fusionar)
+  if (clave === 'recordsCorte') {
+    const a = parse(vLocal, {}) || {}, b = parse(vRemoto, {}) || {};
+    const max = (x, y) => (!x ? y : !y ? x : (Date.parse(x) >= Date.parse(y) ? x : y));
+    const ej = {};
+    new Set([...Object.keys(a.ej || {}), ...Object.keys(b.ej || {})]).forEach(n => { ej[n] = max((a.ej || {})[n], (b.ej || {})[n]); });
+    return JSON.stringify({ todos: max(a.todos, b.todos) || null, ej });
+  }
+
+  // Alimentos propios: se unen por id (en caso de repetirse gana la versión de "gana")
+  if (clave === 'alimentosPropios') {
+    const a = parse(gana, []), b = parse(pierde, []);
+    if (!Array.isArray(a) || !Array.isArray(b)) return gana;
+    const m = new Map();
+    [...b, ...a].forEach(x => { if (x && x.id) m.set(x.id, x); });
+    return JSON.stringify([...m.values()]);
+  }
+
   if (clave === 'rutinas_usuario') {
     const g = parse(gana, {}), p = parse(pierde, {});
     return JSON.stringify({ ...p, ...g });
@@ -109,7 +135,7 @@ export function mezclarValor(clave, vLocal, vRemoto, prioridad) {
   if (clave === 'config') {
     const g = parse(gana, {}), p = parse(pierde, {});
     const r = { ...p, ...g };
-    ['pesos', 'descansos', 'incrementos', 'ejerciciosExtra'].forEach(sub => {
+    ['pesos', 'descansos', 'incrementos', 'ejerciciosExtra', 'metodoEstado'].forEach(sub => {
       r[sub] = { ...(p[sub] || {}), ...(g[sub] || {}) };
     });
     return JSON.stringify(r);
