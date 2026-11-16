@@ -37,11 +37,11 @@ const CLAVES_NO_BACKUP = new Set([
   'gym_dirty', 'gym_ultimoUid', 'gym_modoLocal', 'gym_bienvenida', '_syncedAt',
   'audioPersonalizado', 'audioPersonalizadoNombre',
   'gym_ultimoBackup', 'gym_backupSnooze',
-  'fraseUltima',  // solo evita repetir la misma frase seguida
+  'fraseUltima',  // (versiones anteriores) ya no se usa; ahora 'bolsa_*' lleva el orden aleatorio
   'rankingCache'  // última descarga del ranking (solo este dispositivo)
 ]);
 export function esClaveBackup(k) {
-  return !CLAVES_NO_BACKUP.has(k) && !k.startsWith('supabase.') && !k.startsWith('sb-');
+  return !CLAVES_NO_BACKUP.has(k) && !k.startsWith('supabase.') && !k.startsWith('sb-') && !k.startsWith('bolsa_');
 }
 
 // ── Sesión local (solo uid y email; el token lo guarda Supabase por su cuenta) ──
@@ -361,3 +361,4 @@ loadLocal();
 if (typeof window !== "undefined") {
   window.markDirty = markDirty;
 }
+// gt-build:v106

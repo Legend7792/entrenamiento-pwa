@@ -70,3 +70,4 @@ document.addEventListener("DOMContentLoaded", () => {
 window.addEventListener("cambio-rutina", () => {
   renderizarSelectorRutinas();
 });
+// gt-build:v106

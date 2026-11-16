@@ -66,20 +66,83 @@
       'border-radius:8px;font-size:14px;cursor:pointer;font-weight:600">' +
       '🔄 Reintentar</button></div>';
   }
-  setTimeout(function(){
+  // ── Recuperación si la app no arranca ──────────────────────────────────────────────
+  // Guarda los errores de carga y, si en 8 s app.js no quitó la pantalla de carga, ofrece: reintentar,
+  // limpiar la caché de la app (NO borra tus datos) y descargar una copia de tus datos.
+  window.__gtErrores = [];
+  function gtReg(m) { try { if (window.__gtErrores.length < 8) window.__gtErrores.push(String(m).slice(0, 300)); } catch (e) {} }
+  window.addEventListener('error', function (e) {
+    var t = e && e.target;
+    if (t && t !== window && (t.src || t.href)) gtReg('No se pudo cargar: ' + String(t.src || t.href).split('/').pop());
+    else gtReg((e && e.message || 'Error') + (e && e.filename ? ' (' + String(e.filename).split('/').pop() + ':' + e.lineno + ')' : ''));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) { gtReg('Promesa: ' + (e && e.reason && (e.reason.message || e.reason))); });
+
+  window.gtLimpiarYReintentar = function () {
+    var fin = function () { location.replace(location.pathname + '?r=' + Date.now()); };
+    try {
+      var tareas = [];
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
+        tareas.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+      if (window.caches)
+        tareas.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+      Promise.all(tareas).then(fin, fin);
+    } catch (e) { fin(); }
+  };
+  window.gtDescargarDatos = function () {
+    try {
+      var NO = ['userState', 'anthropic_api_key', 'estadoApp', 'gym_sesion_parcial', 'gym_dirty', 'gym_ultimoUid', 'gym_modoLocal',
+        'gym_bienvenida', '_syncedAt', 'audioPersonalizado', 'audioPersonalizadoNombre', 'gym_ultimoBackup', 'gym_backupSnooze', 'fraseUltima', 'rankingCache'];
+      var o = { _version: 'gym-tracker-backup-v2', _exportedAt: new Date().toISOString() };
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (NO.indexOf(k) >= 0 || k.indexOf('supabase.') === 0 || k.indexOf('sb-') === 0 || k.indexOf('bolsa_') === 0) continue;
+        o[k] = localStorage.getItem(k);
+      }
+      var blob = new Blob([JSON.stringify(o, null, 2)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'gym-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    } catch (e) { alert('No se pudo crear la copia: ' + e.message); }
+  };
+  function gtEsc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var gtBtn = 'border:none;padding:11px 18px;border-radius:8px;font-size:14px;cursor:pointer;font-weight:600;width:100%;margin-top:9px;';
+  function gtMostrarRecuperacion() {
     var s = document.getElementById('app-splash');
     if (!s) return;
+    var det = function () {
+      var el = document.getElementById('gt-detalle');
+      if (el) el.innerHTML = window.__gtErrores.length ? window.__gtErrores.map(gtEsc).join('<br>') : 'Sin errores registrados (puede ser una conexión lenta o un archivo desactualizado).';
+    };
     s.innerHTML =
-      '<div style="max-width:300px;text-align:center;padding:20px">' +
-      '<div style="font-size:40px;margin-bottom:14px">⚠️</div>' +
-      '<div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:10px">Error al cargar</div>' +
-      '<div style="color:#aaa;font-size:13px;line-height:1.5;margin-bottom:18px">' +
-      'No se pudo iniciar la app.<br>Comprueba tu conexión y vuelve a intentarlo.</div>' +
-      '<button onclick="location.reload()" style="' +
-      'background:#4a9eff;color:#fff;border:none;padding:11px 26px;' +
-      'border-radius:8px;font-size:14px;cursor:pointer;font-weight:600">' +
-      '🔄 Reintentar</button></div>';
-  }, 20000);
+      '<div style="max-width:330px;text-align:center;padding:20px">' +
+      '<div style="font-size:40px;margin-bottom:12px">⚠️</div>' +
+      '<div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:8px">La app no pudo iniciar</div>' +
+      '<div style="color:#aaa;font-size:13px;line-height:1.5;margin-bottom:12px">Tus datos siguen guardados en este dispositivo. Prueba, por orden:</div>' +
+      '<button onclick="location.reload()" style="' + gtBtn + 'background:#2a2a2a;color:#fff">1. 🔄 Reintentar</button>' +
+      '<button onclick="gtLimpiarYReintentar()" style="' + gtBtn + 'background:#4a9eff;color:#fff">2. 🧹 Limpiar caché de la app y reintentar (no borra tus datos)</button>' +
+      '<button onclick="gtDescargarDatos()" style="' + gtBtn + 'background:#2a2a2a;color:#fff">💾 Descargar copia de mis datos</button>' +
+      '<div id="gt-detalle" style="color:#888;font-size:11px;line-height:1.4;margin-top:14px;text-align:left;word-break:break-word"></div></div>';
+    det();
+    // El navegador no dice qué módulo falta: se comprueba cada archivo de la app para señalar el que no está
+    var ARCH = ['app.js', 'auth.js', 'cloud.js', 'rutinaUsuario.js', 'userState.js', 'selectorRutinas.js', 'themes.js', 'editorRutinas.js',
+      'ordenar.js', 'ui.js', 'aiImport.js', 'nav.js', 'audioStore.js', 'plantillas.js', 'musculos.js', 'frases.js', 'metodos.js',
+      'alimentos.js', 'nutricion.js', 'ranking.js', 'style.css'];
+    ARCH.forEach(function (f) {
+      fetch('./' + f, { cache: 'no-store' }).then(function (r) {
+        if (!r.ok) { gtReg('FALTA en el servidor: ' + f + ' (HTTP ' + r.status + ')'); det(); return; }
+        if (/\.(js|css)$/.test(f)) return r.text().then(function (t) {
+          var m = t.match(/gt-build:(v\d+)/);
+          if (!m) { gtReg('Versión desconocida en ' + f); det(); }
+          else { window.__gtBuilds = window.__gtBuilds || {}; window.__gtBuilds[m[1]] = (window.__gtBuilds[m[1]] || []).concat(f);
+                 if (Object.keys(window.__gtBuilds).length > 1) { gtReg('Archivos de versiones mezcladas: ' + JSON.stringify(window.__gtBuilds)); det(); } }
+        });
+      }).catch(function () { gtReg('No se pudo comprobar ' + f + ' (¿sin conexión?)'); det(); });
+    });
+  }
+  setTimeout(gtMostrarRecuperacion, 8000);
 </script>
 
 <!-- ══════════════════════════════════════
@@ -107,43 +170,51 @@
     <select id="selector-rutina"></select>
   </div>
 
-  <div class="sidebar-section">
-    <label class="sidebar-label">🔠 Texto grande</label>
+  <!-- Grupos plegables: se recuerda cuáles dejaste abiertos -->
+  <details class="sb-grupo" data-g="rutinas">
+    <summary>✏️ Mis rutinas</summary>
+    <div class="sidebar-btns">
+      <button onclick="toggleSidebar(); abrirEditorRutinas()">✏️ Editar rutinas</button>
+      <button onclick="toggleSidebar(); abrirPantallaImport()">🤖 Importar con IA</button>
+      <button onclick="toggleSidebar(); abrirNotasProgresion()">📋 Notas de progresión</button>
+    </div>
+  </details>
+
+  <details class="sb-grupo" data-g="personalizar">
+    <summary>🎛️ Personalizar</summary>
     <label class="check-texto-grande">
       <input type="checkbox" id="toggle-texto-grande" onchange="toggleTextoGrande(this.checked)">
-      <span>Letras y botones más grandes para usar entre series</span>
+      <span><strong>Texto grande</strong> · letras y botones más grandes para usar entre series</span>
     </label>
-  </div>
-
-  <div class="sidebar-section">
-    <label class="sidebar-label">🟩 Cuadros de repeticiones</label>
     <label class="check-texto-grande">
       <input type="checkbox" id="toggle-serie-verde" onchange="toggleSerieVerde(this.checked)">
-      <span>Series cumplidas en verde clásico (si no, usan el color del tema)</span>
+      <span><strong>Series en verde clásico</strong> · si no, los cuadros usan el color del tema</span>
     </label>
-  </div>
+    <div class="sidebar-btns">
+      <button onclick="toggleSidebar(); abrirMensajes()">💬 Mensajes y frases</button>
+      <button onclick="toggleSidebar(); abrirConfigAudio()">🔔 Sonido del temporizador</button>
+    </div>
+  </details>
 
-  <div class="sidebar-section sidebar-btns">
-    <button onclick="toggleSidebar(); abrirEditorRutinas()">✏️ Editar rutinas</button>
-    <button onclick="toggleSidebar(); abrirPantallaImport()">🤖 Importar con IA</button>
-    <button onclick="toggleSidebar(); abrirHistorial()">📊 Historial</button>
-    <button onclick="toggleSidebar(); abrirEstadisticas()">🏆 Estadísticas</button>
-    <button onclick="toggleSidebar(); abrirProgreso()">📈 Progreso ejercicios</button>
-    <button onclick="toggleSidebar(); abrirMedidas()">📏 Medidas corporales</button>
-    <button onclick="toggleSidebar(); abrirNutricion()">🍽️ Nutrición (calorías y macros)</button>
-    <button onclick="toggleSidebar(); abrirRanking()">🏅 Ranking y nivel</button>
-    <button onclick="toggleSidebar(); abrirMensajes()">💬 Mensajes y frases</button>
-    <button onclick="toggleSidebar(); abrirConfigAudio()">🔔 Sonido temporizador</button>
-    <button onclick="toggleSidebar(); abrirGuiaTempo()">📖 Guía y Conceptos</button>
-    <button onclick="toggleSidebar(); abrirNotasProgresion()">📋 Notas de progresión</button>
-    <button onclick="toggleSidebar(); forzarActualizacion()">🔄 Actualizar app</button>
-    <button onclick="toggleSidebar(); exportarBackupJSON()">💾 Exportar backup</button>
-    <label class="sidebar-file-btn" onclick="toggleSidebar()">
-      📂 Importar backup
-      <input type="file" accept=".json" onchange="importarBackupJSON(this)" style="display:none">
-    </label>
-    <button id="btn-instalar-app" onclick="instalarApp()" style="display:none">📲 Instalar app</button>
-  </div>
+  <details class="sb-grupo" data-g="ayuda">
+    <summary>📖 Ayuda</summary>
+    <div class="sidebar-btns">
+      <button onclick="toggleSidebar(); abrirGuiaTempo()">📖 Guía y conceptos</button>
+    </div>
+  </details>
+
+  <details class="sb-grupo" data-g="datos">
+    <summary>💾 Datos y app</summary>
+    <div class="sidebar-btns">
+      <button onclick="toggleSidebar(); exportarBackupJSON()">💾 Exportar copia (backup)</button>
+      <label class="sidebar-file-btn" onclick="toggleSidebar()">
+        📂 Importar copia (backup)
+        <input type="file" accept=".json" onchange="importarBackupJSON(this)" style="display:none">
+      </label>
+      <button onclick="toggleSidebar(); forzarActualizacion()">🔄 Actualizar app</button>
+      <button id="btn-instalar-app" onclick="instalarApp()" style="display:none">📲 Instalar app</button>
+    </div>
+  </details>
 
   <div class="sidebar-perfil" id="sidebar-perfil-info"></div>
 </nav>
@@ -248,10 +319,13 @@
   <div id="medidas-banner"></div>
   <div id="botones-dias" class="botones-dias"></div>
 
-  <div class="menu-footer">
+  <div class="menu-footer menu-footer-6">
     <button onclick="abrirHistorial()" class="btn-secondary"><span class="mf-ico" aria-hidden="true">📊</span><span>Historial</span></button>
     <button onclick="abrirEstadisticas()" class="btn-secondary"><span class="mf-ico" aria-hidden="true">🏆</span><span>Stats</span></button>
+    <button onclick="abrirProgreso()" class="btn-secondary"><span class="mf-ico" aria-hidden="true">📈</span><span>Progreso</span></button>
     <button onclick="abrirMedidas()" class="btn-secondary"><span class="mf-ico" aria-hidden="true">📏</span><span>Medidas</span></button>
+    <button onclick="abrirNutricion()" class="btn-secondary"><span class="mf-ico" aria-hidden="true">🍽️</span><span>Nutrición</span></button>
+    <button onclick="abrirRanking()" class="btn-secondary"><span class="mf-ico" aria-hidden="true">🏅</span><span>Ranking</span></button>
   </div>
 </section>
 
@@ -755,7 +829,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
 
   <div class="audio-card">
     <h3>⚠️ Si no llegas al mínimo de reps</h3>
-    <p class="audio-toggle-hint" style="margin-left:0;">Cada vez que anotes una serie por debajo del mínimo del ejercicio, la app mostrará un mensaje. Escribe uno por línea y se elegirá uno al azar. Si lo dejas vacío usa un mensaje por defecto. Cada ejercicio puede tener además el suyo propio (en el editor de rutinas), que tiene prioridad.</p>
+    <p class="audio-toggle-hint" style="margin-left:0;">Cada vez que anotes una serie por debajo del mínimo del ejercicio, la app mostrará un mensaje. Escribe uno por línea: se alternan al azar y no se repite el mismo hasta haber salido todos. Si lo dejas vacío usa un mensaje por defecto. Cada ejercicio puede tener además el suyo propio (en el editor de rutinas; varios separados por «|»), que tiene prioridad.</p>
     <textarea id="msg-min-global" rows="4" maxlength="600" aria-label="Mensajes cuando no llegas al mínimo de repeticiones" placeholder="Ej: ¡Más fuerte, esa no cuenta!"></textarea>
     <div class="modal-btns">
       <button onclick="guardarMsgMinGlobal()" class="btn-primary">💾 Guardar</button>
@@ -896,3 +970,4 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
 <!-- SW se registra en app.js con lógica completa (updatefound, mensajes, etc.) -->
 </body>
 </html>
+<!-- gt-build:v106 -->

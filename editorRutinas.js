@@ -394,7 +394,7 @@ function bloqueAvanzadoHTML(modo, idx, ej) {
     <small class="import-hint">Cambia las series y los descansos de este ejercicio al abrir el día. Más información en 📖 Guía → Métodos.</small>
 
     <label class="form-label" for="${idc(modo, 'msgmin', idx)}">⚠️ Mensaje si no llegas al mínimo de reps (opcional)</label>
-    <input id="${idc(modo, 'msgmin', idx)}" maxlength="160" placeholder="Si lo dejas vacío se usa el mensaje general" value="${esc(ej.msgMin || '')}">
+    <input id="${idc(modo, 'msgmin', idx)}" maxlength="400" placeholder="Si lo dejas vacío se usa el mensaje general. Varios mensajes: sepáralos con |" value="${esc(ej.msgMin || '')}">
   </details>`;
 }
 
@@ -431,7 +431,7 @@ function leerAvanzado(modo, idx) {
   const alt = v('alt')?.value.trim();
   out.alt = alt ? alt.slice(0, 40) : undefined;
   const msg = v('msgmin')?.value.trim();
-  out.msgMin = msg ? msg.slice(0, 160) : undefined;
+  out.msgMin = msg ? msg.slice(0, 400) : undefined;
 
   const mp = v('mprog')?.value;
   if (mp) {
@@ -756,3 +756,4 @@ window.volverMenuDesdeEditor = function() {
 function dispararCambioRutina() {
   window.dispatchEvent(new CustomEvent("cambio-rutina",{detail:{rutinaId:rutinaEditandoId||localStorage.getItem("rutinaActiva")}}));
 }
+// gt-build:v106

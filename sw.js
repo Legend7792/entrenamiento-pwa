@@ -1,4 +1,4 @@
-// sw.js — Gym Tracker v105
+// sw.js — Gym Tracker v106
 //
 // Estrategia (cambió respecto a v95):
 //  * Los archivos de la app se guardan TODOS juntos al instalar una versión nueva (todo o nada).
@@ -10,8 +10,8 @@
 //  * Supabase ya no se necesita para arrancar (se carga solo al usar la nube), así que no se
 //    precarga; si se descarga alguna vez se guarda para reutilizarlo.
 
-const CACHE_VERSION = "v105";
-const CACHE_NAME    = "gym-tracker-v105";
+const CACHE_VERSION = "v106";
+const CACHE_NAME    = "gym-tracker-v106";
 
 const BASE = new URL("./", self.location.href).pathname;
 
@@ -58,9 +58,21 @@ const APP_ASSETS = [...APP_CRITICOS, ...APP_OPCIONALES];
 // 'reload' evita que la caché HTTP del navegador/GitHub Pages nos entregue una copia vieja al instalar
 const pedir = url => new Request(url, { cache: "reload" });
 
+// Cada archivo de código lleva al final la marca "gt-build:<versión>". Si al instalar algún archivo trae
+// otra marca, es que se subió una mezcla de versiones (o GitHub Pages aún sirve una copia vieja): se aborta la
+// instalación y se mantiene la versión anterior, que sí funciona. Al subir una versión nueva hay que cambiar
+// la marca en TODOS los archivos .js, en style.css y en index.html a la vez que CACHE_VERSION.
+const MARCA = "gt-build:" + CACHE_VERSION;
+const LLEVA_MARCA = /\.(js|css|html)$/;
+
 async function guardar(cache, url) {
   const resp = await fetch(pedir(url));
   if (!resp.ok) throw new Error(url + " → HTTP " + resp.status);
+  const ruta = url.split("?")[0];
+  if (LLEVA_MARCA.test(ruta) || ruta === BASE) {
+    const texto = await resp.clone().text();
+    if (!texto.includes(MARCA)) throw new Error(url + " → versión distinta de la esperada (" + MARCA + ")");
+  }
   await cache.put(url, resp);
 }
 
@@ -70,7 +82,13 @@ async function guardar(cache, url) {
 self.addEventListener("install", event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await Promise.all(APP_CRITICOS.map(u => guardar(cache, u)));          // si falla uno → falla la instalación
+    try {
+      await Promise.all(APP_CRITICOS.map(u => guardar(cache, u)));        // si falla uno → falla la instalación
+    } catch (e) {
+      console.error("[SW] instalación cancelada:", e && e.message);
+      await caches.delete(CACHE_NAME);                                    // no dejar una caché a medias
+      throw e;
+    }
     await Promise.allSettled(APP_OPCIONALES.map(u => guardar(cache, u)));
     console.log("[SW] " + CACHE_VERSION + " instalado");
   })());

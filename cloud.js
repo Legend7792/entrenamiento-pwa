@@ -39,3 +39,4 @@ export function getSupabase() {
   }
   return _clientePromise;
 }
+// gt-build:v106

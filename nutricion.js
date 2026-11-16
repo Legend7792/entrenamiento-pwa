@@ -148,6 +148,32 @@ function ultimoMedida() {
   return { peso, altura };
 }
 
+// ── Buscador de alimentos (solo repinta la lista de resultados: no se pierde el foco al escribir) ──
+let nutBusqueda = '', nutCat = '', nutSel = '';
+const LIMITE_RESULTADOS = 60;
+const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+function pintarResultadosAlimentos() {
+  const cont = document.getElementById('nut-resultados');
+  const sel = document.getElementById('nut-seleccion');
+  if (!cont) return;
+  const palabras = norm(nutBusqueda).split(/\s+/).filter(Boolean);
+  const todos = todosAlimentos();
+  const hallados = todos.filter(a => (!nutCat || a.cat === nutCat) && palabras.every(w => norm(a.nombre + ' ' + a.cat).includes(w)));
+  const mostrar = hallados.slice(0, LIMITE_RESULTADOS);
+  cont.innerHTML = mostrar.length
+    ? mostrar.map(a => `<button type="button" role="option" class="nut-res${a.id === nutSel ? ' sel' : ''}" aria-selected="${a.id === nutSel}" onclick="nutriElegir('${esc(a.id)}')">
+        <strong>${esc(a.nombre)}</strong><small>${esc(a.cat)} · ${a.k} kcal · P ${a.p} · C ${a.c} · G ${a.g} <span class="nut-100">(por 100 g)</span></small></button>`).join('')
+      + (hallados.length > mostrar.length ? `<p class="import-hint">Mostrando ${mostrar.length} de ${hallados.length}. Escribe más letras para afinar.</p>` : '')
+    : `<p class="texto-vacio">Sin resultados. Prueba con otra palabra o añádelo abajo en «Mis alimentos».</p>`;
+  const a = todos.find(x => x.id === nutSel);
+  if (sel) sel.innerHTML = a ? `Elegido: <strong>${esc(a.nombre)}</strong> (${a.k} kcal / 100 g)` : 'Toca un alimento de la lista para elegirlo.';
+}
+
+window.nutriBuscar = function (t) { nutBusqueda = String(t || ''); pintarResultadosAlimentos(); };
+window.nutriFiltrarCat = function (c) { nutCat = String(c || ''); pintarResultadosAlimentos(); };
+window.nutriElegir = function (id) { nutSel = id; pintarResultadosAlimentos(); document.getElementById('nut-gramos')?.focus(); };
+
 export function renderNutricion() {
   const cont = document.getElementById('nutricion-contenido');
   if (!cont) return;
@@ -246,8 +272,14 @@ export function renderNutricion() {
       <p>Total: <strong>${Math.round(tot.k)} kcal</strong> · P ${Math.round(tot.p)} g · C ${Math.round(tot.c)} g · G ${Math.round(tot.g)} g</p>`}
 
     <div class="nut-anadir">
-      <label class="form-label" for="nut-alimento">Alimento</label>
-      <select id="nut-alimento">${cats.map(cat => `<optgroup label="${esc(cat)}">${alimentos.filter(a => a.cat === cat).map(a => `<option value="${esc(a.id)}">${esc(a.nombre)} · ${a.k} kcal</option>`).join('')}</optgroup>`).join('')}</select>
+      <label class="form-label" for="nut-buscar">🔍 Buscar alimento</label>
+      <input id="nut-buscar" type="search" autocomplete="off" placeholder="Ej: yuca, pollo, atún… (varias palabras)" value="${esc(nutBusqueda)}" oninput="nutriBuscar(this.value)">
+      <select id="nut-cat-filtro" aria-label="Filtrar por categoría" onchange="nutriFiltrarCat(this.value)">
+        <option value="">Todas las categorías (${alimentos.length})</option>
+        ${cats.map(cat => `<option value="${esc(cat)}" ${cat === nutCat ? 'selected' : ''}>${esc(cat)} (${alimentos.filter(a => a.cat === cat).length})</option>`).join('')}
+      </select>
+      <div id="nut-resultados" class="nut-resultados" role="listbox" aria-label="Resultados"></div>
+      <p id="nut-seleccion" class="nut-seleccion"></p>
       <div class="nut-anadir-fila">
         <div><label class="form-label" for="nut-gramos">Gramos</label><input id="nut-gramos" type="number" inputmode="decimal" min="1" max="5000" value="100"></div>
         <button class="btn-primary" onclick="nutriAnadir()">➕ Añadir</button>
@@ -281,6 +313,7 @@ export function renderNutricion() {
   </div>
 
   <p class="import-hint">Más explicaciones (cálculo, superávit, déficit, proteína y alimentos) en 📖 Guía y Conceptos → Nutrición.</p>`;
+  pintarResultadosAlimentos();
 }
 
 // ── Acciones ────────────────────────────────────────
@@ -333,10 +366,10 @@ window.nutriGuardarPerfil = function () {
 window.nutriDia = function (d) { offsetDia = Math.min(0, offsetDia + d); renderNutricion(); };
 
 window.nutriAnadir = function () {
-  const id = document.getElementById('nut-alimento')?.value;
+  const id = nutSel;
   const gr = num(document.getElementById('nut-gramos')?.value);
   const a = todosAlimentos().find(x => x.id === id);
-  if (!a) { showToast('Elige un alimento', 'warning'); return; }
+  if (!a) { showToast('Busca y toca un alimento de la lista primero', 'warning'); return; }
   if (!(gr > 0 && gr <= 5000)) { showToast('Los gramos deben estar entre 1 y 5000', 'warning'); return; }
   const items = leerDia(offsetDia);
   items.push({ id: a.id, n: a.nombre, gr, k: a.k, p: a.p, g: a.g, c: a.c });
@@ -393,3 +426,4 @@ export function htmlGuiaNutricion() {
     ${itemH('Medidas, peso y progreso', 'Si te mides y te pesas cada 2–4 semanas (la app puede recordártelo, en Medidas corporales) verás si la tendencia va hacia donde quieres y podrás ajustar un 5–10 % las calorías.')}
   </div>`;
 }
+// gt-build:v106

@@ -61,7 +61,6 @@ export const FRASES = [
 ];
 
 // ── Selección ──────────────────────────────────────────
-const CLAVE_ULTIMA = 'fraseUltima';
 const CLAVE_PROPIAS = 'frasesPropias';        // texto: una frase por línea, "texto — autor" (el autor es opcional)
 const CLAVE_ACTIVAS = 'frasesActivas';        // 'false' = no mostrar la frase al finalizar
 
@@ -83,14 +82,31 @@ export function todasLasFrases() {
   return [...FRASES, ...leerFrasesPropias()];
 }
 
-// Una frase al azar, distinta de la última que se mostró (si hay más de una)
+// Elige un índice al azar SIN repetir hasta haber salido todos ("bolsa" barajada).
+// Así nunca se repite la misma frase/mensaje seguido y se alternan todas antes de volver a empezar.
+// El estado se guarda en localStorage bajo `clave` (las claves que empiezan por "bolsa_" no se sincronizan ni van al backup).
+// Si cambia la cantidad de elementos (añades o quitas alguno), la bolsa se rehace.
+export function elegirSinRepetir(clave, n) {
+  if (!(n > 0)) return -1;
+  if (n === 1) return 0;
+  let st = {};
+  try { st = JSON.parse(localStorage.getItem(clave) || '{}') || {}; } catch {}
+  let bolsa = (st.n === n && Array.isArray(st.bolsa)) ? st.bolsa.filter(i => Number.isInteger(i) && i >= 0 && i < n) : [];
+  const ultimo = Number.isInteger(st.ultimo) ? st.ultimo : -1;
+  if (!bolsa.length) {
+    bolsa = Array.from({ length: n }, (_, i) => i);
+    for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [bolsa[i], bolsa[j]] = [bolsa[j], bolsa[i]]; }
+    if (bolsa[0] === ultimo) { const j = 1 + Math.floor(Math.random() * (n - 1)); [bolsa[0], bolsa[j]] = [bolsa[j], bolsa[0]]; }   // la primera de la nueva ronda no repite la última de la anterior
+  }
+  const i = bolsa.shift();
+  try { localStorage.setItem(clave, JSON.stringify({ bolsa, ultimo: i, n })); } catch {}
+  return i;
+}
+
+// Una frase al azar; no se repite ninguna hasta haberlas visto todas
 export function fraseAleatoria() {
   const lista = todasLasFrases();
   if (!lista.length) return null;
-  let ultima = -1;
-  try { ultima = parseInt(localStorage.getItem(CLAVE_ULTIMA), 10); } catch {}
-  let i = Math.floor(Math.random() * lista.length);
-  if (lista.length > 1 && i === ultima) i = (i + 1 + Math.floor(Math.random() * (lista.length - 1))) % lista.length;
-  try { localStorage.setItem(CLAVE_ULTIMA, String(i)); } catch {}
-  return lista[i];
+  return lista[elegirSinRepetir('bolsa_frases', lista.length)];
 }
+// gt-build:v106

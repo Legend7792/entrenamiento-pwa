@@ -220,3 +220,4 @@ export async function abrirPantallaRanking() {
   if (r.ok === false && r.motivo === 'error') showToast('No se pudo actualizar; se muestra la última descarga', 'info', 3500);
   if (pantallaAbierta()) pintarRanking();
 }
+// gt-build:v106

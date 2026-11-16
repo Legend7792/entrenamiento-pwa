@@ -1,4 +1,4 @@
-// app.js — Gym Tracker v105
+// app.js — Gym Tracker v106
 import "./auth.js";
 import { loadRutinaUsuario, saveRutinaUsuario, inicializarRutinaBase, getAllRutinasUsuario, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
 import { markDirty, userState, esClaveBackup, sincronizarSiHaceFalta } from "./userState.js";
@@ -11,7 +11,7 @@ import { showToast, showConfirm, showPrompt, showAlert, initOfflineBanner, escap
 import "./aiImport.js";
 import { MUSCULOS_MAP, etiquetaSubzona } from "./musculos.js";
 import { evaluarProgresion, objetivoReps, aplicarIntensidad, repsContables, descansoTrasSerie, metodoIntPorId, nombreProg, metodoProgPorId, htmlGuiaMetodos, indicesNormales } from "./metodos.js";
-import { fraseAleatoria, frasesActivas, todasLasFrases, leerFrasesPropias, FRASES } from "./frases.js";
+import { fraseAleatoria, frasesActivas, todasLasFrases, leerFrasesPropias, FRASES, elegirSinRepetir } from "./frases.js";
 import { renderNutricion, htmlGuiaNutricion } from "./nutricion.js";
 import { abrirPantallaRanking, actualizarRankingSilencioso } from "./ranking.js";
 
@@ -1774,14 +1774,30 @@ function actualizarSerie(ejIndex, serieIndex, valor, input) {
 // Se muestra pasado un instante desde la última tecla (para no avisar de "1" cuando vas a escribir "10").
 const _avisoMinTimers = {};
 const _avisoMinUltimo = {};
-const MSG_MIN_DEFECTO = 'No llegaste al mínimo de repeticiones. Revisa el peso o descansa un poco más antes de la próxima serie.';
+// Mensajes por defecto (se alternan; no sale el mismo dos veces seguidas)
+const MSGS_MIN_DEFECTO = [
+  'No llegaste al mínimo de repeticiones. Revisa el peso o descansa un poco más antes de la próxima serie.',
+  'Esa serie quedó por debajo del mínimo. Respira, descansa un poco más y vuelve con la técnica limpia.',
+  'Por debajo del rango: quizá el peso es alto para hoy. Si te pasa en varias series, bájalo un poco.',
+  'Mínimo no alcanzado. No pasa nada: un mal día no borra tu progreso. Ajusta y sigue.',
+  'Serie corta. Mira si descansaste lo suficiente; la próxima la haces con más cabeza y más aire.',
+  'Quedaste debajo del rango. Si fue fatiga, descansa más; si fue el peso, ajústalo. Decide con calma.',
+  'No llegó al mínimo. Anótalo, recupera y vuelve a intentarlo: la constancia gana a una sola serie.',
+  'Por debajo del mínimo. Revisa sueño, comida y descanso: casi siempre la respuesta está ahí.'
+];
 
+// Elige el mensaje: los del ejercicio (varios separados por «|»), si no los generales (uno por línea) y si no los de por defecto.
+// Siempre alterna: no repite el mismo mensaje hasta haber salido todos.
 function mensajeMinimo(ej) {
-  if (ej.msgMin) return ej.msgMin;
-  let lineas = [];
-  try { lineas = (localStorage.getItem('msgMinGlobal') || '').split('\n').map(l => l.trim()).filter(Boolean); } catch {}
-  if (!lineas.length) return MSG_MIN_DEFECTO;
-  return lineas[Math.floor(Math.random() * lineas.length)];
+  let lista = String(ej.msgMin || '').split('|').map(l => l.trim()).filter(Boolean);
+  let ambito = 'ej:' + lista.join('|');
+  if (!lista.length) {
+    try { lista = (localStorage.getItem('msgMinGlobal') || '').split('\n').map(l => l.trim()).filter(Boolean); } catch {}
+    ambito = 'global:' + lista.join('|');
+  }
+  if (!lista.length) { lista = MSGS_MIN_DEFECTO; ambito = 'defecto'; }
+  let h = 0; for (let i = 0; i < ambito.length; i++) h = (h * 31 + ambito.charCodeAt(i)) >>> 0;
+  return lista[Math.max(0, elegirSinRepetir('bolsa_msgmin_' + h.toString(36), lista.length))];
 }
 
 function programarAvisoMinimo(ejIndex, serieIndex, input) {
@@ -4293,19 +4309,35 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Ocultar splash de carga tan pronto como el JS está listo
   const splash = document.getElementById('app-splash');
   if (splash) splash.remove();
+  window.__appListo = true;
+
+  // Cada paso de arranque va aislado: si uno falla (dato raro, función nueva) el resto de la app sigue funcionando
+  const seguro = (nombre, fn) => { try { return fn(); } catch (e) { console.error('Arranque:', nombre, e); } };
 
   // Paneles laterales y diálogos: cada uno que se abre añade su entrada de historial ("atrás" lo cierra)
-  navVigilarCapas(Object.entries(CAPAS).map(([id, d]) => ({ id, abierta: d.abierta })));
+  seguro('capas', () => navVigilarCapas(Object.entries(CAPAS).map(([id, d]) => ({ id, abierta: d.abierta }))));
 
-  aplicarSerieVerde();
-  inicializarRutinaBase();
-  initOfflineBanner();
-  initEtiquetas();
-  renderTimers();
-  renderizarBotonesDias();
-  renderizarBannerDeload();
+  seguro('sidebarGrupos', () => {
+    // Recuerda qué grupos del menú lateral dejaste abiertos
+    let abiertos = [];
+    try { abiertos = JSON.parse(localStorage.getItem('sidebarGrupos') || '[]'); } catch {}
+    document.querySelectorAll('#sidebar details.sb-grupo').forEach(d => {
+      d.open = Array.isArray(abiertos) && abiertos.includes(d.dataset.g);
+      d.addEventListener('toggle', () => {
+        const ab = [...document.querySelectorAll('#sidebar details.sb-grupo[open]')].map(x => x.dataset.g);
+        try { localStorage.setItem('sidebarGrupos', JSON.stringify(ab)); } catch {}
+      });
+    });
+  });
+  seguro('serieVerde', aplicarSerieVerde);
+  seguro('rutinaBase', inicializarRutinaBase);
+  seguro('offlineBanner', initOfflineBanner);
+  seguro('etiquetas', initEtiquetas);
+  seguro('timers', renderTimers);
+  seguro('botonesDias', renderizarBotonesDias);
+  seguro('bannerDeload', renderizarBannerDeload);
 
-  sincronizarControlesTextoGrande();
+  seguro('textoGrande', sincronizarControlesTextoGrande);
 
   // Inicializar toggle de vibración con el valor guardado
   const chkVib = document.getElementById('toggle-vibracion');
@@ -4330,6 +4362,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   try { saved = JSON.parse(localStorage.getItem("estadoApp")); } catch { saved = null; }
   let restauroDia = false;
 
+  try {
   if (saved) {
     diaActual = saved.diaActual;
 
@@ -4412,11 +4445,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     guardarEstadoApp();
   }
+  } catch (e) {
+    // Estado guardado inservible: se descarta SOLO ese estado (no tus entrenamientos) y se abre el menú
+    console.error('Restaurar estado:', e);
+    try { localStorage.removeItem("estadoApp"); } catch {}
+    try { ocultarTodas(); document.getElementById('menu')?.classList.remove('oculto'); } catch {}
+  }
 
-  if (!restauroDia) ejecutarAccesoDirecto();
+  if (!restauroDia) seguro('accesoDirecto', ejecutarAccesoDirecto);
 
   // Subir cambios que quedaron pendientes (sin pisar datos más nuevos de otro dispositivo)
   setTimeout(() => sincronizarSiHaceFalta(), 4000);
   setTimeout(actualizarRankingSilencioso, 6000);
   setTimeout(recordarBackupSiHaceFalta, 9000);
 });
+// gt-build:v106

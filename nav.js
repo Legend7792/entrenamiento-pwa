@@ -161,3 +161,4 @@ export function navVigilarCapas(defs) {
 }
 
 window.navPush = navPush;
+// gt-build:v106

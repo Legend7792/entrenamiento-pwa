@@ -154,3 +154,4 @@ export function habilitarOrdenar(lista, { item, asa, alSoltar }) {
     (s.its || []).forEach(x => { x.style.transform = ''; x.classList.remove('ord-arrastrando', 'ord-otro'); });
   }
 }
+// gt-build:v106
