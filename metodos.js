@@ -412,4 +412,4 @@ export function htmlGuiaMetodos() {
     ${PERIODIZACION_GUIA.map(m => itemHtml(m.nombre, m.texto, MANUAL)).join('')}
   </div>`;
 }
-// gt-build:v107
+// gt-build:v108

@@ -1,9 +1,43 @@
-# Gym Tracker — cambios de esta versión (SW v107)
+# Gym Tracker — cambios de esta versión (SW v108)
 
 Este documento explica **qué se cambió, por qué y qué NO pude comprobar**. Todo se probó en un
 Chromium real (clics, toques y arrastres reales; pruebas automáticas de arrastre, duplicar, navegación, texto grande y
 modo sin conexión, todas sin fallos en la última pasada), pero con una nube simulada: no tuve acceso
 a tu proyecto de Supabase ni a una API key de Anthropic.
+
+---
+
+# 🆕 v108 — sobre la v107
+
+**Pasos tuyos al publicarla:** sube **TODOS** los archivos en **un solo commit** (la app rechaza versiones mezcladas). Si aún no lo hiciste con la v107, ejecuta también
+**`supabase_ranking.sql`** en Supabase (se puede repetir sin problema).
+
+## 1. ☰ Sidebar izquierdo de vuelta (solo lo que pediste)
+- Botón **☰** arriba a la izquierda (o deslizar desde el borde izquierdo, o Escape / tocar fuera / «atrás» para cerrarlo). Contiene **solo**:
+  - **Rutina activa** (el selector, que sale de la pantalla principal). Al elegir otra rutina el panel se cierra y ves sus días en la pantalla principal.
+  - **Entrenamiento:** Mis rutinas (editor) · Importar rutina con IA · Notas de progresión · Mensajes y frases · Sonido del temporizador.
+  - **Texto grande** (interruptor).
+- **Ajustes** conserva: cuenta, temas, series en verde, datos/backup y aplicación (instalar, guía, actualizar, versión). **Ya no** tiene el bloque Entrenamiento ni Texto grande.
+- El avatar 👤 pasó a la derecha de la barra superior (junto a ⚙️ y ⏱️) para dejar sitio al ☰.
+- **«Atrás»:** las pantallas abiertas desde el sidebar (editor, importar IA, notas, mensajes, sonido) vuelven al **menú principal**; las que se abren desde Ajustes (guía, perfil) siguen volviendo a Ajustes.
+- Detalle visual: la barra superior hace sitio al título reduciendo un poco su tamaño; con **texto grande** y pantallas de ≈360 px el título puede mostrarse recortado con «…».
+
+## 2. 🍽️ Alimentos: de 140 a 152
+Añadidos (por 100 g, USDA, con FDC y las 4 cifras leídas en la fuente; todos dentro de ±5 % del cálculo 4-9-4 (aceite y cola incluidos) salvo el ron, explicado abajo):
+plátano verde crudo / hervido / frito · pan cubano · frijoles blancos cocidos · chuleta de cerdo a la parrilla y frita en sartén · bistec de res (sirloin a la plancha) · aceite de girasol ·
+refresco de cola · refresco de limón-lima · ron.
+- **Para que tengas claro (honestidad):**
+  - **Pan cubano** sale de la base de encuestas del USDA (FNDDS), no de SR Legacy como el resto; es una referencia genérica, no una receta concreta.
+  - **Chuleta y bistec:** el USDA da el valor por porción comestible, **sin hueso**; si pesas la chuleta con hueso, descuenta el hueso. Son cortes con grasa incluida; el «bistec» cubano real (palomilla, etc.) puede variar.
+  - **Ron:** sus 231 kcal son casi todas del alcohol (33,4 g × 7 kcal); por eso proteína, grasa y carbohidratos aparecen en 0.
+  - **Aceite de girasol:** la ficha usada es «linoleico (<60 %)»; el aporte calórico es el mismo en todas las variantes (884 kcal).
+- **Siguen sin estar:** yuca cocida (la única ficha cocida es genérica, sin método de cocción y con 3 g de grasa frente a 0,28 g de la cruda, lo que sugiere grasa añadida; no la usé) y los
+  **platos compuestos** (congrí, moros, picadillo…: al buscarlos solo aparecieron productos de marca). Para esos, usa «Mis alimentos» con tu propia receta (o suma los ingredientes sueltos).
+
+## 3. Pruebas de esta versión
+- Sidebar: abrir/cerrar (☰, overlay, Escape, «atrás», deslizar con toque real), selector con 2 rutinas, texto grande, las 5 pantallas y su ←/«atrás», Ajustes sin lo movido, sin errores de consola (27 + 6 comprobaciones).
+- Repetidas y adaptadas: Ajustes/Perfil/cuenta/navegación (23 comprobaciones), hoja de cuenta con Escape, acceso sin cuenta, ranking, temas, ciclo ondulante, modo sin conexión; buscador de alimentos (19, con 10 legumbres).
+- **No pude comprobar:** el aspecto en tu móvil real y la caché de GitHub Pages.
 
 ---
 
@@ -30,7 +64,7 @@ con el **mejor** que has hecho. La mejora de cada ejercicio va de 0 a +100 %; lo
   media por semana activa, o temporadas mensuales (vuelve a penalizar al que falta).
 
 ## 2. 🎨 Interfaz reorganizada (estilo apps profesionales)
-- **Se eliminó el menú lateral ☰.** Arriba a la izquierda hay un **avatar** (la inicial de tu correo, o 👤 sin cuenta) que abre una **hoja de cuenta**
+- *(Superado en v108: el sidebar ☰ volvió con rutina + Entrenamiento + texto grande.)* **Se eliminó el menú lateral ☰.** Arriba a la izquierda hay un **avatar** (la inicial de tu correo, o 👤 sin cuenta) que abre una **hoja de cuenta**
   (Ajustes · Perfil y seguridad · Cerrar sesión / Iniciar sesión). Arriba a la derecha: **⚙️ Ajustes** y ⏱️ temporizador.
 - **Nueva pantalla ⚙️ Ajustes**, en grupos: Cuenta · Apariencia (**galería de temas con muestra de cada uno**, interruptores de texto grande y series en verde) ·
   Entrenamiento (rutinas, importar con IA, notas de progresión, mensajes, sonido) · Datos (backup) · Aplicación (instalar, guía, actualizar, **versión que está corriendo**).

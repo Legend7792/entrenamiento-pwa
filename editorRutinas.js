@@ -760,4 +760,4 @@ window.volverMenuDesdeEditor = function() {
 function dispararCambioRutina() {
   window.dispatchEvent(new CustomEvent("cambio-rutina",{detail:{rutinaId:rutinaEditandoId||localStorage.getItem("rutinaActiva")}}));
 }
-// gt-build:v107
+// gt-build:v108

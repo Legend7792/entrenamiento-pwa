@@ -387,4 +387,4 @@ window.borrarApiKeyGuardada = function () {
   if (keyInput) keyInput.value = '';
   showToast('API key borrada de este dispositivo', 'success');
 };
-// gt-build:v107
+// gt-build:v108

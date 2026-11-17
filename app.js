@@ -1,4 +1,4 @@
-// app.js — Gym Tracker v107
+// app.js — Gym Tracker v108
 import "./auth.js";
 import { loadRutinaUsuario, saveRutinaUsuario, inicializarRutinaBase, getAllRutinasUsuario, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
 import { markDirty, userState, esClaveBackup, sincronizarSiHaceFalta } from "./userState.js";
@@ -2217,7 +2217,7 @@ window.cerrarResumen = function () {
 const cacheUltimaSesion = new Map();
 
 function abrirHistorial() {
-  cerrarCuenta();
+  cerrarCuenta(); cerrarSidebar();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2380,7 +2380,7 @@ function limpiarHistorialDuplicados() {
 }
 
 function abrirMedidas() {
-  cerrarCuenta();
+  cerrarCuenta(); cerrarSidebar();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2560,7 +2560,7 @@ function borrarTodoHistorialMedidas() {
 }
 
 function abrirConfigAudio() {
-  cerrarCuenta();
+  cerrarCuenta(); cerrarSidebar();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2701,7 +2701,7 @@ window.cerrarModalTempo = function () {
 };
 
 function abrirGuiaTempo() {
-  cerrarCuenta();
+  cerrarCuenta(); cerrarSidebar();
   navPush();
   ocultarTodas();
   // Métodos de progresión/intensidad/descanso y guía de nutrición: se dibujan desde sus módulos
@@ -2717,7 +2717,7 @@ window.irAGuia = function (id) {
 
 // ── Ranking global ──
 window.abrirRanking = function () {
-  cerrarCuenta();
+  cerrarCuenta(); cerrarSidebar();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2727,7 +2727,7 @@ window.abrirRanking = function () {
 
 // ── Nutrición ──
 window.abrirNutricion = function () {
-  cerrarCuenta();
+  cerrarCuenta(); cerrarSidebar();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2750,7 +2750,7 @@ function _pintarContadorFrases() {
   el.textContent = `${FRASES.length} frases incluidas + ${propias} tuya${propias !== 1 ? 's' : ''}.`;
 }
 window.abrirMensajes = function () {
-  cerrarCuenta();
+  cerrarCuenta(); cerrarSidebar();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2880,6 +2880,22 @@ function _doVolverMenu() {
   if (_versionPendiente) setTimeout(() => avisarNuevaVersion(_versionPendiente), 400);
 }
 
+// Sidebar izquierdo: rutina activa y todo lo de "Entrenamiento" (+ texto grande)
+function toggleSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebar-overlay");
+  if (!sidebar || !overlay) return;
+  const isOpen = sidebar.classList.contains("sidebar-open");
+  sidebar.classList.toggle("sidebar-open", !isOpen);
+  sidebar.classList.toggle("sidebar-closed", isOpen);
+  overlay.classList.toggle("oculto", isOpen);
+}
+
+function cerrarSidebar() {
+  document.getElementById("sidebar")?.classList.replace("sidebar-open", "sidebar-closed");
+  document.getElementById("sidebar-overlay")?.classList.add("oculto");
+}
+
 function toggleSidebarRight() {
   const sidebar = document.getElementById("sidebar-right");
   const overlay = document.getElementById("sidebar-right-overlay");
@@ -2930,6 +2946,7 @@ function cerrarCuenta() {
 window.cerrarCuenta = cerrarCuenta;
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !document.getElementById('sheet-cuenta')?.classList.contains('oculto')) cerrarCuenta();
+  if (e.key === 'Escape' && document.getElementById('sidebar')?.classList.contains('sidebar-open')) cerrarSidebar();
 });
 
 function abrirCuenta() {
@@ -3001,7 +3018,7 @@ function mostrarAjustesSinPush() {
 }
 
 function abrirAjustes() {
-  cerrarCuenta();
+  cerrarCuenta(); cerrarSidebar();
   guardarEstadoApp();
   navPush({ pantalla: 'ajustes' });
   mostrarAjustesSinPush();
@@ -3478,7 +3495,8 @@ const CAPAS = {
   'modal-timer':            { abierta: el => !el.classList.contains('oculto'), cerrar: resetDesdeModal },
   'modal-tempo-overlay':    { abierta: el => !el.classList.contains('oculto'), cerrar: () => window.cerrarModalTempo?.() },
   'sidebar-right':          { abierta: el => el.classList.contains('sidebar-right-open'), cerrar: cerrarSidebarRight },
-  'sheet-cuenta':           { abierta: el => !el.classList.contains('oculto'), cerrar: cerrarCuenta }
+  'sheet-cuenta':           { abierta: el => !el.classList.contains('oculto'), cerrar: cerrarCuenta },
+  'sidebar':                { abierta: el => el.classList.contains('sidebar-open'), cerrar: cerrarSidebar }
 };
 
 function cerrarCapaPorId(id) {
@@ -3536,6 +3554,7 @@ document.addEventListener('touchstart', e => {
   touchStartY = e.changedTouches[0].screenY;
   const w = window.innerWidth;
   if (touchStartX >= w - EDGE_ZONE) { isSwiping = true; swipeTarget = 'right'; }
+  else if (touchStartX <= EDGE_ZONE) { isSwiping = true; swipeTarget = 'left'; }
 }, { passive: true });
 
 document.addEventListener('touchend', e => {
@@ -3546,6 +3565,10 @@ document.addEventListener('touchend', e => {
     if (swipeTarget === 'right' && dx < -SWIPE_THRESHOLD) {
       document.getElementById("sidebar-right")?.classList.replace("sidebar-right-closed", "sidebar-right-open");
       document.getElementById("sidebar-right-overlay")?.classList.remove("oculto");
+    }
+    if (swipeTarget === 'left' && dx > SWIPE_THRESHOLD) {
+      document.getElementById("sidebar")?.classList.replace("sidebar-closed", "sidebar-open");
+      document.getElementById("sidebar-overlay")?.classList.remove("oculto");
     }
   }
   isSwiping = false; swipeTarget = null;
@@ -3573,6 +3596,8 @@ window.verDetalle = verDetalle;
 window.limpiarHistorialDuplicados = limpiarHistorialDuplicados;
 window.borrarTodoHistorial = borrarTodoHistorial;
 window.toggleSidebarRight = toggleSidebarRight;
+window.toggleSidebar = toggleSidebar;
+window.cerrarSidebar = cerrarSidebar;
 window.resetDesdeModal = resetDesdeModal;
 window.masDescansoDesdeModal = masDescansoDesdeModal;
 window.mostrarPerfil = window.mostrarPerfil || (() => { });
@@ -3673,7 +3698,7 @@ window.exportarHistorialCSV = function () {
 };
 
 function abrirEstadisticas() {
-  cerrarCuenta();
+  cerrarCuenta(); cerrarSidebar();
   navPush();
   ocultarTodas();
   document.getElementById('pantalla-estadisticas').classList.remove('oculto');
@@ -3918,7 +3943,7 @@ function calcularRachaMejor(fechasOrdenadas) {
 }
 
 function abrirProgreso(desdeStats = false) {
-  cerrarCuenta();
+  cerrarCuenta(); cerrarSidebar();
   navPush(desdeStats === true ? { pantalla: 'progreso', padre: 'stats' } : { pantalla: 'progreso' });
   ocultarTodas();
   document.getElementById('pantalla-progreso').classList.remove('oculto');
@@ -4044,6 +4069,7 @@ window.renderGraficaProgreso = function () {
 };
 
 window.addEventListener("cambio-rutina", () => {
+  cerrarSidebar();   // el cambio se ve en la pantalla principal: al elegir rutina en el sidebar, este se cierra
   renderizarBotonesDias();
   renderizarBannerDeload();
   renderizarSelectorRutinas();
@@ -4090,7 +4116,7 @@ function guardarNotasProgresion(datos) {
 }
 
 function abrirNotasProgresion() {
-  cerrarCuenta();
+  cerrarCuenta(); cerrarSidebar();
   navPush();
   ocultarTodas();
   document.getElementById('pantalla-progresion-rutina').classList.remove('oculto');
@@ -4581,4 +4607,4 @@ document.addEventListener("DOMContentLoaded", async () => {
   setTimeout(actualizarRankingSilencioso, 6000);
   setTimeout(recordarBackupSiHaceFalta, 9000);
 });
-// gt-build:v107
+// gt-build:v108

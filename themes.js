@@ -292,4 +292,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Reaplicar el tema guardado (p. ej. después de traer datos de la nube)
 window.aplicarTemaGuardado = () => aplicarTema(obtenerTemaActual());
-// gt-build:v107
+// gt-build:v108

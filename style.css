@@ -236,13 +236,31 @@ textarea { resize: vertical; font-family: inherit; }
 /* ══════════════════════════════════════════════════
    SIDEBAR IZQUIERDO
 ══════════════════════════════════════════════════ */
-#sidebar-right-overlay {
+#sidebar-overlay, #sidebar-right-overlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.5);
   z-index: 800;
   backdrop-filter: blur(2px);
 }
+#sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: min(300px, 85vw);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  z-index: 900;
+  padding: 16px;
+  overflow-y: auto;
+  transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.sidebar-closed { transform: translateX(-105%) !important; }
+.sidebar-open   { transform: translateX(0) !important; }
 .sidebar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.sidebar-header h2 { margin: 0; font-size: calc(18px * var(--fs)); }
+.sidebar-section { margin-bottom: 12px; }
+.sidebar-label { font-size: calc(12px * var(--fs)); color: var(--text-secondary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px; }
+.sidebar-section select { width: 100%; margin: 0; }
+.sidebar-grupo-sep { margin-top: 12px; }
 
 /* ══════════════════════════════════════════════════
    SIDEBAR DERECHO (TEMPORIZADOR)
@@ -1460,8 +1478,8 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 .menu-footer .mf-ico { font-size: calc(20px * var(--fs)); line-height: 1.1; }
 
 /* Barra lateral (temporizador) cerrada: fuera del orden de tabulación y de los lectores de pantalla (antes se podía llegar con Tab a sus botones aunque no se vieran) */
-#sidebar-right.sidebar-right-closed { visibility: hidden; transition: transform 0.28s cubic-bezier(0.4,0,0.2,1), visibility 0s linear 0.28s; }
-#sidebar-right.sidebar-right-open { visibility: visible; }
+#sidebar.sidebar-closed, #sidebar-right.sidebar-right-closed { visibility: hidden; transition: transform 0.28s cubic-bezier(0.4,0,0.2,1), visibility 0s linear 0.28s; }
+#sidebar.sidebar-open, #sidebar-right.sidebar-right-open { visibility: visible; }
 
 /* v99: menú de una rutina sin días */
 .menu-sin-dias { margin: 18px 4px; padding: 14px; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-secondary); font-size: calc(14px * var(--fs)); line-height: 1.45; text-align: center; }
@@ -1587,9 +1605,10 @@ input[type="radio"] { width: auto; min-height: 0; margin: 0; flex: none; }   /* 
 /* ══════════════════════════════════════════════════
    v107 — avatar, hoja de cuenta, Ajustes y Perfil
 ══════════════════════════════════════════════════ */
-.menu-topbar { gap: 8px; }
-.menu-topbar h1 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.topbar-acciones { display: flex; gap: 6px; flex: none; }
+.menu-topbar { gap: 6px; }
+.menu-topbar h1 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: calc(17px * var(--fs)); }
+.topbar-acciones { display: flex; gap: 4px; flex: none; }
+.menu-topbar .btn-icon-top, .menu-topbar .btn-avatar { min-width: 0 !important; width: calc(38px * var(--ts)) !important; padding-left: 0 !important; padding-right: 0 !important; }
 
 .btn-avatar {
   flex: none; width: calc(40px * var(--ts)) !important; height: calc(40px * var(--ts)); min-height: 0;
@@ -1607,11 +1626,6 @@ input[type="radio"] { width: auto; min-height: 0; margin: 0; flex: none; }   /* 
   background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary);
 }
 .avatar-grande.con-cuenta { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-
-/* Rutina activa: selector compacto bajo la barra superior del menú */
-.menu-rutina { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; }
-.menu-rutina label { flex: none; font-size: calc(13px * var(--fs)); font-weight: 700; color: var(--text-secondary); }
-.menu-rutina select { flex: 1; min-width: 0; margin: 0; }
 
 /* Hoja inferior de la cuenta */
 .sheet-overlay {
@@ -1749,4 +1763,4 @@ input[type="radio"] { width: auto; min-height: 0; margin: 0; flex: none; }   /* 
 .nut-gr-rapidos button.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .nut-preview { margin: 8px 0 0; font-size: calc(13px * var(--fs)); color: var(--text-secondary); min-height: 1.3em; }
 .nut-preview strong { color: var(--text-primary); }
-/* gt-build:v107 */
+/* gt-build:v108 */

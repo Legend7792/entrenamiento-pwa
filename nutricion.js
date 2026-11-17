@@ -578,4 +578,4 @@ export function htmlGuiaNutricion() {
     ${itemH('Medidas, peso y progreso', 'Si te mides y te pesas cada 2–4 semanas (la app puede recordártelo, en Medidas corporales) verás si la tendencia va hacia donde quieres y podrás ajustar un 5–10 % las calorías.')}
   </div>`;
 }
-// gt-build:v107
+// gt-build:v108

@@ -9,9 +9,16 @@
 // de cocinar. Los alimentos "crudos" se pesan crudos. Esta es una base de PARTIDA: puedes añadir tus propios
 // alimentos (o corregir uno copiándolo como propio) en la pantalla de Nutrición.
 //
-// Siguen SIN estar (no se pudieron verificar con sus 4 cifras o no existen en SR Legacy): plátano verde frito/hervido,
-// yuca cocida (SR Legacy solo trae la cruda), pan cubano, frijoles blancos, aceite de girasol, chuleta de cerdo, bistec de res,
-// refrescos, ron y platos compuestos (congrí, moros, picadillo…). Se pueden añadir ya como "alimentos propios".
+// Siguen SIN estar: yuca cocida (SR Legacy solo trae la cruda; la única ficha cocida es una entrada genérica de encuestas,
+// "cassava, cooked", sin método de cocción y con 3 g de grasa —la cruda tiene 0,28 g—, lo que sugiere grasa añadida; no se pudo
+// comprobar y por eso no se usa), refrescos que no sean cola o limón-lima, y platos compuestos (congrí, moros, picadillo, ropa
+// vieja…: al buscarlos solo aparecieron productos de marca, sin ficha genérica del USDA). Se pueden añadir ya como "alimentos propios".
+//
+// Pan cubano: su ficha (FDC 2707604) es de la base de encuestas alimentarias del USDA (FNDDS), no de SR Legacy; se incluye porque
+// cumple 4-9-4 (272 kcal) y no hay otra fuente oficial, pero es una referencia, no una receta concreta.
+// Chuleta y bistec: el USDA da el valor por porción comestible (sin hueso); si pesas la chuleta con hueso, descuenta el hueso.
+// Ron: sus 231 kcal salen casi todas del alcohol (33,4 g × 7 kcal), que no cuenta como proteína, grasa ni carbohidrato, por eso
+// las tres cifras valen 0.
 //
 // Nota: la guayaba mezcla proteína/grasa de la ficha "Guavas, common, raw" con los carbohidratos de la tabla resumen
 // del mismo alimento; en frutas/verduras cocidas y crudas las kcal del USDA quedan por debajo de 4-9-4 porque la fibra
@@ -159,8 +166,22 @@ export const ALIMENTOS = [
   { id: 'aceite_soya', nombre: 'Aceite de soya', cat: 'Grasas, dulces y bebidas', k: 884, p: 0, g: 100, c: 0 }, // FDC 171411
   { id: 'mayonesa', nombre: 'Mayonesa regular', cat: 'Grasas, dulces y bebidas', k: 680, p: 0.96, g: 74.8, c: 0.57 }, // FDC 171009
   { id: 'cafe_negro', nombre: 'Café negro preparado (sin azúcar)', cat: 'Grasas, dulces y bebidas', k: 1, p: 0.12, g: 0.02, c: 0 }, // FDC 171890
-  { id: 'cerveza', nombre: 'Cerveza regular', cat: 'Grasas, dulces y bebidas', k: 43, p: 0.46, g: 0, c: 3.55 } // FDC 168746
+  { id: 'cerveza', nombre: 'Cerveza regular', cat: 'Grasas, dulces y bebidas', k: 43, p: 0.46, g: 0, c: 3.55 }, // FDC 168746
+
+  // ── Añadidos en v108 (misma fuente; verificados con sus 4 cifras en getfoodfacts.com) ──
+  { id: 'platano_verde_crudo', nombre: 'Plátano verde crudo', cat: 'Cereales y viandas', k: 152, p: 1.25, g: 0.07, c: 36.7 }, // FDC 168215
+  { id: 'platano_verde_hervido', nombre: 'Plátano verde hervido', cat: 'Cereales y viandas', k: 121, p: 1.09, g: 0.08, c: 29.1 }, // FDC 168216
+  { id: 'platano_verde_frito', nombre: 'Plátano verde frito (tostones)', cat: 'Cereales y viandas', k: 309, p: 1.5, g: 11.8, c: 49.2 }, // FDC 168199
+  { id: 'pan_cubano', nombre: 'Pan cubano (referencia FNDDS)', cat: 'Cereales y viandas', k: 272, p: 10.8, g: 2.42, c: 51.9 }, // FDC 2707604 (FNDDS)
+  { id: 'frijol_blanco_cocido', nombre: 'Frijoles blancos cocidos (sin sal)', cat: 'Legumbres', k: 139, p: 9.73, g: 0.35, c: 25.1 }, // FDC 175203
+  { id: 'cerdo_chuleta_plancha', nombre: 'Chuleta de cerdo (centro del lomo) asada a la parrilla, magro y grasa, sin hueso', cat: 'Proteínas', k: 209, p: 25.6, g: 11.1, c: 0 }, // FDC 167827
+  { id: 'cerdo_chuleta_frita', nombre: 'Chuleta de cerdo (centro del lomo) frita en sartén, magro y grasa, sin hueso', cat: 'Proteínas', k: 238, p: 27.6, g: 13.3, c: 0 }, // FDC 168292
+  { id: 'res_bistec_solomillo', nombre: 'Bistec de res (lomo alto / sirloin) a la plancha, magro y grasa', cat: 'Proteínas', k: 212, p: 29.3, g: 9.67, c: 0 }, // FDC 169457
+  { id: 'aceite_girasol', nombre: 'Aceite de girasol', cat: 'Grasas, dulces y bebidas', k: 884, p: 0, g: 100, c: 0 }, // FDC 171017
+  { id: 'refresco_cola', nombre: 'Refresco de cola regular', cat: 'Grasas, dulces y bebidas', k: 42, p: 0, g: 0.25, c: 10.4 }, // FDC 174852
+  { id: 'refresco_limon', nombre: 'Refresco de limón-lima (sin cafeína)', cat: 'Grasas, dulces y bebidas', k: 41, p: 0.09, g: 0, c: 10.4 }, // FDC 173205
+  { id: 'ron_80', nombre: 'Ron (80 proof, 40 % alcohol)', cat: 'Grasas, dulces y bebidas', k: 231, p: 0, g: 0, c: 0 }, // FDC 174817
 ];
 
 export const FUENTE_ALIMENTOS = 'USDA FoodData Central (SR Legacy), por 100 g';
-// gt-build:v107
+// gt-build:v108
