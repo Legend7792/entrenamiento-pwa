@@ -148,10 +148,105 @@ function ultimoMedida() {
   return { peso, altura };
 }
 
-// ── Buscador de alimentos (solo repinta la lista de resultados: no se pierde el foco al escribir) ──
-let nutBusqueda = '', nutCat = '', nutSel = '';
-const LIMITE_RESULTADOS = 60;
-const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+// ── Buscador de alimentos ──
+// Solo se repintan las fichas, las categorías y la selección: el cuadro de búsqueda no se toca, así no se pierde el foco al escribir.
+let nutBusqueda = '', nutCat = '', nutSel = '', nutOrden = '', nutLimite = 40, nutRecientes = [];
+const PASO_RESULTADOS = 40;
+const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const fmt1 = n => (Math.round(Number(n) * 10) / 10).toString().replace('.', ',');   // 3.6 → "3,6"
+const CAT_ICONO = {
+  'Cereales y viandas': '🍚', 'Legumbres': '🫘', 'Proteínas': '🍗', 'Lácteos': '🥛', 'Frutas y vegetales': '🥬',
+  'Frutos secos y semillas': '🥜', 'Grasas, dulces y bebidas': '🍯', 'Mis alimentos': '⭐'
+};
+const icono = cat => CAT_ICONO[cat] || '🍽️';
+const ORDENES = [
+  ['', 'Orden: relevancia'], ['prot', 'Más proteína'], ['magro', 'Más proteína por kcal'],
+  ['kcal_asc', 'Menos calorías'], ['kcal_desc', 'Más calorías'], ['nombre', 'Nombre A–Z']
+];
+const CAT_RECIENTES = '__recientes';
+
+// Alimentos que anotaste en los últimos 30 días (el más reciente primero): salen del propio diario, no hay que guardar nada más
+function idsRecientes() {
+  const vistos = [];
+  for (let off = 0; off >= -30 && vistos.length < 15; off--) {
+    const items = leerDia(off);
+    for (let i = items.length - 1; i >= 0 && vistos.length < 15; i--) {
+      const id = items[i].id;
+      if (id && !vistos.includes(id)) vistos.push(id);
+    }
+  }
+  return vistos;
+}
+
+// Texto con las palabras buscadas resaltadas (sin distinguir mayúsculas ni tildes)
+function resaltar(texto, palabras) {
+  if (!palabras.length) return esc(texto);
+  let n = '';
+  const mapa = [];   // mapa[i] = posición en `texto` del carácter que originó el carácter normalizado i
+  let pos = 0;
+  for (const ch of texto) {
+    const t = norm(ch);
+    for (let k = 0; k < t.length; k++) mapa.push(pos);
+    n += t; pos += ch.length;
+  }
+  const marca = new Array(texto.length).fill(false);
+  palabras.forEach(w => {
+    for (let i = n.indexOf(w); i !== -1; i = n.indexOf(w, i + 1)) for (let k = i; k < i + w.length; k++) marca[mapa[k]] = true;
+  });
+  let html = '', abierto = false, p = 0;
+  for (const ch of texto) {
+    const m = marca[p];
+    if (m && !abierto) { html += '<mark>'; abierto = true; }
+    if (!m && abierto) { html += '</mark>'; abierto = false; }
+    html += esc(ch); p += ch.length;
+  }
+  return html + (abierto ? '</mark>' : '');
+}
+
+function filtrarAlimentos(todos, palabras, cat) {
+  return todos.filter(a => {
+    if (cat === CAT_RECIENTES) { if (!nutRecientes.includes(a.id)) return false; }
+    else if (cat && a.cat !== cat) return false;
+    return palabras.every(w => norm(a.nombre + ' ' + a.cat).includes(w));
+  });
+}
+
+function ordenarAlimentos(lista, palabras, todos) {
+  const idx = new Map(todos.map((a, i) => [a.id, i]));
+  const porCatalogo = (a, b) => idx.get(a.id) - idx.get(b.id);
+  const ratio = a => (a.k > 0 ? a.p / a.k : 0);
+  switch (nutOrden) {
+    case 'prot':       return [...lista].sort((a, b) => b.p - a.p || porCatalogo(a, b));
+    case 'magro':      return [...lista].sort((a, b) => ratio(b) - ratio(a) || porCatalogo(a, b));
+    case 'kcal_asc':   return [...lista].sort((a, b) => a.k - b.k || porCatalogo(a, b));
+    case 'kcal_desc':  return [...lista].sort((a, b) => b.k - a.k || porCatalogo(a, b));
+    case 'nombre':     return [...lista].sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre), 'es') || porCatalogo(a, b));
+  }
+  if (nutCat === CAT_RECIENTES && !palabras.length) return [...lista].sort((a, b) => nutRecientes.indexOf(a.id) - nutRecientes.indexOf(b.id));
+  if (!palabras.length) return lista;
+  // Relevancia: primero los que empiezan por lo escrito, luego los que lo tienen como palabra y al final el resto
+  const w0 = palabras[0];
+  const puntos = a => { const n = norm(a.nombre); return n.startsWith(w0) ? 0 : n.includes(' ' + w0) ? 1 : 2; };
+  return [...lista].sort((a, b) => puntos(a) - puntos(b) || porCatalogo(a, b));
+}
+
+function pintarFichas(mostrar, palabras) {
+  return mostrar.map(a => `<button type="button" role="option" class="nut-res${a.id === nutSel ? ' sel' : ''}" aria-selected="${a.id === nutSel}" onclick="nutriElegir('${esc(a.id)}')">
+      <span class="nut-res-top"><strong>${resaltar(a.nombre, palabras)}</strong><span class="nut-kcal">${a.k}<small> kcal</small></span></span>
+      <span class="nut-res-bot"><span class="nut-cat">${icono(a.cat)} ${esc(a.cat)}</span><span class="nut-macros"><b class="mp">P ${fmt1(a.p)}</b><b>C ${fmt1(a.c)}</b><b>G ${fmt1(a.g)}</b></span></span>
+    </button>`).join('');
+}
+
+function pintarChips(todos, palabras) {
+  const cont = document.getElementById('nut-chips');
+  if (!cont) return;
+  const cuenta = cat => filtrarAlimentos(todos, palabras, cat).length;
+  const cats = [...new Set(todos.map(a => a.cat))];
+  const chip = (id, texto, n) => `<button type="button" class="nut-chip${nutCat === id ? ' sel' : ''}${n === 0 && nutCat !== id ? ' vacia' : ''}" aria-pressed="${nutCat === id}" onclick="nutriFiltrarCat('${esc(id)}')">${texto} <span>${n}</span></button>`;
+  cont.innerHTML = chip('', 'Todos', cuenta(''))
+    + (nutRecientes.length ? chip(CAT_RECIENTES, '🕘 Recientes', cuenta(CAT_RECIENTES)) : '')
+    + cats.map(c => chip(c, `${icono(c)} ${esc(c)}`, cuenta(c))).join('');
+}
 
 function pintarResultadosAlimentos() {
   const cont = document.getElementById('nut-resultados');
@@ -159,20 +254,73 @@ function pintarResultadosAlimentos() {
   if (!cont) return;
   const palabras = norm(nutBusqueda).split(/\s+/).filter(Boolean);
   const todos = todosAlimentos();
-  const hallados = todos.filter(a => (!nutCat || a.cat === nutCat) && palabras.every(w => norm(a.nombre + ' ' + a.cat).includes(w)));
-  const mostrar = hallados.slice(0, LIMITE_RESULTADOS);
-  cont.innerHTML = mostrar.length
-    ? mostrar.map(a => `<button type="button" role="option" class="nut-res${a.id === nutSel ? ' sel' : ''}" aria-selected="${a.id === nutSel}" onclick="nutriElegir('${esc(a.id)}')">
-        <strong>${esc(a.nombre)}</strong><small>${esc(a.cat)} · ${a.k} kcal · P ${a.p} · C ${a.c} · G ${a.g} <span class="nut-100">(por 100 g)</span></small></button>`).join('')
-      + (hallados.length > mostrar.length ? `<p class="import-hint">Mostrando ${mostrar.length} de ${hallados.length}. Escribe más letras para afinar.</p>` : '')
-    : `<p class="texto-vacio">Sin resultados. Prueba con otra palabra o añádelo abajo en «Mis alimentos».</p>`;
+  const hallados = ordenarAlimentos(filtrarAlimentos(todos, palabras, nutCat), palabras, todos);
+  const mostrar = hallados.slice(0, nutLimite);
+  pintarChips(todos, palabras);
+
+  const conteo = document.getElementById('nut-conteo');
+  if (conteo) conteo.textContent = hallados.length === 1 ? '1 alimento' : `${hallados.length} alimentos`;
+
+  if (mostrar.length) {
+    cont.innerHTML = pintarFichas(mostrar, palabras)
+      + (hallados.length > mostrar.length ? `<button type="button" class="nut-mas" onclick="nutriMas()">Mostrar más (${hallados.length - mostrar.length} restantes)</button>` : '');
+  } else {
+    const q = nutBusqueda.trim();
+    cont.innerHTML = `<div class="nut-vacio"><p>${q ? `Sin resultados para «${esc(q)}».` : 'No hay alimentos en esta categoría.'}</p>
+      ${nutCat || q ? `<button type="button" class="btn-secondary" onclick="nutriLimpiarFiltros()">Quitar filtros</button>` : ''}
+      ${q ? `<button type="button" class="btn-secondary" onclick="nutriCrearDesdeBusqueda()">➕ Añadir «${esc(q.slice(0, 30))}» a Mis alimentos</button>` : ''}</div>`;
+  }
+
   const a = todos.find(x => x.id === nutSel);
-  if (sel) sel.innerHTML = a ? `Elegido: <strong>${esc(a.nombre)}</strong> (${a.k} kcal / 100 g)` : 'Toca un alimento de la lista para elegirlo.';
+  if (sel) {
+    sel.innerHTML = a
+      ? `<span class="nut-sel-nombre">✔ <strong>${esc(a.nombre)}</strong></span><span class="nut-sel-100">por 100 g: ${a.k} kcal · P ${fmt1(a.p)} · C ${fmt1(a.c)} · G ${fmt1(a.g)}</span>`
+      : 'Toca un alimento de la lista para elegirlo.';
+    sel.classList.toggle('nut-sel-ok', !!a);
+  }
+  nutriPreview();
 }
 
-window.nutriBuscar = function (t) { nutBusqueda = String(t || ''); pintarResultadosAlimentos(); };
-window.nutriFiltrarCat = function (c) { nutCat = String(c || ''); pintarResultadosAlimentos(); };
+// Cuánto aporta la cantidad escrita del alimento elegido (se actualiza al teclear los gramos)
+window.nutriPreview = function () {
+  const prev = document.getElementById('nut-preview');
+  const btn = document.getElementById('nut-btn-anadir');
+  const a = todosAlimentos().find(x => x.id === nutSel);
+  const gr = num(document.getElementById('nut-gramos')?.value);
+  const valido = !!a && gr > 0 && gr <= 5000;
+  if (prev) {
+    if (valido) { const f = gr / 100; prev.innerHTML = `${fmt1(gr)} g = <strong>${Math.round(a.k * f)} kcal</strong> · P ${fmt1(a.p * f)} · C ${fmt1(a.c * f)} · G ${fmt1(a.g * f)}`; }
+    else prev.textContent = a ? 'Escribe los gramos (1–5000).' : '';
+  }
+  if (btn) btn.textContent = valido ? `➕ Añadir ${fmt1(gr)} g` : '➕ Añadir';
+  document.querySelectorAll('.nut-gr-rapidos button').forEach(b => b.classList.toggle('sel', valido && Number(b.dataset.gr) === gr));
+};
+
+window.nutriBuscar = function (t) { nutBusqueda = String(t || ''); nutLimite = PASO_RESULTADOS; pintarResultadosAlimentos(); };
+window.nutriFiltrarCat = function (c) { nutCat = String(c || ''); nutLimite = PASO_RESULTADOS; pintarResultadosAlimentos(); };
+window.nutriOrdenar = function (o) { nutOrden = String(o || ''); nutLimite = PASO_RESULTADOS; pintarResultadosAlimentos(); };
+window.nutriMas = function () { nutLimite += PASO_RESULTADOS; pintarResultadosAlimentos(); };
 window.nutriElegir = function (id) { nutSel = id; pintarResultadosAlimentos(); document.getElementById('nut-gramos')?.focus(); };
+window.nutriGramos = function (g) { const el = document.getElementById('nut-gramos'); if (el) el.value = g; window.nutriPreview(); };
+window.nutriLimpiarFiltros = function () {
+  nutBusqueda = ''; nutCat = ''; nutLimite = PASO_RESULTADOS;
+  const i = document.getElementById('nut-buscar'); if (i) i.value = '';
+  pintarResultadosAlimentos();
+};
+// Enter en el buscador: elige el primer resultado
+window.nutriPrimero = function () {
+  const b = document.querySelector('#nut-resultados .nut-res');
+  if (b) b.click();
+};
+// «No lo encuentro»: lleva lo escrito al formulario de «Mis alimentos»
+window.nutriCrearDesdeBusqueda = function () {
+  const campo = document.getElementById('nut-nuevo-nombre');
+  if (!campo) return;
+  const q = nutBusqueda.trim().slice(0, 60);
+  campo.value = q ? q.charAt(0).toUpperCase() + q.slice(1) : '';
+  campo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  campo.focus({ preventScroll: true });
+};
 
 export function renderNutricion() {
   const cont = document.getElementById('nutricion-contenido');
@@ -186,9 +334,8 @@ export function renderNutricion() {
   const metas = calcularMetas(perfil);
   const items = leerDia(offsetDia);
   const tot = totalesDia(items);
-  const alimentos = todosAlimentos();
-  const cats = [...new Set(alimentos.map(a => a.cat))];
   const propios = leerPropios();
+  nutRecientes = idsRecientes();
 
   cont.innerHTML = `
   <div class="nut-card">
@@ -273,17 +420,22 @@ export function renderNutricion() {
 
     <div class="nut-anadir">
       <label class="form-label" for="nut-buscar">🔍 Buscar alimento</label>
-      <input id="nut-buscar" type="search" autocomplete="off" placeholder="Ej: yuca, pollo, atún… (varias palabras)" value="${esc(nutBusqueda)}" oninput="nutriBuscar(this.value)">
-      <select id="nut-cat-filtro" aria-label="Filtrar por categoría" onchange="nutriFiltrarCat(this.value)">
-        <option value="">Todas las categorías (${alimentos.length})</option>
-        ${cats.map(cat => `<option value="${esc(cat)}" ${cat === nutCat ? 'selected' : ''}>${esc(cat)} (${alimentos.filter(a => a.cat === cat).length})</option>`).join('')}
-      </select>
+      <input id="nut-buscar" type="search" autocomplete="off" enterkeyhint="search" placeholder="Ej: yuca, pollo, atún… (varias palabras)" value="${esc(nutBusqueda)}" oninput="nutriBuscar(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();nutriPrimero();}">
+      <div id="nut-chips" class="nut-chips" role="group" aria-label="Categorías"></div>
+      <div class="nut-barra-lista">
+        <span id="nut-conteo" class="nut-conteo" aria-live="polite"></span>
+        <select id="nut-orden" aria-label="Ordenar resultados" onchange="nutriOrdenar(this.value)">
+          ${ORDENES.map(([v, t]) => `<option value="${v}" ${v === nutOrden ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+        </select>
+      </div>
       <div id="nut-resultados" class="nut-resultados" role="listbox" aria-label="Resultados"></div>
       <p id="nut-seleccion" class="nut-seleccion"></p>
       <div class="nut-anadir-fila">
-        <div><label class="form-label" for="nut-gramos">Gramos</label><input id="nut-gramos" type="number" inputmode="decimal" min="1" max="5000" value="100"></div>
-        <button class="btn-primary" onclick="nutriAnadir()">➕ Añadir</button>
+        <div><label class="form-label" for="nut-gramos">Gramos</label><input id="nut-gramos" type="number" inputmode="decimal" min="1" max="5000" value="100" oninput="nutriPreview()"></div>
+        <button id="nut-btn-anadir" class="btn-primary" onclick="nutriAnadir()">➕ Añadir</button>
       </div>
+      <div class="nut-gr-rapidos" aria-label="Cantidades rápidas">${[50, 100, 150, 200, 250].map(g => `<button type="button" data-gr="${g}" onclick="nutriGramos(${g})">${g} g</button>`).join('')}</div>
+      <p id="nut-preview" class="nut-preview" aria-live="polite"></p>
     </div>
 
     <div class="nut-lista">
@@ -373,7 +525,7 @@ window.nutriAnadir = function () {
   if (!(gr > 0 && gr <= 5000)) { showToast('Los gramos deben estar entre 1 y 5000', 'warning'); return; }
   const items = leerDia(offsetDia);
   items.push({ id: a.id, n: a.nombre, gr, k: a.k, p: a.p, g: a.g, c: a.c });
-  if (guardarJSON(claveDia(offsetDia), items)) renderNutricion();
+  if (guardarJSON(claveDia(offsetDia), items)) { renderNutricion(); showToast(`Añadido: ${a.nombre} · ${gr} g`, 'success', 1800); }
 };
 
 window.nutriQuitar = function (i) {
@@ -415,7 +567,7 @@ const itemH = (t, p) => `<div class="guia-item"><h4>${esc(t)}</h4><p>${esc(p)}</
 export function htmlGuiaNutricion() {
   return `<div class="guia-section" id="guia-nutricion">
     <h3>🍽️ Nutrición: calorías y macros</h3>
-    <p>La calculadora (menú ☰ → Nutrición) estima cuánto comer según tu objetivo. Son <strong>puntos de partida</strong>: el cuerpo de cada persona responde distinto, así que lo importante es observar tu peso y tu rendimiento durante 2–3 semanas y ajustar.</p>
+    <p>La calculadora (pantalla principal → 🍽️ Nutrición) estima cuánto comer según tu objetivo. Son <strong>puntos de partida</strong>: el cuerpo de cada persona responde distinto, así que lo importante es observar tu peso y tu rendimiento durante 2–3 semanas y ajustar.</p>
     ${itemH('Gasto en reposo y gasto diario', 'Se calcula con la ecuación de Mifflin-St Jeor (10·peso + 6,25·altura − 5·edad, +5 en hombres y −161 en mujeres) y se multiplica por un factor de actividad (1,2 sedentario hasta 1,9 muy alto). Es una estimación: puede errar un 10 % o más en una persona concreta.')}
     ${itemH('Ganar músculo (superávit)', 'La revisión de Iraki y cols. (2019) sobre fase de volumen en culturismo natural propone un superávit del 10–20 % sobre mantenimiento en principiantes e intermedios (más bajo en avanzados), con ganancias de peso de ≈0,25–0,5 % del peso corporal por semana, proteína de 1,6–2,2 g/kg, grasa de 0,5–1,5 g/kg (≈20–35 % de las calorías) y el resto en carbohidratos.')}
     ${itemH('Perder grasa (déficit)', 'Helms y cols. (2014) para fase de definición proponen perder ≈0,5–1 % del peso corporal por semana, y proteína de 2,3–3,1 g/kg de masa magra para conservar músculo. Como la app no conoce tu % de grasa, usa 2,2 g/kg de peso total por defecto; puedes subirlo en "Ajustar los valores por defecto". La equivalencia 7700 kcal ≈ 1 kg es solo una regla aproximada.')}
@@ -426,4 +578,4 @@ export function htmlGuiaNutricion() {
     ${itemH('Medidas, peso y progreso', 'Si te mides y te pesas cada 2–4 semanas (la app puede recordártelo, en Medidas corporales) verás si la tendencia va hacia donde quieres y podrás ajustar un 5–10 % las calorías.')}
   </div>`;
 }
-// gt-build:v106
+// gt-build:v107

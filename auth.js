@@ -5,23 +5,26 @@ import { showToast, showConfirm, escapeHtml } from "./ui.js";
 import { navPush, navLimpiar } from "./nav.js";
 
 const PANTALLAS_SECUNDARIAS = [
-  "pantalla-auth", "pantalla-perfil", "pantalla-dia", "pantalla-historial",
+  "pantalla-auth", "pantalla-perfil", "pantalla-ajustes", "pantalla-dia", "pantalla-historial",
   "pantalla-detalle", "pantalla-medidas", "pantalla-audio", "pantalla-editor",
   "pantalla-resumen", "pantalla-ai-import", "pantalla-guia-tempo",
-  "pantalla-estadisticas", "pantalla-progreso", "pantalla-progresion-rutina"
+  "pantalla-estadisticas", "pantalla-progreso", "pantalla-progresion-rutina",
+  "pantalla-mensajes", "pantalla-nutricion", "pantalla-ranking"
 ];
 
 // ── Helpers de pantalla ──────────────────────────────
 export function mostrarPantallaAuth() {
+  // Se llama desde el menú, Ajustes o el Perfil: se oculta todo lo demás
+  PANTALLAS_SECUNDARIAS.filter(id => id !== "pantalla-auth")
+    .concat(["menu"]).forEach(id => document.getElementById(id)?.classList.add("oculto"));
   document.getElementById("pantalla-auth")?.classList.remove("oculto");
-  document.getElementById("pantalla-perfil")?.classList.add("oculto");
-  document.getElementById("menu")?.classList.add("oculto");
 }
 
 export function mostrarMenu() {
   navLimpiar();
   PANTALLAS_SECUNDARIAS.forEach(id => document.getElementById(id)?.classList.add("oculto"));
   document.getElementById("menu")?.classList.remove("oculto");
+  try { window.renderAvatar?.(); } catch {}   // la letra del avatar cambia al iniciar o cerrar sesión
 }
 
 // Menú de arranque: el listener de app.js (document) se ejecuta ANTES que el de este archivo (window)
@@ -49,45 +52,47 @@ export function mostrarPerfil() {
 
   const cont = document.getElementById("perfil-contenido");
   if (cont) {
-    const email = escapeHtml(userState.email || "Sin cuenta");
     const esSinCuenta = !userState.uid;
+    const emailTxt = userState.email || "";
+    const email = escapeHtml(emailTxt || "Sin cuenta");
+    const letra = escapeHtml(!esSinCuenta && emailTxt.trim() ? [...emailTxt.trim()][0].toUpperCase() : "👤");
     const fechaSubida = localStorage.getItem("_syncedAt") ? fmtFecha(localStorage.getItem("_syncedAt")) : "Nunca";
 
     cont.innerHTML = `
-      <div class="perfil-info">
-        <p id="user-email-label">👤 ${email}</p>
+      <div class="perfil-cab">
+        <div class="avatar-grande${esSinCuenta ? "" : " con-cuenta"}" aria-hidden="true">${letra}</div>
+        <div class="perfil-cab-txt">
+          <strong id="user-email-label">${email}</strong>
+          <small>${esSinCuenta ? "Datos guardados solo en este dispositivo" : "Sesión iniciada"}</small>
+        </div>
       </div>
       ${!esSinCuenta ? `
       <div class="perfil-seccion">
         <h3>🔄 Sincronización</h3>
-        <p style="font-size:calc(12px*var(--fs));color:var(--text-secondary);margin-bottom:8px;">
+        <p class="perfil-nota">
           Última sincronización de este dispositivo: <strong>${escapeHtml(fechaSubida)}</strong>
         </p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-          <button onclick="syncSubir(this)" class="btn-secondary" style="flex:1;">
-            ⬆️ Subir a la nube
-          </button>
-          <button onclick="syncBajar(this)" style="flex:1;background:var(--warning);color:var(--on-warning);">
-            ⬇️ Traer de la nube
-          </button>
+        <div class="perfil-botones">
+          <button onclick="syncSubir(this)" class="btn-secondary">⬆️ Subir a la nube</button>
+          <button onclick="syncBajar(this)" style="background:var(--warning);color:var(--on-warning);">⬇️ Traer de la nube</button>
         </div>
-        <p style="font-size:calc(11px*var(--fs));color:var(--text-secondary);">
+        <p class="perfil-nota">
           ⬆️ Guarda los datos de <em>este</em> dispositivo. Si otro dispositivo subió datos más nuevos, te lo dirá y podrás fusionarlos (no se pierde nada).<br>
           ⬇️ Trae los datos de la nube y los <em>fusiona</em> con los de este dispositivo: el historial y las medidas se unen; rutinas, pesos y ajustes de la nube mandan.
         </p>
       </div>
+      <details class="perfil-seccion perfil-plegable">
+        <summary>🔑 Cambiar contraseña</summary>
+        <div class="perfil-plegable-cuerpo">
+          <input id="nueva-password" type="password" placeholder="Nueva contraseña (mín. 8 caracteres)" autocomplete="new-password" />
+          <input id="confirmar-password" type="password" placeholder="Confirmar nueva contraseña" autocomplete="new-password" />
+          <button onclick="cambiarPassword()">Cambiar contraseña</button>
+        </div>
+      </details>
+      <button onclick="logout()" class="btn-danger perfil-salir">🚪 Cerrar sesión</button>` : `
       <div class="perfil-seccion">
-        <h3>🔑 Cambiar contraseña</h3>
-        <input id="nueva-password" type="password" placeholder="Nueva contraseña (mín. 8 caracteres)" autocomplete="new-password" />
-        <input id="confirmar-password" type="password" placeholder="Confirmar nueva contraseña" autocomplete="new-password" />
-        <button onclick="cambiarPassword()">Cambiar contraseña</button>
-      </div>
-      <div class="perfil-seccion">
-        <button onclick="logout()" class="btn-danger" style="width:100%;margin-top:8px;">🚪 Cerrar sesión</button>
-      </div>` : `
-      <div class="perfil-seccion">
-        <p style="color:var(--text-secondary);font-size:calc(14px*var(--fs));">Estás usando la app sin cuenta. Los datos se guardan solo en este dispositivo.</p>
-        <button onclick="mostrarPantallaAuth()" class="btn-secondary">Crear cuenta / Iniciar sesión</button>
+        <p class="perfil-nota">Estás usando la app sin cuenta. Crea una para guardar tus datos en la nube y usarlos en otros dispositivos.</p>
+        <button onclick="mostrarPantallaAuth()" class="btn-primary">🔑 Crear cuenta / Iniciar sesión</button>
       </div>`}`;
   }
 }
@@ -446,4 +451,4 @@ window.addEventListener("DOMContentLoaded", async () => {
 
 window.mostrarPerfil       = mostrarPerfil;
 window.mostrarPantallaAuth = mostrarPantallaAuth;
-// gt-build:v106
+// gt-build:v107

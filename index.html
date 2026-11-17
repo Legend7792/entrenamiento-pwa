@@ -151,75 +151,6 @@
 <div id="banner-offline" class="oculto">📴 Sin conexión — Modo offline activo</div>
 
 <!-- ══════════════════════════════════════
-     SIDEBAR IZQUIERDO
-══════════════════════════════════════ -->
-<div id="sidebar-overlay" class="oculto" onclick="toggleSidebar()"></div>
-<nav id="sidebar" class="sidebar-closed">
-  <div class="sidebar-header">
-    <h2>⚙️ Ajustes</h2>
-    <button onclick="toggleSidebar()" class="btn-close-sidebar">✕</button>
-  </div>
-
-  <div class="sidebar-section">
-    <label class="sidebar-label">🎨 Tema</label>
-    <select id="selector-temas-sidebar"></select>
-  </div>
-
-  <div class="sidebar-section">
-    <label class="sidebar-label">📋 Rutina activa</label>
-    <select id="selector-rutina"></select>
-  </div>
-
-  <!-- Grupos plegables: se recuerda cuáles dejaste abiertos -->
-  <details class="sb-grupo" data-g="rutinas">
-    <summary>✏️ Mis rutinas</summary>
-    <div class="sidebar-btns">
-      <button onclick="toggleSidebar(); abrirEditorRutinas()">✏️ Editar rutinas</button>
-      <button onclick="toggleSidebar(); abrirPantallaImport()">🤖 Importar con IA</button>
-      <button onclick="toggleSidebar(); abrirNotasProgresion()">📋 Notas de progresión</button>
-    </div>
-  </details>
-
-  <details class="sb-grupo" data-g="personalizar">
-    <summary>🎛️ Personalizar</summary>
-    <label class="check-texto-grande">
-      <input type="checkbox" id="toggle-texto-grande" onchange="toggleTextoGrande(this.checked)">
-      <span><strong>Texto grande</strong> · letras y botones más grandes para usar entre series</span>
-    </label>
-    <label class="check-texto-grande">
-      <input type="checkbox" id="toggle-serie-verde" onchange="toggleSerieVerde(this.checked)">
-      <span><strong>Series en verde clásico</strong> · si no, los cuadros usan el color del tema</span>
-    </label>
-    <div class="sidebar-btns">
-      <button onclick="toggleSidebar(); abrirMensajes()">💬 Mensajes y frases</button>
-      <button onclick="toggleSidebar(); abrirConfigAudio()">🔔 Sonido del temporizador</button>
-    </div>
-  </details>
-
-  <details class="sb-grupo" data-g="ayuda">
-    <summary>📖 Ayuda</summary>
-    <div class="sidebar-btns">
-      <button onclick="toggleSidebar(); abrirGuiaTempo()">📖 Guía y conceptos</button>
-    </div>
-  </details>
-
-  <details class="sb-grupo" data-g="datos">
-    <summary>💾 Datos y app</summary>
-    <div class="sidebar-btns">
-      <button onclick="toggleSidebar(); exportarBackupJSON()">💾 Exportar copia (backup)</button>
-      <label class="sidebar-file-btn" onclick="toggleSidebar()">
-        📂 Importar copia (backup)
-        <input type="file" accept=".json" onchange="importarBackupJSON(this)" style="display:none">
-      </label>
-      <button onclick="toggleSidebar(); forzarActualizacion()">🔄 Actualizar app</button>
-      <button id="btn-instalar-app" onclick="instalarApp()" style="display:none">📲 Instalar app</button>
-    </div>
-  </details>
-
-  <div class="sidebar-perfil" id="sidebar-perfil-info"></div>
-</nav>
-
-<!-- ══════════════════════════════════════
      SIDEBAR DERECHO — TEMPORIZADOR
 ══════════════════════════════════════ -->
 <div id="sidebar-right-overlay" class="oculto" onclick="toggleSidebarRight()"></div>
@@ -255,6 +186,16 @@
     <button onclick="añadirTimer()" class="btn-secondary">➕ Añadir timer</button>
   </section>
 </nav>
+
+<!-- ══════════════════════════════════════
+     HOJA DE CUENTA (avatar de la esquina)
+══════════════════════════════════════ -->
+<div id="sheet-cuenta" class="sheet-overlay oculto" onclick="if (event.target === this) cerrarCuenta()">
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Cuenta">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div id="sheet-cuenta-contenido"></div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════
      PANTALLA AUTH
@@ -295,11 +236,109 @@
 </section>
 
 <!-- ══════════════════════════════════════
+     PANTALLA AJUSTES
+══════════════════════════════════════ -->
+<section id="pantalla-ajustes" class="oculto">
+  <div class="pantalla-header">
+    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
+    <h2>⚙️ Ajustes</h2>
+  </div>
+
+  <!-- Tarjeta de cuenta (la rellena app.js) -->
+  <div id="aj-cuenta"></div>
+
+  <h3 class="aj-titulo">Apariencia</h3>
+  <div class="aj-grupo">
+    <div class="aj-bloque">
+      <div class="aj-bloque-tit">🎨 Tema de color</div>
+      <div id="galeria-temas" class="tema-galeria" role="radiogroup" aria-label="Tema de color"></div>
+    </div>
+    <label class="aj-fila">
+      <span class="aj-ico" aria-hidden="true">🔠</span>
+      <span class="aj-txt"><strong>Texto grande</strong><small>Letras y botones más grandes para usar entre series</small></span>
+      <input type="checkbox" id="toggle-texto-grande" class="aj-switch" role="switch" onchange="toggleTextoGrande(this.checked)">
+    </label>
+    <label class="aj-fila">
+      <span class="aj-ico" aria-hidden="true">🟩</span>
+      <span class="aj-txt"><strong>Series en verde clásico</strong><small>Si lo desactivas, los cuadros usan el color del tema</small></span>
+      <input type="checkbox" id="toggle-serie-verde" class="aj-switch" role="switch" onchange="toggleSerieVerde(this.checked)">
+    </label>
+  </div>
+
+  <h3 class="aj-titulo">Entrenamiento</h3>
+  <div class="aj-grupo">
+    <button type="button" class="aj-fila" onclick="abrirEditorRutinas()">
+      <span class="aj-ico" aria-hidden="true">✏️</span>
+      <span class="aj-txt"><strong>Mis rutinas</strong><small>Crear, copiar, ordenar y editar ejercicios</small></span>
+      <span class="aj-flecha" aria-hidden="true">›</span>
+    </button>
+    <button type="button" class="aj-fila" onclick="abrirPantallaImport()">
+      <span class="aj-ico" aria-hidden="true">🤖</span>
+      <span class="aj-txt"><strong>Importar rutina con IA</strong><small>Convierte tu rutina de texto o documento</small></span>
+      <span class="aj-flecha" aria-hidden="true">›</span>
+    </button>
+    <button type="button" class="aj-fila" onclick="abrirNotasProgresion()">
+      <span class="aj-ico" aria-hidden="true">📋</span>
+      <span class="aj-txt"><strong>Notas de progresión</strong><small>Cómo progresa cada ejercicio de tu rutina</small></span>
+      <span class="aj-flecha" aria-hidden="true">›</span>
+    </button>
+    <button type="button" class="aj-fila" onclick="abrirMensajes()">
+      <span class="aj-ico" aria-hidden="true">💬</span>
+      <span class="aj-txt"><strong>Mensajes y frases</strong><small>Aviso de repeticiones mínimas y frases motivadoras</small></span>
+      <span class="aj-flecha" aria-hidden="true">›</span>
+    </button>
+    <button type="button" class="aj-fila" onclick="abrirConfigAudio()">
+      <span class="aj-ico" aria-hidden="true">🔔</span>
+      <span class="aj-txt"><strong>Sonido del temporizador</strong><small>Elige o sube el sonido de fin de descanso</small></span>
+      <span class="aj-flecha" aria-hidden="true">›</span>
+    </button>
+  </div>
+
+  <h3 class="aj-titulo">Datos</h3>
+  <div class="aj-grupo">
+    <button type="button" class="aj-fila" onclick="exportarBackupJSON()">
+      <span class="aj-ico" aria-hidden="true">💾</span>
+      <span class="aj-txt"><strong>Exportar copia (backup)</strong><small>Descarga todos tus datos en un archivo</small></span>
+      <span class="aj-flecha" aria-hidden="true">›</span>
+    </button>
+    <label class="aj-fila">
+      <span class="aj-ico" aria-hidden="true">📂</span>
+      <span class="aj-txt"><strong>Importar copia (backup)</strong><small>Restaura los datos desde un archivo .json</small></span>
+      <span class="aj-flecha" aria-hidden="true">›</span>
+      <input type="file" accept=".json" onchange="importarBackupJSON(this)" style="display:none">
+    </label>
+  </div>
+
+  <h3 class="aj-titulo">Aplicación</h3>
+  <div class="aj-grupo">
+    <button type="button" class="aj-fila" id="btn-instalar-app" onclick="instalarApp()" style="display:none">
+      <span class="aj-ico" aria-hidden="true">📲</span>
+      <span class="aj-txt"><strong>Instalar app</strong><small>Añádela a tu pantalla de inicio</small></span>
+      <span class="aj-flecha" aria-hidden="true">›</span>
+    </button>
+    <button type="button" class="aj-fila" onclick="abrirGuiaTempo()">
+      <span class="aj-ico" aria-hidden="true">📖</span>
+      <span class="aj-txt"><strong>Guía y conceptos</strong><small>Tempo, métodos de progresión, nutrición…</small></span>
+      <span class="aj-flecha" aria-hidden="true">›</span>
+    </button>
+    <button type="button" class="aj-fila" onclick="forzarActualizacion()">
+      <span class="aj-ico" aria-hidden="true">🔄</span>
+      <span class="aj-txt"><strong>Actualizar app</strong><small>Descarga de nuevo los archivos (no borra tus datos)</small></span>
+      <span class="aj-flecha" aria-hidden="true">›</span>
+    </button>
+    <div class="aj-fila aj-info">
+      <span class="aj-ico" aria-hidden="true">ℹ️</span>
+      <span class="aj-txt"><strong>Versión</strong><small id="aj-version">…</small></span>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
      PANTALLA PERFIL
 ══════════════════════════════════════ -->
 <section id="pantalla-perfil" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
+    <button onclick="volverAtras()" class="btn-back" aria-label="Volver">←</button>
     <h2>👤 Perfil</h2>
   </div>
   <div id="perfil-contenido"></div>
@@ -310,9 +349,17 @@
 ══════════════════════════════════════ -->
 <section id="menu" class="oculto">
   <div class="menu-topbar">
-    <button onclick="toggleSidebar()" class="btn-icon-top" title="Ajustes" aria-label="Abrir ajustes">☰</button>
+    <button id="btn-avatar" onclick="abrirCuenta()" class="btn-avatar" title="Cuenta" aria-label="Abrir cuenta" aria-haspopup="dialog"><span id="avatar-letra" aria-hidden="true">👤</span></button>
     <h1>🏋️ Gym Tracker</h1>
-    <button onclick="toggleSidebarRight()" class="btn-icon-top" title="Temporizador" aria-label="Abrir temporizador">⏱️</button>
+    <div class="topbar-acciones">
+      <button onclick="abrirAjustes()" class="btn-icon-top" title="Ajustes" aria-label="Abrir ajustes">⚙️</button>
+      <button onclick="toggleSidebarRight()" class="btn-icon-top" title="Temporizador" aria-label="Abrir temporizador">⏱️</button>
+    </div>
+  </div>
+
+  <div class="menu-rutina">
+    <label for="selector-rutina">📋 Rutina</label>
+    <select id="selector-rutina" aria-label="Rutina activa"></select>
   </div>
 
   <div id="deload-banner"></div>
@@ -485,7 +532,7 @@
 ══════════════════════════════════════ -->
 <section id="pantalla-audio" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
+    <button onclick="volverAtras()" class="btn-back" aria-label="Volver">←</button>
     <h2>🔔 Sonido temporizador</h2>
   </div>
 
@@ -560,7 +607,7 @@
 ══════════════════════════════════════ -->
 <section id="pantalla-ai-import" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
+    <button onclick="volverAtras()" class="btn-back" aria-label="Volver">←</button>
     <h2>🤖 Importar rutina con IA</h2>
   </div>
 
@@ -603,7 +650,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
 ══════════════════════════════════════ -->
 <section id="pantalla-guia-tempo" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
+    <button onclick="volverAtras()" class="btn-back" aria-label="Volver">←</button>
     <h2>📖 Guía de Entrenamiento</h2>
   </div>
   <div class="guia-atajos">
@@ -790,7 +837,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
 ══════════════════════════════════════ -->
 <section id="pantalla-progresion-rutina" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
+    <button onclick="volverAtras()" class="btn-back" aria-label="Volver">←</button>
     <h2>📋 Progresión por rutina</h2>
   </div>
   <div id="progresion-rutina-contenido"></div>
@@ -823,7 +870,7 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
 ══════════════════════════════════════ -->
 <section id="pantalla-mensajes" class="oculto">
   <div class="pantalla-header">
-    <button onclick="volverMenu()" class="btn-back" aria-label="Volver">←</button>
+    <button onclick="volverAtras()" class="btn-back" aria-label="Volver">←</button>
     <h2>💬 Mensajes y frases</h2>
   </div>
 
@@ -970,4 +1017,4 @@ Escápulas retraídas. Barra toca pecho bajo.</code>
 <!-- SW se registra en app.js con lógica completa (updatefound, mensajes, etc.) -->
 </body>
 </html>
-<!-- gt-build:v106 -->
+<!-- gt-build:v107 -->

@@ -1,21 +1,21 @@
 // alimentos.js — Base de alimentos (valores por 100 g)
 //
 // Fuente de TODOS los valores de esta lista: USDA FoodData Central, versión "SR Legacy", consultada a través de
-// tools.myfooddata.com (página con los datos del USDA). Se descartaron valores de páginas que mezclaban otras bases.
+// tools.myfooddata.com y getfoodfacts.com (páginas que reproducen los datos del USDA; cada línea lleva su número FDC para
+// comprobarla). Se descartaron valores de páginas que mezclaban otras bases.
 // k = kcal · p = proteína (g) · g = grasa total (g) · c = carbohidratos (g)
 //
 // IMPORTANTE: los valores dependen del estado del alimento (crudo / cocido) y varían con la variedad y la forma
 // de cocinar. Los alimentos "crudos" se pesan crudos. Esta es una base de PARTIDA: puedes añadir tus propios
 // alimentos (o corregir uno copiándolo como propio) en la pantalla de Nutrición.
 //
-// Siguen SIN estar (aún no se pudieron verificar con sus 4 cifras): plátano verde frito/hervido, yuca/ñame/malanga
-// cocidos, boniato hervido, pan cubano, frijoles blancos/pintos, lentejas, tofu, nueces, aceites (oliva, girasol, soya),
-// mayonesa, cerdo en chuleta, bistec de res, atún enlatado, leche descremada, yogur, requesón, melón, limón, toronja,
-// espinaca/col cocidas, café, refrescos, cerveza, ron y platos compuestos (congrí, moros, picadillo…). Se pueden añadir
-// ya como "alimentos propios" o en una próxima versión.
+// Siguen SIN estar (no se pudieron verificar con sus 4 cifras o no existen en SR Legacy): plátano verde frito/hervido,
+// yuca cocida (SR Legacy solo trae la cruda), pan cubano, frijoles blancos, aceite de girasol, chuleta de cerdo, bistec de res,
+// refrescos, ron y platos compuestos (congrí, moros, picadillo…). Se pueden añadir ya como "alimentos propios".
 //
 // Nota: la guayaba mezcla proteína/grasa de la ficha "Guavas, common, raw" con los carbohidratos de la tabla resumen
-// del mismo alimento; soya y miel difieren un ~9 % del cálculo 4-9-4 (por fibra / tipo de azúcar), como en el USDA.
+// del mismo alimento; en frutas/verduras cocidas y crudas las kcal del USDA quedan por debajo de 4-9-4 porque la fibra
+// cuenta como carbohidrato pero aporta pocas kcal; la cerveza lleva además 3,9 g de alcohol (7 kcal/g). Soya y miel difieren un ~9 % del cálculo 4-9-4 (por fibra / tipo de azúcar), como en el USDA.
 
 export const ALIMENTOS = [
   { id: 'arroz_cocido',     nombre: 'Arroz blanco cocido',               cat: 'Cereales y viandas', k: 130, p: 2.7,  g: 0.28, c: 28.2 },
@@ -122,8 +122,45 @@ export const ALIMENTOS = [
   { id: 'cebolla_cocida', nombre: 'Cebolla hervida (escurrida)', cat: 'Frutas y vegetales', k: 44, p: 1.4, g: 0.19, c: 10.2 }, // FDC 170001
   { id: 'berenjena_cocida', nombre: 'Berenjena hervida (escurrida)', cat: 'Frutas y vegetales', k: 35, p: 0.83, g: 0.23, c: 8.7 }, // FDC 169229
   { id: 'mani_crudo', nombre: 'Maní (cacahuate) crudo', cat: 'Frutos secos y semillas', k: 567, p: 25.8, g: 49.2, c: 16.1 }, // FDC 172430
-  { id: 'mantequilla_mani', nombre: 'Mantequilla de maní con trozos (con sal)', cat: 'Frutos secos y semillas', k: 589, p: 24.1, g: 49.9, c: 21.6 } // FDC 174265
+  { id: 'mantequilla_mani', nombre: 'Mantequilla de maní con trozos (con sal)', cat: 'Frutos secos y semillas', k: 589, p: 24.1, g: 49.9, c: 21.6 }, // FDC 174265
+  { id: 'atun_blanco_agua', nombre: 'Atún blanco enlatado en agua (escurrido)', cat: 'Proteínas', k: 128, p: 23.6, g: 2.97, c: 0 }, // FDC 175158
+  { id: 'atun_claro_aceite', nombre: 'Atún claro enlatado en aceite (escurrido)', cat: 'Proteínas', k: 198, p: 29.1, g: 8.21, c: 0 }, // FDC 173708
+  { id: 'atun_fresco_crudo', nombre: 'Atún fresco (aleta amarilla) crudo', cat: 'Proteínas', k: 109, p: 24.4, g: 0.49, c: 0 }, // FDC 175159
+  { id: 'tilapia_cruda', nombre: 'Tilapia cruda', cat: 'Proteínas', k: 96, p: 20.1, g: 1.7, c: 0 }, // FDC 175176
+  { id: 'bacalao_crudo', nombre: 'Bacalao del Atlántico crudo', cat: 'Proteínas', k: 82, p: 17.8, g: 0.67, c: 0 }, // FDC 171955
+  { id: 'bacalao_seco', nombre: 'Bacalao seco y salado', cat: 'Proteínas', k: 290, p: 62.8, g: 2.37, c: 0 }, // FDC 174190
+  { id: 'cerdo_solomillo_crudo', nombre: 'Solomillo de cerdo crudo (solo magro)', cat: 'Proteínas', k: 109, p: 20.9, g: 2.17, c: 0 }, // FDC 168249
+  { id: 'alitas_asadas', nombre: 'Alitas de pollo asadas (con piel)', cat: 'Proteínas', k: 254, p: 23.8, g: 16.9, c: 0 }, // FDC 173630
+  { id: 'higado_pollo_cocido', nombre: 'Hígado de pollo hervido', cat: 'Proteínas', k: 167, p: 24.5, g: 6.51, c: 0.87 }, // FDC 171061
+  { id: 'sardinas_tomate', nombre: 'Sardinas enlatadas en tomate (con espinas, escurridas)', cat: 'Proteínas', k: 185, p: 20.9, g: 10.4, c: 0.54 }, // FDC 175140
+  { id: 'tofu_firme', nombre: 'Tofu firme (con sulfato de calcio)', cat: 'Proteínas', k: 144, p: 17.3, g: 8.72, c: 2.78 }, // FDC 172475
+  { id: 'boniato_hervido', nombre: 'Boniato hervido sin piel', cat: 'Cereales y viandas', k: 76, p: 1.37, g: 0.14, c: 17.7 }, // FDC 168484
+  { id: 'name_cocido', nombre: 'Ñame (yam) cocido (hervido o asado, sin sal)', cat: 'Cereales y viandas', k: 116, p: 1.49, g: 0.14, c: 27.5 }, // FDC 170072
+  { id: 'malanga_cocida', nombre: 'Malanga (taro) cocida (sin sal)', cat: 'Cereales y viandas', k: 142, p: 0.52, g: 0.11, c: 34.6 }, // FDC 168486
+  { id: 'pasta_seca', nombre: 'Pasta seca (cruda)', cat: 'Cereales y viandas', k: 371, p: 13, g: 1.51, c: 74.7 }, // FDC 169736
+  { id: 'lenteja_cocida', nombre: 'Lentejas cocidas (sin sal)', cat: 'Legumbres', k: 116, p: 9.02, g: 0.38, c: 20.1 }, // FDC 172421
+  { id: 'frijol_pinto_cocido', nombre: 'Frijoles pintos cocidos (sin sal)', cat: 'Legumbres', k: 143, p: 9.01, g: 0.65, c: 26.2 }, // FDC 175200
+  { id: 'frijol_negro_crudo', nombre: 'Frijoles negros crudos (secos)', cat: 'Legumbres', k: 341, p: 21.6, g: 1.42, c: 62.4 }, // FDC 173734
+  { id: 'garbanzo_crudo', nombre: 'Garbanzos crudos (secos)', cat: 'Legumbres', k: 378, p: 20.5, g: 6.04, c: 63 }, // FDC 173756
+  { id: 'leche_descremada', nombre: 'Leche descremada (con calcio)', cat: 'Lácteos', k: 35, p: 3.4, g: 0.18, c: 4.85 }, // FDC 169868
+  { id: 'yogur_natural', nombre: 'Yogur natural de leche entera', cat: 'Lácteos', k: 61, p: 3.47, g: 3.25, c: 4.66 }, // FDC 171284
+  { id: 'requeson_cremoso', nombre: 'Requesón (cottage) cremoso', cat: 'Lácteos', k: 98, p: 11.1, g: 4.3, c: 3.38 }, // FDC 172179
+  { id: 'requeson_2pc', nombre: 'Requesón (cottage) bajo en grasa 2 %', cat: 'Lácteos', k: 81, p: 10.4, g: 2.27, c: 4.76 }, // FDC 172182
+  { id: 'toronja', nombre: 'Toronja rosada cruda', cat: 'Frutas y vegetales', k: 42, p: 0.77, g: 0.14, c: 10.7 }, // FDC 174673
+  { id: 'limon', nombre: 'Limón sin cáscara crudo', cat: 'Frutas y vegetales', k: 29, p: 1.1, g: 0.3, c: 9.32 }, // FDC 167746
+  { id: 'melon_cantalupo', nombre: 'Melón cantalupo crudo', cat: 'Frutas y vegetales', k: 34, p: 0.84, g: 0.19, c: 8.16 }, // FDC 169092
+  { id: 'melon_verde', nombre: 'Melón verde (honeydew) crudo', cat: 'Frutas y vegetales', k: 36, p: 0.54, g: 0.14, c: 9.09 }, // FDC 169911
+  { id: 'pepino', nombre: 'Pepino con cáscara crudo', cat: 'Frutas y vegetales', k: 15, p: 0.65, g: 0.11, c: 3.63 }, // FDC 168409
+  { id: 'chayote_cocido', nombre: 'Chayote hervido (escurrido)', cat: 'Frutas y vegetales', k: 24, p: 0.62, g: 0.48, c: 5.09 }, // FDC 170403
+  { id: 'col_cocida', nombre: 'Col (repollo) hervida (escurrida)', cat: 'Frutas y vegetales', k: 23, p: 1.27, g: 0.06, c: 5.51 }, // FDC 169976
+  { id: 'espinaca_cocida', nombre: 'Espinaca hervida (escurrida)', cat: 'Frutas y vegetales', k: 23, p: 2.97, g: 0.26, c: 3.75 }, // FDC 168463
+  { id: 'nueces', nombre: 'Nueces (inglesas)', cat: 'Frutos secos y semillas', k: 654, p: 15.2, g: 65.2, c: 13.7 }, // FDC 170187
+  { id: 'aceite_oliva', nombre: 'Aceite de oliva', cat: 'Grasas, dulces y bebidas', k: 884, p: 0, g: 100, c: 0 }, // FDC 171413
+  { id: 'aceite_soya', nombre: 'Aceite de soya', cat: 'Grasas, dulces y bebidas', k: 884, p: 0, g: 100, c: 0 }, // FDC 171411
+  { id: 'mayonesa', nombre: 'Mayonesa regular', cat: 'Grasas, dulces y bebidas', k: 680, p: 0.96, g: 74.8, c: 0.57 }, // FDC 171009
+  { id: 'cafe_negro', nombre: 'Café negro preparado (sin azúcar)', cat: 'Grasas, dulces y bebidas', k: 1, p: 0.12, g: 0.02, c: 0 }, // FDC 171890
+  { id: 'cerveza', nombre: 'Cerveza regular', cat: 'Grasas, dulces y bebidas', k: 43, p: 0.46, g: 0, c: 3.55 } // FDC 168746
 ];
 
 export const FUENTE_ALIMENTOS = 'USDA FoodData Central (SR Legacy), por 100 g';
-// gt-build:v106
+// gt-build:v107

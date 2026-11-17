@@ -21,6 +21,16 @@ export const PROGRESION = [
     detalle: 'Es la regla clásica de la app. Ejemplo 4×6-10 a 80 kg: 8/7/6/6 → 10/9/8/7 → 10/10/10/10 → sube a 82,5 kg y empiezas otra vez cerca de 6.'
   },
   {
+    id: 'doblefallo', nombre: 'Doble progresión + último set al fallo técnico',
+    resumen: 'Igual que la doble progresión, pero la última serie se lleva siempre hasta el fallo técnico y las demás se dejan con 1-2 repeticiones en reserva (RIR 1-2).',
+    detalle: 'Fallo técnico = no puedes hacer otra repetición con la misma calidad que las anteriores. Subes peso cuando completas el máximo del rango en TODAS las series normales, incluida la última, y vuelves al mínimo del rango. La app solo decide la subida y te recuerda el RIR; llegar al fallo técnico lo juzgas tú. Es el método de los compuestos secundarios y accesorios de la rutina de hipertrofia.'
+  },
+  {
+    id: 'ondulante', nombre: 'Ciclo ondulante de 4 semanas (ancla)',
+    resumen: 'Ciclo de 4 semanas con el MISMO peso en las semanas 1-3: cambian las repeticiones y el esfuerzo (RIR). La semana 4 es deload y el peso sube solo al reiniciar el ciclo.',
+    detalle: 'Semana 1 = mínimo del rango (RIR 2-3) · semana 2 = reps intermedias (RIR 1-2) · semana 3 = máximo del rango (RIR 1 y la última serie al fallo técnico) · semana 4 = deload (70-80 % de la carga, 2-3 series, RIR 4-5, reps = mínimo − 1). Al reiniciar: sube el incremento del ejercicio (p. ej. +2,5 kg tren superior / +5 kg inferior) si el ciclo salió bien, o la mitad (+1,25 / +2,5) si en alguna de las semanas 1-3 no llegaste a las reps objetivo en todas las series. El ciclo avanza por sesión de ese ejercicio, no por calendario. La semana 4 se hace con el Deload de la app (actívalo en el editor de rutinas y pulsa «Deload»); al terminar esa sesión el ciclo se reinicia solo. Con el Deload activo antes de la semana 4, el ciclo se queda donde estaba.'
+  },
+  {
     id: 'lineal', nombre: 'Lineal (sube cada sesión)',
     resumen: 'Si completas el objetivo en todas las series, subes el incremento la sesión siguiente.',
     detalle: 'El objetivo es el número de "Reps mín". Sirve con repeticiones fijas (5×5, 3×5…) y es lo habitual en principiantes, donde se puede progresar casi cada sesión. Si dejas de cumplir, el peso se queda hasta que lo logres.'
@@ -148,9 +158,54 @@ export function indicesNormales(ej) {
 
 const hecha = r => r !== '' && r !== null && r !== undefined;
 
-// Objetivo de reps de la sesión: solo cambia con la escalera (usa el estado guardado)
+// ── Ciclo ondulante de 4 semanas (anclas) ──
+// Estado guardado por ejercicio: { sem: 1..4, dificil: bool, dificiles: nº de ciclos difíciles seguidos }
+export function semanaCiclo(estado) {
+  const s = Math.round(Number(estado?.sem));
+  return s >= 1 && s <= 4 ? s : 1;
+}
+
+// Reps objetivo de cada semana a partir del rango del ejercicio (6-8 → 6/7/8, 8-10 → 8/9/10, 5-6 → 5/6/6) y deload = mínimo − 1
+export function repsSemanaCiclo(ej, sem) {
+  const min = Math.max(0, Math.round(Number(ej.repsMin) || 0));
+  const max = Math.max(min, Math.round(Number(ej.repsMax) || min));
+  if (sem === 1) return min;
+  if (sem === 2) return Math.min(max, min + Math.ceil((max - min) / 2));
+  if (sem === 3) return max;
+  return Math.max(1, min - 1);
+}
+
+// Incremento al reiniciar el ciclo: completo si salió bien, la mitad si fue difícil
+export function incrementoCiclo(ej, estado) {
+  const inc = Number(ej.incremento) || 0;
+  return estado?.dificil ? Math.round(inc / 2 * 100) / 100 : inc;
+}
+
+// Texto que se muestra bajo las series (RIR de la semana). `enDeload`: el Deload de la app está activo.
+export function notaProgresion(ej, estado, enDeload) {
+  const id = ej.metodoProgId;
+  const n = ej.tipos ? ej.tipos.filter(t => t === 'n').length : ej.series;
+  if (id === 'doblefallo') {
+    if (enDeload) return 'Deload: RIR 4-5, sin llegar al fallo';
+    return n > 1 ? `Series 1-${n - 1}: RIR 1-2 · última serie: fallo técnico` : 'Serie única: fallo técnico';
+  }
+  if (id === 'ondulante') {
+    const sem = enDeload ? 4 : semanaCiclo(estado);
+    const cab = `Ciclo ${sem}/4`;
+    if (sem === 1) return `${cab} · ${repsSemanaCiclo(ej, 1)} reps · RIR 2-3 en todas las series`;
+    if (sem === 2) return `${cab} · ${repsSemanaCiclo(ej, 2)} reps con la MISMA carga · RIR 1-2 en todas las series`;
+    if (sem === 3) return `${cab} · ${repsSemanaCiclo(ej, 3)} reps con la MISMA carga · series 1-${Math.max(1, n - 1)}: RIR 1 · última: fallo técnico`;
+    return enDeload
+      ? `${cab} · DELOAD: 70-80 % de la carga, RIR 4-5 (${repsSemanaCiclo(ej, 4)} reps)`
+      : `${cab} · toca DELOAD: pulsa «Deload» arriba (70 % de peso, 60 % de series, RIR 4-5)`;
+  }
+  return '';
+}
+
+// Objetivo de reps de la sesión: cambia con la escalera y con el ciclo ondulante (usan el estado guardado)
 export function objetivoReps(ej, estado) {
   const id = ej.metodoProgId || DEFECTO_PROG;
+  if (id === 'ondulante') return repsSemanaCiclo(ej, semanaCiclo(estado));
   if (id === 'escalera') {
     const paso = Math.max(0, Number(estado?.paso) || 0);
     return Math.min(ej.repsMin + paso, ej.repsMax);
@@ -174,6 +229,24 @@ export function evaluarProgresion(ej, estadoPrevio) {
   const res = { progresa: false, pesoNuevo: ej.peso, estado: est, texto: '' };
 
   if (ej.alFallo || ej.noProgresar || id === 'ninguna' || !(ej.repsMax > 0)) return res;
+
+  if (id === 'ondulante') {
+    // Solo avanza si ese ejercicio se hizo (con alguna repetición anotada)
+    if (!reps.some(hecha)) return res;
+    const sem = semanaCiclo(est);
+    if (sem >= 4) {
+      // Semana 4 entrenada sin activar el Deload: el ciclo se reinicia con el mismo peso (no hubo descarga)
+      est.sem = 1; est.dificil = false;
+      res.texto = 'Semana 4 hecha sin Deload: el ciclo se reinicia con el mismo peso';
+      return res;
+    }
+    if (!todasAlcanzan(repsSemanaCiclo(ej, sem))) est.dificil = true;
+    est.sem = sem + 1;
+    res.texto = est.sem === 4
+      ? 'Ciclo: la próxima semana es el DELOAD (semana 4)'
+      : `Ciclo: la próxima semana es la ${est.sem}/4 (${repsSemanaCiclo(ej, est.sem)} reps, misma carga)`;
+    return res;
+  }
 
   if (id === 'lineal') {
     if (todasAlcanzan(ej.repsMin)) { res.progresa = true; res.pesoNuevo = subir(); }
@@ -206,6 +279,22 @@ export function evaluarProgresion(ej, estadoPrevio) {
 
   // doble (por defecto)
   if (todasAlcanzan(ej.repsMax)) { res.progresa = true; res.pesoNuevo = subir(); }
+  return res;
+}
+
+// Sesión de Deload terminada: si el ejercicio está en la semana 4 de su ciclo ondulante, el ciclo se reinicia
+// y el peso sube (desde el peso BASE, no desde el 70 % que se vio en pantalla). En cualquier otra semana no cambia nada.
+export function cerrarCicloEnDeload(ej, estadoPrevio, pesoBase) {
+  const est = { ...(estadoPrevio || {}) };
+  const res = { progresa: false, pesoNuevo: pesoBase, estado: est, texto: '' };
+  if ((ej.metodoProgId || DEFECTO_PROG) !== 'ondulante' || ej.alFallo || ej.noProgresar) return res;
+  if (!(ej.reps || []).some(hecha) || semanaCiclo(est) < 4) return res;
+  const inc = incrementoCiclo(ej, est);
+  const dificiles = est.dificil ? (Number(est.dificiles) || 0) + 1 : 0;
+  res.estado = { sem: 1, dificiles };
+  if (inc > 0) { res.progresa = true; res.pesoNuevo = parseFloat((pesoBase + inc).toFixed(2)); }
+  res.texto = `Ciclo completado${est.dificil ? ' (difícil: sube la mitad)' : ''}: nuevo ciclo, semana 1/4 con ${res.pesoNuevo} kg`
+    + (dificiles >= 2 ? ' · Dos ciclos difíciles seguidos: revisa sueño, calorías y deload antes de seguir subiendo' : '');
   return res;
 }
 
@@ -323,4 +412,4 @@ export function htmlGuiaMetodos() {
     ${PERIODIZACION_GUIA.map(m => itemHtml(m.nombre, m.texto, MANUAL)).join('')}
   </div>`;
 }
-// gt-build:v106
+// gt-build:v107

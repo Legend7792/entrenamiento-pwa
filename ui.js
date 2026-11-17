@@ -195,4 +195,4 @@ export function initEtiquetas() {
     requestAnimationFrame(() => { pendiente = false; asociarEtiquetas(); });
   }).observe(document.body, { childList: true, subtree: true });
 }
-// gt-build:v106
+// gt-build:v107

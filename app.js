@@ -1,4 +1,4 @@
-// app.js — Gym Tracker v106
+// app.js — Gym Tracker v107
 import "./auth.js";
 import { loadRutinaUsuario, saveRutinaUsuario, inicializarRutinaBase, getAllRutinasUsuario, RUTINA_BASE_ID as RUTINA_BASE_KEY } from "./rutinaUsuario.js";
 import { markDirty, userState, esClaveBackup, sincronizarSiHaceFalta } from "./userState.js";
@@ -10,7 +10,7 @@ import "./editorRutinas.js";
 import { showToast, showConfirm, showPrompt, showAlert, initOfflineBanner, escapeHtml, initEtiquetas } from "./ui.js";
 import "./aiImport.js";
 import { MUSCULOS_MAP, etiquetaSubzona } from "./musculos.js";
-import { evaluarProgresion, objetivoReps, aplicarIntensidad, repsContables, descansoTrasSerie, metodoIntPorId, nombreProg, metodoProgPorId, htmlGuiaMetodos, indicesNormales } from "./metodos.js";
+import { evaluarProgresion, objetivoReps, aplicarIntensidad, repsContables, descansoTrasSerie, metodoIntPorId, nombreProg, metodoProgPorId, htmlGuiaMetodos, indicesNormales, cerrarCicloEnDeload, notaProgresion, semanaCiclo, repsSemanaCiclo } from "./metodos.js";
 import { fraseAleatoria, frasesActivas, todasLasFrases, leerFrasesPropias, FRASES, elegirSinRepetir } from "./frases.js";
 import { renderNutricion, htmlGuiaNutricion } from "./nutricion.js";
 import { abrirPantallaRanking, actualizarRankingSilencioso } from "./ranking.js";
@@ -1399,7 +1399,8 @@ function cargarEjerciciosDia() {
     const pesoTrabajo = ej.alFallo ? 0 : ((pesoGuardado >= 0 && !Number.isNaN(pesoGuardado)) ? pesoGuardado : (parseFloat(ej.peso) || 0));
     // Incremento personalizado guardado o, si no hay, uno razonable según la carga
     const incrementoGuardado = leerCfg('incrementos', nombreDia, ej.nombre);
-    const inc = ej.alFallo ? 0 : (incrementoGuardado !== undefined ? incrementoGuardado : incrementoPorDefecto(pesoTrabajo));
+    const incRutina = Number(ej.incremento);   // incremento propio del ejercicio en la rutina (p. ej. plantilla de hipertrofia)
+    const inc = ej.alFallo ? 0 : (incrementoGuardado !== undefined ? incrementoGuardado : (incRutina > 0 ? incRutina : incrementoPorDefecto(pesoTrabajo)));
 
     // Método de progresión: el del ejercicio o, si no tiene, el de la rutina. Su estado (escalón, series extra) vive en config.
     const metodoProgId = ej.alFallo ? 'ninguna' : (ej.metodoProg?.id || metodoRutina);
@@ -1413,6 +1414,8 @@ function cargarEjerciciosDia() {
       repsMin,
       repsMax,
       peso: pesoTrabajo,
+      pesoBase: pesoTrabajo,   // el peso sin el 70 % del Deload (lo usa el ciclo ondulante al reiniciar)
+      estadoMetodo,
       reps: Array(series).fill(""),
       incremento: inc,
       noProgresar: ej.alFallo ? true : false,
@@ -1441,8 +1444,36 @@ function cargarEjerciciosDia() {
     if (!ej._esDeload && ej.metodoInt) aplicarIntensidad(ej, ej.metodoInt);
     if (ej.metodoIntId === 'gvt') ej.objetivoOk = 10;
     ej.reps = Array(ej.series).fill("");
+    // Ciclo ondulante en Deload: el objetivo es el de la semana 4 (mínimo − 1)
+    if (ej._esDeload && ej.metodoProgId === 'ondulante') ej.objetivoOk = repsSemanaCiclo(ej, 4);
+    // Recordatorio del RIR / semana del ciclo (si el ejercicio ya tiene una nota de intensidad, esa manda)
+    if (!ej.notaMetodo && !ej.alFallo && (ej.metodoProgId === 'ondulante' || ej.metodoProgId === 'doblefallo')) {
+      ej.notaMetodo = notaProgresion(ej, ej.estadoMetodo, !!ej._esDeload);
+    }
   });
 }
+
+// Ciclo ondulante: fija a mano la semana del ciclo (1-4) de un ejercicio
+window.fijarSemanaCiclo = function (i, semana) {
+  const ej = ejerciciosDia[i];
+  if (!ej || ej.metodoProgId !== 'ondulante') return;
+  const s = Math.round(Number(semana));
+  if (!(s >= 1 && s <= 4)) return;
+  if (ej.reps.some(r => r !== "" && r !== null && r !== undefined)) { showToast('Borra las repeticiones de este ejercicio antes de cambiar la semana', 'warning'); return; }
+  const nombreDia = obtenerRutinaCompleta()[diaActual]?.nombre;
+  if (!nombreDia) return;
+  const previo = leerCfg('metodoEstado', nombreDia, ej.nombre) || {};
+  escribirCfg('metodoEstado', nombreDia, ej.nombre, { ...previo, sem: s });
+  try { guardarConfig(); } catch (e) { showToast('No se pudo guardar la semana (almacenamiento lleno)', 'error'); return; }
+  const guardadas = new Map(ejerciciosDia.map(e => [e.nombre, e.reps.slice()]));
+  cargarEjerciciosDia();
+  ejerciciosDia.forEach(e => { const g = guardadas.get(e.nombre); if (g && g.length === e.reps.length) e.reps = g; });
+  lastEjerciciosDiaHash = null;
+  renderDia();
+  guardarEstadoApp();
+  document.getElementById('modal-tempo-overlay')?.classList.add('oculto');
+  showToast(`${ej.nombre}: semana ${s}/4 del ciclo`, 'info', 2200);
+};
 
 // Cambia a mano, solo para esta sesión, la alternativa que toca (si todavía no anotaste nada en ese ejercicio)
 window.cambiarAlternativa = function (i) {
@@ -1489,6 +1520,7 @@ function objetivoTexto(ej) {
   if (ej.metodoIntId === 'gvt') return `${ej.series}×10`;
   const base = ej.tipos ? ej.tipos.filter(t => t === 'n').length : ej.series;
   if (ej.metodoProgId === 'escalera' && ej.repsMax !== ej.repsMin) return `${base}×${rango} · hoy ${ej.objetivoOk}`;
+  if (ej.metodoProgId === 'ondulante' && ej.objetivoOk) return `${base}×${ej.objetivoOk}`;   // 6 → 7 → 8 → deload
   if (ej.metodoProgId === 'lineal') return `${base}×${ej.repsMin}`;
   if (ej.metodoProgId === 'triple' && ej.series > ej.seriesBase && !ej._esDeload) return `${base}×${rango} (+${ej.series - ej.seriesBase})`;
   return `${base}×${rango}` + (ej.series > base ? ` +${ej.series - base}` : '');
@@ -1503,7 +1535,11 @@ window.mostrarInfoMetodo = function (i) {
   const overlay = document.getElementById('modal-tempo-overlay');
   const cont = document.getElementById('modal-tempo-contenido');
   if (!overlay || !cont) return;
-  cont.innerHTML = `<h3>⚙️ ${escapeHtml(ej.nombre)}</h3>${inte ? parte('Intensidad', inte) : ''}${parte('Progresión', prog)}`;
+  const semActual = semanaCiclo(ej.estadoMetodo);
+  const selSemana = ej.metodoProgId === 'ondulante' ? `<h4 style="margin:12px 0 4px;">Semana del ciclo</h4>
+    <p class="import-hint">Ahora: semana ${semActual}/4. Si empiezas a mitad de ciclo, elige en qué semana estás (solo si todavía no has anotado reps de este ejercicio hoy).</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">${[1, 2, 3, 4].map(n => `<button class="btn-secondary${n === semActual ? ' activo' : ''}" style="width:auto;padding:6px 12px;" onclick="fijarSemanaCiclo(${i}, ${n})">${n}</button>`).join('')}</div>` : '';
+  cont.innerHTML = `<h3>⚙️ ${escapeHtml(ej.nombre)}</h3>${inte ? parte('Intensidad', inte) : ''}${parte('Progresión', prog)}${selSemana}`;
   overlay.classList.remove('oculto');
 };
 
@@ -1601,7 +1637,7 @@ function renderDia() {
               ${ej.alFallo ? `<span class="badge-fallo">Al fallo</span>` : ''}
               ${ej.calentamiento && !ej.alFallo && ej.peso > 0 ? `<span class="badge-tempo" onclick="mostrarCalentamiento(${i})" title="Series de aproximación sugeridas" role="button" tabindex="0">🔥 Calentar</span>` : ''}
               ${ej.metodoIntId ? `<span class="badge-metodo" onclick="mostrarInfoMetodo(${i})" title="Método de intensidad" role="button" tabindex="0">${escapeHtml(metodoIntPorId(ej.metodoIntId)?.nombre.split(' (')[0] || '')} ❓</span>` : ''}
-              ${ej.metodoProgId && !['doble', 'ninguna'].includes(ej.metodoProgId) && !ej.alFallo ? `<span class="badge-metodo" onclick="mostrarInfoMetodo(${i})" title="Método de progresión" role="button" tabindex="0">📈 ${escapeHtml(nombreProg(ej.metodoProgId).split(' (')[0])}</span>` : ''}
+              ${ej.metodoProgId && !['doble', 'ninguna'].includes(ej.metodoProgId) && !ej.alFallo ? `<span class="badge-metodo" onclick="mostrarInfoMetodo(${i})" title="Método de progresión" role="button" tabindex="0">📈 ${ej.metodoProgId === 'ondulante' ? `Ciclo ${ej._esDeload ? 4 : semanaCiclo(ej.estadoMetodo)}/4` : escapeHtml(nombreProg(ej.metodoProgId).split(' (')[0])}</span>` : ''}
               ${ej.alt ? `<span class="badge-alt" onclick="cambiarAlternativa(${i})" title="Alternar con: ${escapeHtml(ej.alt.opciones.filter(n => n !== ej.nombre).join(', '))}" role="button" tabindex="0">🔄 Alternar</span>` : ''}
               ${ej.musculo ? `<span class="badge-musculo">${escapeHtml(MUSCULOS_MAP[ej.musculo] || ej.musculo)}</span>` : ''}
               ${ej.musculo && ej.subzona && etiquetaSubzona(ej.musculo, ej.subzona) ? `<span class="badge-sub" title="Subzona enfatizada">${escapeHtml(etiquetaSubzona(ej.musculo, ej.subzona))}</span>` : ''}
@@ -1994,6 +2030,18 @@ function _doFinalizarDia() {
   ejerciciosDia.forEach(ej => {
     if (enDeload) {
       detalles.push(`${ej.nombre}: 💤 Deload — ${ej.reps.filter(r => r !== "").join("/")} reps a ${ej.peso}kg`);
+      // Ciclo ondulante: la semana 4 es esta sesión de Deload → se reinicia el ciclo y sube el peso base
+      if (ej.metodoProgId === 'ondulante') {
+        const estadoPrevio = leerCfg('metodoEstado', sesion.dia, ej.nombre) || {};
+        const ev = cerrarCicloEnDeload(ej, estadoPrevio, ej.pesoBase ?? ej.peso);
+        if (JSON.stringify(ev.estado) !== JSON.stringify(estadoPrevio)) cambiosEstado.push({ nombre: ej.nombre, estado: ev.estado });
+        if (ev.progresa) {
+          cambiosPeso.push({ ej, nombre: ej.nombre, pesoAnterior: ej.pesoBase, pesoNuevo: ev.pesoNuevo, incremento: ej.incremento });
+          huboProgresion = true;
+          detalles.push(`${ej.nombre}: PROGRESO +${parseFloat((ev.pesoNuevo - ej.pesoBase).toFixed(2))}kg → ${ev.pesoNuevo}kg`);
+        }
+        if (ev.texto) avisosMetodoSesion.push(`${ej.nombre}: ${ev.texto}`);
+      }
     } else if (ej.alFallo) {
       const maxReps = Math.max(...ej.reps.filter(r => r !== "").map(Number), 0);
       detalles.push(`${ej.nombre}: Al fallo — ${ej.reps.filter(r => r !== "").join("/")} reps (máx: ${maxReps})`);
@@ -2115,7 +2163,7 @@ function mostrarPantallaResumen(sesion, huboProgresion, detalles, enDeload = fal
       ${sesion.duracionMin ? `<div class="stat-card"><span class="stat-num">${sesion.duracionMin}'</span><span class="stat-label">Duración</span></div>` : ''}
     </div>
 
-    ${enDeload ? `<div class="deload-dia-notice" style="margin:12px 0;">💤 Sesión de <strong>Deload</strong> — pesos al 70%, sin progresión registrada</div>` : ''}
+    ${enDeload ? `<div class="deload-dia-notice" style="margin:12px 0;">💤 Sesión de <strong>Deload</strong> — pesos al 70%, ${huboProgresion ? 'solo avanza el ciclo ondulante' : 'sin progresión registrada'}</div>` : ''}
 
     ${progresaron.length > 0 ? `
     <div class="resumen-seccion">
@@ -2169,7 +2217,7 @@ window.cerrarResumen = function () {
 const cacheUltimaSesion = new Map();
 
 function abrirHistorial() {
-  cerrarSidebar();
+  cerrarCuenta();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2332,7 +2380,7 @@ function limpiarHistorialDuplicados() {
 }
 
 function abrirMedidas() {
-  cerrarSidebar();
+  cerrarCuenta();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2512,7 +2560,7 @@ function borrarTodoHistorialMedidas() {
 }
 
 function abrirConfigAudio() {
-  cerrarSidebar();
+  cerrarCuenta();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2653,7 +2701,7 @@ window.cerrarModalTempo = function () {
 };
 
 function abrirGuiaTempo() {
-  cerrarSidebar();
+  cerrarCuenta();
   navPush();
   ocultarTodas();
   // Métodos de progresión/intensidad/descanso y guía de nutrición: se dibujan desde sus módulos
@@ -2669,7 +2717,7 @@ window.irAGuia = function (id) {
 
 // ── Ranking global ──
 window.abrirRanking = function () {
-  cerrarSidebar();
+  cerrarCuenta();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2679,7 +2727,7 @@ window.abrirRanking = function () {
 
 // ── Nutrición ──
 window.abrirNutricion = function () {
-  cerrarSidebar();
+  cerrarCuenta();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2702,7 +2750,7 @@ function _pintarContadorFrases() {
   el.textContent = `${FRASES.length} frases incluidas + ${propias} tuya${propias !== 1 ? 's' : ''}.`;
 }
 window.abrirMensajes = function () {
-  cerrarSidebar();
+  cerrarCuenta();
   guardarEstadoApp();
   navPush();
   ocultarTodas();
@@ -2832,17 +2880,6 @@ function _doVolverMenu() {
   if (_versionPendiente) setTimeout(() => avisarNuevaVersion(_versionPendiente), 400);
 }
 
-function toggleSidebar() {
-  const sidebar = document.getElementById("sidebar");
-  const overlay = document.getElementById("sidebar-overlay");
-  if (!sidebar || !overlay) return;
-  const isOpen = sidebar.classList.contains("sidebar-open");
-  sidebar.classList.toggle("sidebar-open", !isOpen);
-  sidebar.classList.toggle("sidebar-closed", isOpen);
-  overlay.classList.toggle("oculto", isOpen);
-  if (!isOpen) renderSidebarPerfil();
-}
-
 function toggleSidebarRight() {
   const sidebar = document.getElementById("sidebar-right");
   const overlay = document.getElementById("sidebar-right-overlay");
@@ -2853,40 +2890,126 @@ function toggleSidebarRight() {
   overlay.classList.toggle("oculto", isOpen);
 }
 
-function cerrarSidebar() {
-  document.getElementById("sidebar")?.classList.replace("sidebar-open", "sidebar-closed");
-  document.getElementById("sidebar-overlay")?.classList.add("oculto");
-}
-
 function cerrarSidebarRight() {
   document.getElementById("sidebar-right")?.classList.replace("sidebar-right-open", "sidebar-right-closed");
   document.getElementById("sidebar-right-overlay")?.classList.add("oculto");
 }
 
-function renderSidebarPerfil() {
-  const cont = document.getElementById("sidebar-perfil-info");
-  if (!cont) return;
-
-  let userState = {};
-  try { userState = JSON.parse(localStorage.getItem("userState") || "{}"); } catch { }
-
-  const email = userState.email || null;
-  const logueado = !!userState.uid;
-
-  cont.innerHTML = `
-    <div class="sidebar-perfil-email">
-      ${logueado
-      ? `<span>👤 ${escapeHtml(email)}</span>`
-      : `<span style="color:var(--text-secondary);font-size:calc(12px*var(--fs));">Sin cuenta — datos locales</span>`}
-    </div>
-    <div class="sidebar-perfil-btns">
-      <button onclick="toggleSidebar(); mostrarPerfil()">
-        ${logueado ? "⚙️ Perfil / Contraseña" : "🔑 Iniciar sesión"}
-      </button>
-      ${logueado ? `<button onclick="logout()" class="btn-danger" style="margin-top:4px;">🚪 Cerrar sesión</button>` : ""}
-    </div>`;
+// ══════════════════════════════════════════════════════
+// CUENTA (avatar de la esquina) Y AJUSTES
+// ══════════════════════════════════════════════════════
+function datosCuenta() {
+  let st = {};
+  try { st = JSON.parse(localStorage.getItem("userState") || "{}") || {}; } catch { }
+  const email = typeof st.email === 'string' ? st.email : null;
+  const logueado = !!st.uid;
+  const letra = logueado && email && email.trim() ? [...email.trim()][0].toUpperCase() : '👤';
+  return { email, logueado, letra };
 }
-window.renderSidebarPerfil = renderSidebarPerfil;
+
+// Letra inicial del correo dentro del círculo de la esquina (👤 si no hay cuenta)
+function renderAvatar() {
+  const { email, logueado, letra } = datosCuenta();
+  const el = document.getElementById('avatar-letra');
+  if (el) el.textContent = letra;
+  const btn = document.getElementById('btn-avatar');
+  if (btn) {
+    btn.classList.toggle('con-cuenta', logueado);
+    btn.setAttribute('aria-label', logueado ? `Cuenta: ${email || 'sesión iniciada'}` : 'Cuenta: sin iniciar sesión');
+  }
+}
+window.renderAvatar = renderAvatar;
+
+function cerrarCuenta() {
+  const ov = document.getElementById('sheet-cuenta');
+  if (!ov || ov.classList.contains('oculto')) return;
+  ov.classList.add('oculto');
+  // Devuelve el foco al avatar (teclado y lectores de pantalla); si el menú no se ve, no hace nada
+  document.getElementById('btn-avatar')?.focus({ preventScroll: true });
+}
+window.cerrarCuenta = cerrarCuenta;
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('sheet-cuenta')?.classList.contains('oculto')) cerrarCuenta();
+});
+
+function abrirCuenta() {
+  const ov = document.getElementById('sheet-cuenta');
+  const cont = document.getElementById('sheet-cuenta-contenido');
+  if (!ov || !cont) return;
+  const { email, logueado, letra } = datosCuenta();
+  cont.innerHTML = `
+    <div class="cuenta-cab">
+      <div class="avatar-grande${logueado ? ' con-cuenta' : ''}" aria-hidden="true">${escapeHtml(letra)}</div>
+      <div class="cuenta-datos">
+        <strong>${logueado ? escapeHtml(email || 'Sesión iniciada') : 'Sin cuenta'}</strong>
+        <small>${logueado ? 'Tus datos se pueden sincronizar con la nube' : 'Tus datos se guardan solo en este dispositivo'}</small>
+      </div>
+    </div>
+    <div class="sheet-lista">
+      <button type="button" class="sheet-op" onclick="abrirAjustes()"><span aria-hidden="true">⚙️</span><span>Ajustes</span></button>
+      ${logueado
+      ? `<button type="button" class="sheet-op" onclick="cerrarCuenta(); mostrarPerfil()"><span aria-hidden="true">👤</span><span>Perfil y seguridad</span></button>
+         <button type="button" class="sheet-op sheet-peligro" onclick="cerrarCuenta(); logout()"><span aria-hidden="true">🚪</span><span>Cerrar sesión</span></button>`
+      : `<button type="button" class="sheet-op" onclick="cerrarCuenta(); mostrarPantallaAuth()"><span aria-hidden="true">🔑</span><span>Iniciar sesión o crear cuenta</span></button>`}
+    </div>`;
+  ov.classList.remove('oculto');
+  cont.querySelector('.sheet-op')?.focus({ preventScroll: true });
+}
+window.abrirCuenta = abrirCuenta;
+
+// Versión que está corriendo de verdad: la marca "gt-build:vNNN" del final de este mismo archivo
+// (sale de la caché de la app, así que funciona sin conexión)
+async function pintarVersionApp() {
+  const el = document.getElementById('aj-version');
+  if (!el) return;
+  let v = '';
+  try {
+    const t = await (await fetch(import.meta.url)).text();
+    const m = [...t.matchAll(/gt-build:(v\d+)/g)];
+    if (m.length) v = m[m.length - 1][1];
+  } catch { }
+  let modo = '';
+  try { modo = window.matchMedia('(display-mode: standalone)').matches ? 'app instalada' : 'navegador'; } catch { }
+  el.textContent = ['Gym Tracker ' + (v || '(versión no disponible)'), modo].filter(Boolean).join(' · ');
+}
+
+function renderAjustes() {
+  const cuenta = document.getElementById('aj-cuenta');
+  if (cuenta) {
+    const { email, logueado, letra } = datosCuenta();
+    cuenta.innerHTML = `
+      <button type="button" class="aj-cuenta" onclick="${logueado ? 'mostrarPerfil()' : 'mostrarPantallaAuth()'}">
+        <span class="avatar-grande${logueado ? ' con-cuenta' : ''}" aria-hidden="true">${escapeHtml(letra)}</span>
+        <span class="aj-txt">
+          <strong>${logueado ? escapeHtml(email || 'Sesión iniciada') : 'Sin cuenta'}</strong>
+          <small>${logueado ? 'Perfil, sincronización y contraseña' : 'Inicia sesión para guardar tus datos en la nube'}</small>
+        </span>
+        <span class="aj-flecha" aria-hidden="true">›</span>
+      </button>`;
+  }
+  try { window.renderGaleriaTemas?.(); } catch (e) { console.warn('Temas:', e); }
+  sincronizarControlesTextoGrande();
+  aplicarSerieVerde();
+  pintarVersionApp();
+}
+
+function mostrarAjustesSinPush() {
+  ocultarTodas();
+  document.getElementById('pantalla-ajustes')?.classList.remove('oculto');
+  renderAjustes();
+  window.scrollTo(0, 0);
+}
+
+function abrirAjustes() {
+  cerrarCuenta();
+  guardarEstadoApp();
+  navPush({ pantalla: 'ajustes' });
+  mostrarAjustesSinPush();
+}
+window.abrirAjustes = abrirAjustes;
+
+// Botón ← de las pantallas que se abren desde Ajustes: retrocede una entrada (vuelve a Ajustes) o, si no hay, al menú
+window.volverAtras = function () { if (!navAtras()) volverMenu(); };
 
 function guardarEstadoApp() {
   const pantalla = sesionActiva ? "dia" :
@@ -2941,7 +3064,7 @@ function renderizarBotonesDias() {
   if (claves.length === 0) {
     const vacio = document.createElement("p");
     vacio.className = "menu-sin-dias";
-    vacio.textContent = "Esta rutina aún no tiene días. Añade alguno desde ☰ Menú → ✏️ Editar rutinas, o elige otra rutina arriba.";
+    vacio.textContent = "Esta rutina aún no tiene días. Añade alguno desde ⚙️ Ajustes → ✏️ Mis rutinas, o elige otra rutina arriba.";
     contenedor.appendChild(vacio);
     return;
   }
@@ -3355,7 +3478,7 @@ const CAPAS = {
   'modal-timer':            { abierta: el => !el.classList.contains('oculto'), cerrar: resetDesdeModal },
   'modal-tempo-overlay':    { abierta: el => !el.classList.contains('oculto'), cerrar: () => window.cerrarModalTempo?.() },
   'sidebar-right':          { abierta: el => el.classList.contains('sidebar-right-open'), cerrar: cerrarSidebarRight },
-  'sidebar':                { abierta: el => el.classList.contains('sidebar-open'), cerrar: cerrarSidebar }
+  'sheet-cuenta':           { abierta: el => !el.classList.contains('oculto'), cerrar: cerrarCuenta }
 };
 
 function cerrarCapaPorId(id) {
@@ -3374,6 +3497,16 @@ window.addEventListener("popstate", (e) => {
 
   // Panel lateral o diálogo
   if (it && it.capa) { cerrarCapaPorId(it.capa); return; }
+
+  // Pantalla abierta desde Ajustes (Mensajes, Guía, Editor…): "atrás" vuelve a Ajustes, no al menú
+  if (it && it.pantalla !== 'ajustes') {
+    const tope = navTopePantalla();
+    if (tope && tope.pantalla === 'ajustes' && !visible("pantalla-ajustes")) {
+      if (visible("pantalla-editor") && window.editorLimpiarEstado) window.editorLimpiarEstado();
+      mostrarAjustesSinPush();
+      return;
+    }
+  }
 
   // Nivel interno del editor de rutinas (día → rutina → lista)
   if (it && it.pantalla === 'editor' && it.nivel && window.editorSubirNivel) { window.editorSubirNivel(it.nivel); return; }
@@ -3402,7 +3535,6 @@ document.addEventListener('touchstart', e => {
   touchStartX = e.changedTouches[0].screenX;
   touchStartY = e.changedTouches[0].screenY;
   const w = window.innerWidth;
-  if (touchStartX <= EDGE_ZONE) { isSwiping = true; swipeTarget = 'left'; }
   if (touchStartX >= w - EDGE_ZONE) { isSwiping = true; swipeTarget = 'right'; }
 }, { passive: true });
 
@@ -3411,10 +3543,6 @@ document.addEventListener('touchend', e => {
   const dx = e.changedTouches[0].screenX - touchStartX;
   const dy = Math.abs(e.changedTouches[0].screenY - touchStartY);
   if (dy < 100) {
-    if (swipeTarget === 'left' && dx > SWIPE_THRESHOLD) {
-      document.getElementById("sidebar")?.classList.replace("sidebar-closed", "sidebar-open");
-      document.getElementById("sidebar-overlay")?.classList.remove("oculto");
-    }
     if (swipeTarget === 'right' && dx < -SWIPE_THRESHOLD) {
       document.getElementById("sidebar-right")?.classList.replace("sidebar-right-closed", "sidebar-right-open");
       document.getElementById("sidebar-right-overlay")?.classList.remove("oculto");
@@ -3444,7 +3572,6 @@ window.abrirMedidas = abrirMedidas;
 window.verDetalle = verDetalle;
 window.limpiarHistorialDuplicados = limpiarHistorialDuplicados;
 window.borrarTodoHistorial = borrarTodoHistorial;
-window.toggleSidebar = toggleSidebar;
 window.toggleSidebarRight = toggleSidebarRight;
 window.resetDesdeModal = resetDesdeModal;
 window.masDescansoDesdeModal = masDescansoDesdeModal;
@@ -3546,7 +3673,7 @@ window.exportarHistorialCSV = function () {
 };
 
 function abrirEstadisticas() {
-  cerrarSidebar();
+  cerrarCuenta();
   navPush();
   ocultarTodas();
   document.getElementById('pantalla-estadisticas').classList.remove('oculto');
@@ -3791,7 +3918,7 @@ function calcularRachaMejor(fechasOrdenadas) {
 }
 
 function abrirProgreso(desdeStats = false) {
-  cerrarSidebar();
+  cerrarCuenta();
   navPush(desdeStats === true ? { pantalla: 'progreso', padre: 'stats' } : { pantalla: 'progreso' });
   ocultarTodas();
   document.getElementById('pantalla-progreso').classList.remove('oculto');
@@ -3963,7 +4090,7 @@ function guardarNotasProgresion(datos) {
 }
 
 function abrirNotasProgresion() {
-  cerrarSidebar();
+  cerrarCuenta();
   navPush();
   ocultarTodas();
   document.getElementById('pantalla-progresion-rutina').classList.remove('oculto');
@@ -4181,8 +4308,14 @@ if ('serviceWorker' in navigator) {
     }).catch(err => console.error('SW error:', err));
 
   // Recargar solo cuando el usuario aceptó y el nuevo SW ya controla la página
+  // v107: a veces el navegador aborta esa recarga justo cuando el SW nuevo toma el control (la app se quedaba con la
+  // versión vieja hasta la siguiente apertura). Si la recarga funciona, la página se descarga y el temporizador no llega a ejecutarse.
+  let _recargaProgramada = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (_recargarAlCambiarSW) window.location.reload();
+    if (!_recargarAlCambiarSW || _recargaProgramada) return;
+    _recargaProgramada = true;
+    window.location.reload();
+    setTimeout(() => window.location.reload(), 2500);
   });
 
   navigator.serviceWorker.addEventListener('message', event => {
@@ -4317,18 +4450,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Paneles laterales y diálogos: cada uno que se abre añade su entrada de historial ("atrás" lo cierra)
   seguro('capas', () => navVigilarCapas(Object.entries(CAPAS).map(([id, d]) => ({ id, abierta: d.abierta }))));
 
-  seguro('sidebarGrupos', () => {
-    // Recuerda qué grupos del menú lateral dejaste abiertos
-    let abiertos = [];
-    try { abiertos = JSON.parse(localStorage.getItem('sidebarGrupos') || '[]'); } catch {}
-    document.querySelectorAll('#sidebar details.sb-grupo').forEach(d => {
-      d.open = Array.isArray(abiertos) && abiertos.includes(d.dataset.g);
-      d.addEventListener('toggle', () => {
-        const ab = [...document.querySelectorAll('#sidebar details.sb-grupo[open]')].map(x => x.dataset.g);
-        try { localStorage.setItem('sidebarGrupos', JSON.stringify(ab)); } catch {}
-      });
-    });
-  });
+  seguro('avatar', renderAvatar);
   seguro('serieVerde', aplicarSerieVerde);
   seguro('rutinaBase', inicializarRutinaBase);
   seguro('offlineBanner', initOfflineBanner);
@@ -4459,4 +4581,4 @@ document.addEventListener("DOMContentLoaded", async () => {
   setTimeout(actualizarRankingSilencioso, 6000);
   setTimeout(recordarBackupSiHaceFalta, 9000);
 });
-// gt-build:v106
+// gt-build:v107

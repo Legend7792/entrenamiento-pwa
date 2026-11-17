@@ -1,9 +1,73 @@
-# Gym Tracker — cambios de esta versión (SW v106)
+# Gym Tracker — cambios de esta versión (SW v107)
 
 Este documento explica **qué se cambió, por qué y qué NO pude comprobar**. Todo se probó en un
 Chromium real (clics, toques y arrastres reales; pruebas automáticas de arrastre, duplicar, navegación, texto grande y
 modo sin conexión, todas sin fallos en la última pasada), pero con una nube simulada: no tuve acceso
 a tu proyecto de Supabase ni a una API key de Anthropic.
+
+---
+
+# 🆕 v107 — sobre la v106
+
+**Pasos tuyos al publicarla (2):**
+1. Sube **TODOS** los archivos de la carpeta en **un solo commit** (la app rechaza versiones mezcladas y se queda con la anterior).
+2. En Supabase → SQL Editor, ejecuta **`supabase_ranking.sql`** (aunque ya hubieras ejecutado el anterior: se puede repetir sin problema). Añade 2 columnas
+   (`metrica`, `ejercicios`). Sin este paso el ranking avisa «falta crear o actualizar la tabla» y todo lo demás funciona igual.
+
+## 1. 🏅 Ranking nuevo: mide PROGRESO, no asistencia
+**Problema:** antes eran 10 puntos por sesión + volumen acumulado. Quien paraba por lesión, trabajo o viaje se quedaba atrás para siempre.
+**Ahora:** cada ejercicio compara tu **1RM estimado** (fórmula de Epley, mejor serie «normal»; sin bajadas ni serie viuda; máx. 12 reps) de **tu primera sesión**
+con el **mejor** que has hecho. La mejora de cada ejercicio va de 0 a +100 %; los puntos son la **mejora media × 10** (p. ej. +12,4 % = 124 puntos).
+- **No cuenta cuántas veces entrenas ni cuánto llevas sin hacerlo**: tu mejor marca no baja si paras; solo sube cuando mejoras. Las sesiones de deload no cuentan.
+- Entras en la lista cuando tienes **3 ejercicios con peso hechos al menos 3 veces** (antes, la pantalla dice «Calibrando…» y cuántos te faltan).
+- Niveles por mejora media: Aprendiz +5 %, Constante +10 %, Intermedio +20 %, Avanzado +30 %, Élite +45 %, Leyenda +60 %.
+- La pantalla tiene «Ver cómo sale (por ejercicio)» para que compruebes tu cálculo, y «¿Cómo se calcula?».
+- En la nube se guarda `metrica = 2`; las filas antiguas (`metrica = 1`) dejan de verse y cada usuario pasa a la nueva al abrir la versión nueva.
+- **Límites honestos:** (a) al principio se progresa más rápido, así que los recién llegados suben deprisa (por eso hay filtro por nivel);
+  (b) el punto de partida es tu primera sesión: si alguien registra un peso muy bajo al empezar, sale inflado (lo limita el tope de +100 % por ejercicio);
+  (c) se calcula en el móvil, así que se puede falsear: es un ranking «entre amigos», no una competición con premios.
+- **Alternativas que no implementé** (dímelo si prefieres otra): fuerza relativa al peso corporal (compara niveles absolutos, favorece a los avanzados),
+  media por semana activa, o temporadas mensuales (vuelve a penalizar al que falta).
+
+## 2. 🎨 Interfaz reorganizada (estilo apps profesionales)
+- **Se eliminó el menú lateral ☰.** Arriba a la izquierda hay un **avatar** (la inicial de tu correo, o 👤 sin cuenta) que abre una **hoja de cuenta**
+  (Ajustes · Perfil y seguridad · Cerrar sesión / Iniciar sesión). Arriba a la derecha: **⚙️ Ajustes** y ⏱️ temporizador.
+- **Nueva pantalla ⚙️ Ajustes**, en grupos: Cuenta · Apariencia (**galería de temas con muestra de cada uno**, interruptores de texto grande y series en verde) ·
+  Entrenamiento (rutinas, importar con IA, notas de progresión, mensajes, sonido) · Datos (backup) · Aplicación (instalar, guía, actualizar, **versión que está corriendo**).
+- **La rutina activa** pasó al menú principal (selector bajo la barra superior).
+- **Perfil** rediseñado: tarjeta con avatar, sincronización, **«Cambiar contraseña» plegable** y «Cerrar sesión» al final.
+- **Botón atrás** (físico y ←): las pantallas abiertas desde Ajustes (rutinas, guía, notas, mensajes, sonido, importar IA, perfil) vuelven a **Ajustes**; Ajustes vuelve al menú.
+- Detalles: la hoja se cierra con Escape o tocando fuera y devuelve el foco al avatar; la fecha del diario ya no sale «17 De Noviembre».
+
+## 3. 🔍 Búsqueda de alimentos mejorada
+Categorías como **botones** con contador (según lo que escribes) y 🕘 **Recientes** (de tu diario de 30 días) · fichas con kcal grandes, categoría y macros ·
+**palabras resaltadas** · **ordenar** (más proteína, proteína por kcal, menos/más calorías, A–Z) · «Mostrar más» · Enter elige el primero ·
+**gramos rápidos** (50–250) y **vista previa** de lo que aportan antes de añadir · si no aparece: «Quitar filtros» o «➕ Añadir «lo escrito» a Mis alimentos».
+Sigue sin perder el foco al escribir, ignora tildes y mayúsculas y funciona sin conexión.
+
+## 4. 💪 Tu rutina (documento `rutina_hipertrofia_DEFINITIVA_v6`)
+- Nuevos métodos de progresión: **`ondulante`** (ciclo de 4 semanas: 1 = mínimo de reps, 2 = punto medio, 3 = máximo, 4 = Deload; la semana 4 hecha en Deload sube el peso:
+  +incremento, o la mitad si alguna semana fue «difícil») y **`doblefallo`** (doble progresión + última serie al fallo técnico).
+- Plantilla nueva **«Hipertrofia Upper/Lower · 4 días (ejercicios libres)»** con las anclas en ondulante, el resto en doble+fallo, tempos, notas de técnica,
+  calentamientos y Deload activado. Incrementos por ejercicio (`incremento`) respetados.
+- **Decisiones mías (corrígeme):** el ciclo avanza **por sesión de ese ejercicio**, no por calendario · «difícil» = alguna serie por debajo del objetivo en las semanas 1–3 ·
+  un Deload adelantado no cambia el ciclo · si se entrena la semana 4 sin Deload, el ciclo reinicia **sin subir peso** · las fases del Nordic curl las cambias tú
+  (método «ninguna») · sentadilla frontal con incremento +2,5 kg, tal como pone el documento · los 3 ejercicios que añadiste (sin clasificar en el documento) usan doble progresión estándar.
+- **Alimentos: de 103 a 140**, todos con número FDC del USDA y con las 4 cifras verificadas (misma metodología que en v106). Siguen sin estar (no pude verificarlos):
+  plátano verde frito/hervido, yuca cocida, pan cubano, frijoles blancos, aceite de girasol, chuleta de cerdo, bistec de res, refrescos, ron y platos compuestos
+  (congrí, moros, picadillo…): se pueden guardar ya como «Mis alimentos».
+
+## 5. Otras mejoras y arreglos
+- **Actualizar la app:** a veces el navegador abortaba la recarga justo al activarse la versión nueva y la app seguía con la vieja hasta la siguiente apertura. Ahora se reintenta una vez
+  (probado 5 de 5 veces; antes fallaba en 2 de 3).
+- Las pantallas se ocultan con una regla general (`section[id^="pantalla-"]`), así que una pantalla nueva ya no se queda «debajo» de otra.
+- Textos de ayuda que mencionaban el ☰ actualizados (Nutrición, rutina sin días).
+
+## 6. Pruebas hechas (Chromium real, 390×844) y lo que NO pude comprobar
+- Navegación: abrir Ajustes y cada pantalla, atrás físico y ← (incluido el editor con sus niveles internos), hoja de cuenta (Escape, tocar fuera, foco), perfil con y sin cuenta.
+- Temas, interruptores, 11 temas con contraste, ciclo ondulante y doble+fallo de extremo a extremo, ranking (7 casos: **10 sesiones = 3 sesiones = parón de 100 días**, deload,
+  peso corporal, bajadas, tope, datos basura), buscador (19 comprobaciones), modo sin conexión, actualización v106 → v107 con tus datos intactos.
+- **No pude comprobar:** el ranking contra tu Supabase real (hay que ejecutar el SQL), el comportamiento en tu móvil/PWA instalada ni la caché de GitHub Pages.
 
 ---
 

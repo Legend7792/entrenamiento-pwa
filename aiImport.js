@@ -270,11 +270,8 @@ window.aiEliminarDia = function (id) {
 // ============================================================
 export function abrirPantallaImport() {
   navPush();
-  ['menu','pantalla-auth','pantalla-dia','pantalla-historial','pantalla-detalle',
-   'pantalla-medidas','pantalla-audio','pantalla-editor','pantalla-resumen',
-   'pantalla-estadisticas','pantalla-progreso','pantalla-guia-tempo',
-   'pantalla-progresion-rutina','pantalla-perfil'
-  ].forEach(id => document.getElementById(id)?.classList.add('oculto'));
+  // Todas las pantallas y el menú (así una pantalla nueva, como Ajustes, no hay que añadirla a una lista)
+  document.querySelectorAll('section[id^="pantalla-"], #menu').forEach(el => el.classList.add('oculto'));
   document.getElementById('pantalla-ai-import')?.classList.remove('oculto');
 
   // Inicializar con un día si está vacío
@@ -390,4 +387,4 @@ window.borrarApiKeyGuardada = function () {
   if (keyInput) keyInput.value = '';
   showToast('API key borrada de este dispositivo', 'success');
 };
-// gt-build:v106
+// gt-build:v107

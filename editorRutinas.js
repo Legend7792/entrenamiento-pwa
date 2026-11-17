@@ -745,15 +745,19 @@ window.volverListaRutinas = () => {
   _irListaRutinas();
 };
 window.editorSubirNivel = (nivel) => { if (nivel === 'dia') _irListaDias(); else _irListaRutinas(); };
+// Deja el editor sin selección (al salir de él, sea hacia el menú o hacia Ajustes)
+window.editorLimpiarEstado = function() {
+  rutinaEditando=rutinaEditandoId=diaEditando=ejEditandoIdx=null;
+  dispararCambioRutina();
+};
 window.volverMenuDesdeEditor = function() {
   navLimpiar();   // quita la entrada de historial que añadió abrirEditorRutinas
   document.querySelectorAll('section[id^="pantalla-"]').forEach(el => el.classList.add('oculto'));
   document.getElementById("menu").classList.remove("oculto");
-  rutinaEditando=rutinaEditandoId=diaEditando=ejEditandoIdx=null;
-  dispararCambioRutina();
+  window.editorLimpiarEstado();
 };
 
 function dispararCambioRutina() {
   window.dispatchEvent(new CustomEvent("cambio-rutina",{detail:{rutinaId:rutinaEditandoId||localStorage.getItem("rutinaActiva")}}));
 }
-// gt-build:v106
+// gt-build:v107

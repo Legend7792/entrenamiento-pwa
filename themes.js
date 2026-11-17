@@ -241,26 +241,48 @@ export function aplicarTema(idTema, { sincronizar = false } = {}) {
   } catch (e) {
     console.warn("No se pudo guardar el tema:", e);
   }
+  marcarTemaActivo(idTema);
   if (sincronizar) markDirty();
 }
 
-// Crear selector de temas en el sidebar
+// Galería de temas de la pantalla Ajustes: una muestra de cada tema con su nombre
+function escHtml(t) { return String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+function marcarTemaActivo(idTema) {
+  document.querySelectorAll("#galeria-temas .tema-chip").forEach(b => {
+    const on = b.dataset.tema === idTema;
+    b.classList.toggle("sel", on);
+    b.setAttribute("aria-checked", on ? "true" : "false");
+  });
+}
+
 export function crearSelectorTemas() {
-  const selector = document.getElementById("selector-temas-sidebar");
-  if (!selector) return;
+  const cont = document.getElementById("galeria-temas");
+  if (!cont) return;
 
   const temaActual = obtenerTemaActual();
+  cont.innerHTML = Object.entries(TEMAS).map(([id, tema]) => {
+    const v = tema.variables;
+    // El nombre lleva un emoji delante ("🌙 Oscuro"): en la muestra se separa para no repetirlo
+    const nombre = tema.nombre.replace(/^\S+\s+/, "");
+    return `<button type="button" role="radio" class="tema-chip${id === temaActual ? " sel" : ""}" data-tema="${escHtml(id)}"
+        aria-checked="${id === temaActual}" aria-label="Tema ${escHtml(nombre)}">
+      <span class="tema-muestra" style="background:${v["--bg-primary"]};border-color:${v["--border"]}" aria-hidden="true">
+        <span class="tema-barra" style="background:${v["--bg-secondary"]}"><i style="background:${v["--accent"]}"></i></span>
+        <span class="tema-linea" style="background:${v["--text-primary"]}"></span>
+        <span class="tema-linea corta" style="background:${v["--text-secondary"]}"></span>
+      </span>
+      <span class="tema-nombre">${escHtml(nombre)}</span>
+    </button>`;
+  }).join("");
 
-  selector.innerHTML = Object.entries(TEMAS).map(([id, tema]) => 
-    `<option value="${id}" ${id === temaActual ? "selected" : ""}>
-      ${tema.nombre}
-    </option>`
-  ).join("");
-
-  selector.onchange = (e) => {
-    aplicarTema(e.target.value, { sincronizar: true });
+  cont.onclick = (e) => {
+    const b = e.target.closest(".tema-chip");
+    if (!b || !cont.contains(b)) return;
+    aplicarTema(b.dataset.tema, { sincronizar: true });
   };
 }
+window.renderGaleriaTemas = crearSelectorTemas;
 
 // Inicializar tema al cargar
 document.addEventListener("DOMContentLoaded", () => {
@@ -270,4 +292,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Reaplicar el tema guardado (p. ej. después de traer datos de la nube)
 window.aplicarTemaGuardado = () => aplicarTema(obtenerTemaActual());
-// gt-build:v106
+// gt-build:v107

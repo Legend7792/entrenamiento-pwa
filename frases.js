@@ -109,4 +109,4 @@ export function fraseAleatoria() {
   if (!lista.length) return null;
   return lista[elegirSinRepetir('bolsa_frases', lista.length)];
 }
-// gt-build:v106
+// gt-build:v107

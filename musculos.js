@@ -51,4 +51,4 @@ export function opcionesSubzona(musculo, actual, escapar = s => s) {
   return `<option value="">— Toda la zona —</option>` +
     (SUBZONAS[musculo] || []).map(([id, et]) => `<option value="${escapar(id)}"${id === actual ? ' selected' : ''}>${escapar(et)}</option>`).join('');
 }
-// gt-build:v106
+// gt-build:v107

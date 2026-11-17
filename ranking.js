@@ -1,13 +1,17 @@
-// ranking.js — Ranking global de usuarios de la app (mejora 15)
+// ranking.js — Ranking global de usuarios de la app (mejora 15; v107: mide PROGRESO, no asistencia)
 //
 // Cómo funciona
-//  * Es OPCIONAL y requiere cuenta en la nube. Si activas "Participar", se sube SOLO: apodo, puntos, nivel, nº de sesiones
-//    y volumen total. Nunca se suben rutinas, historial, medidas, correo ni nada más.
+//  * Es OPCIONAL y requiere cuenta en la nube. Si activas "Participar", se sube SOLO: apodo, puntos, nivel y nº de
+//    ejercicios evaluados. Nunca se suben rutinas, historial, medidas, correo ni nada más.
+//  * v107 — QUÉ SE MIDE: la mejora de fuerza de cada ejercicio respecto a TU propio punto de partida (1RM estimado
+//    con la fórmula de Epley), promediada entre tus ejercicios. NO cuenta cuántas sesiones haces ni cuánto tiempo
+//    llevas: si faltas unas semanas, tu progreso ya conseguido no baja; y quien entrena menos días pero mejora sube.
+//    (Antes eran 10 puntos por sesión + volumen: quien paraba por lesión, trabajo o viaje se quedaba atrás para siempre.)
 //  * Los puntos y el nivel se calculan en tu dispositivo con tu historial (ver calcularNivel).
 //  * El ranking se descarga solo al abrir la app / volver la conexión / abrir la pantalla. Se guarda la última
 //    descarga: sin internet se sigue viendo, indicando de cuándo es.
-//  * La tabla se crea con supabase_ranking.sql (hay que ejecutarlo UNA vez en Supabase). Sin esa tabla, la pantalla
-//    avisa y el resto de la app funciona igual.
+//  * La tabla se crea/actualiza con supabase_ranking.sql (hay que ejecutarlo UNA vez en Supabase; es repetible).
+//    Sin esa tabla, la pantalla avisa y el resto de la app funciona igual.
 //  * LIMITACIÓN: al calcularse en el cliente, un usuario con conocimientos podría falsear sus puntos. Es un ranking
 //    "de confianza entre amigos", no una competición con premios.
 
@@ -16,15 +20,22 @@ import { userState, markDirty } from "./userState.js";
 import { repsContables } from "./metodos.js";
 import { escapeHtml, showToast, showConfirm } from "./ui.js";
 
-// Niveles por puntos (diseño propio, fácil de ajustar aquí)
+// Métrica del ranking (se guarda en la nube para no mezclar con la antigua, que contaba sesiones)
+export const METRICA = 2;
+export const MIN_SESIONES_EJ = 3;   // un ejercicio cuenta cuando lo has hecho al menos 3 veces (con peso y sin ser deload)
+export const MIN_EJERCICIOS = 3;    // y hay que tener al menos 3 ejercicios así para entrar en el ranking
+const TOPE_MEJORA = 100;            // % máximo que puede aportar un ejercicio (evita que un dato raro lo domine)
+const TOPE_REPS_1RM = 12;           // por encima de ~12 reps la fórmula de Epley deja de ser fiable
+
+// puntos = mejora media (%) × 10, así 12,4 % = 124 puntos. Niveles por puntos (diseño propio, fácil de ajustar aquí)
 export const NIVELES = [
   { n: 1, nombre: 'Novato',     min: 0 },
-  { n: 2, nombre: 'Aprendiz',   min: 100 },
-  { n: 3, nombre: 'Constante',  min: 300 },
-  { n: 4, nombre: 'Intermedio', min: 700 },
-  { n: 5, nombre: 'Avanzado',   min: 1500 },
-  { n: 6, nombre: 'Élite',      min: 3000 },
-  { n: 7, nombre: 'Leyenda',    min: 6000 }
+  { n: 2, nombre: 'Aprendiz',   min: 50 },    //  +5 %
+  { n: 3, nombre: 'Constante',  min: 100 },   // +10 %
+  { n: 4, nombre: 'Intermedio', min: 200 },   // +20 %
+  { n: 5, nombre: 'Avanzado',   min: 300 },   // +30 %
+  { n: 6, nombre: 'Élite',      min: 450 },   // +45 %
+  { n: 7, nombre: 'Leyenda',    min: 600 }    // +60 %
 ];
 export function nivelPorPuntos(p) {
   let r = NIVELES[0];
@@ -32,24 +43,63 @@ export function nivelPorPuntos(p) {
   return r;
 }
 
-// puntos = 10 por sesión (no cuentan las de deload) + 1 por cada 1000 kg de volumen levantado
-// (volumen = peso × repeticiones; no cuentan bajadas ni series viuda, que usan otro peso)
+// 1RM estimado (Epley) de un ejercicio en una sesión: la mejor serie "normal" (sin bajadas ni serie viuda)
+export function e1rmSesion(ej) {
+  const peso = Number(ej?.peso);
+  if (!(peso > 0)) return 0;
+  let mejor = 0;
+  repsContables(ej).forEach(r => {
+    const n = Number(r);
+    if (r === '' || r === null || !(n > 0)) return;
+    mejor = Math.max(mejor, peso * (1 + Math.min(n, TOPE_REPS_1RM) / 30));
+  });
+  return mejor;
+}
+
+// Progreso por ejercicio y total.
+//   punto de partida = 1RM estimado de tu PRIMERA sesión con ese ejercicio · mejor = el mayor de todas (el récord no baja si paras)
+//   mejora del ejercicio = (mejor / punto de partida − 1) × 100, entre 0 y 100 %
+//   mejora media = media de los ejercicios con ≥ 3 sesiones · puntos = mejora media × 10
 export function calcularNivel(historial) {
-  let sesiones = 0, volumen = 0;
-  (Array.isArray(historial) ? historial : []).forEach(s => {
-    if (!s || s.deload || !Array.isArray(s.ejercicios)) return;
-    sesiones++;
+  const porEj = new Map();   // clave normalizada → { nombre, valores: [e1rm en orden de fecha] }
+  const sesiones = (Array.isArray(historial) ? historial : [])
+    .filter(s => s && !s.deload && Array.isArray(s.ejercicios))
+    .map((s, i) => ({ s, i, t: new Date(s.fecha).getTime() }))
+    .sort((a, b) => ((Number.isFinite(a.t) ? a.t : 0) - (Number.isFinite(b.t) ? b.t : 0)) || a.i - b.i);
+  sesiones.forEach(({ s }) => {
     s.ejercicios.forEach(ej => {
-      if (!(ej.peso > 0)) return;
-      volumen += ej.peso * repsContables(ej).filter(r => r !== '' && r !== null).reduce((a, r) => a + (Number(r) || 0), 0);
+      const nombre = String(ej?.nombre || '').trim();
+      if (!nombre) return;
+      const v = e1rmSesion(ej);
+      if (!(v > 0)) return;
+      const k = nombre.toLowerCase();
+      if (!porEj.has(k)) porEj.set(k, { nombre, valores: [] });
+      porEj.get(k).valores.push(v);
     });
   });
-  volumen = Math.round(volumen);
-  const puntos = sesiones * 10 + Math.floor(volumen / 1000);
+
+  const detalle = [];
+  porEj.forEach(({ nombre, valores }) => {
+    if (valores.length < MIN_SESIONES_EJ) { detalle.push({ nombre, sesiones: valores.length, cuenta: false }); return; }
+    const base = valores[0];
+    const mejor = Math.max(...valores);
+    const mejora = Math.min(TOPE_MEJORA, Math.max(0, (mejor / base - 1) * 100));
+    detalle.push({ nombre, sesiones: valores.length, cuenta: true, base: Math.round(base * 10) / 10, mejor: Math.round(mejor * 10) / 10, mejora });
+  });
+  detalle.sort((a, b) => (b.cuenta - a.cuenta) || ((b.mejora || 0) - (a.mejora || 0)) || b.sesiones - a.sesiones);
+
+  const validos = detalle.filter(d => d.cuenta);
+  const ejercicios = validos.length;
+  const calibrado = ejercicios >= MIN_EJERCICIOS;
+  const mejoraPct = ejercicios ? validos.reduce((a, d) => a + d.mejora, 0) / ejercicios : 0;
+  const puntos = calibrado ? Math.round(mejoraPct * 10) : 0;
   const nivel = nivelPorPuntos(puntos);
   const sig = NIVELES.find(x => x.min > puntos) || null;
-  return { sesiones, volumen, puntos, nivel: nivel.n, nombre: nivel.nombre, siguiente: sig };
+  return { puntos, mejoraPct, ejercicios, calibrado, faltanEjercicios: Math.max(0, MIN_EJERCICIOS - ejercicios), detalle, nivel: nivel.n, nombre: nivel.nombre, siguiente: sig };
 }
+
+const fmtKg = v => v.toLocaleString('es-ES', { maximumFractionDigits: 1 });
+const fmtPct = v => v.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 // ── Estado local ──
 const K_PERFIL = 'rankingPerfil';   // { activo, apodo }   (se sincroniza con la cuenta)
@@ -82,7 +132,7 @@ let _enCurso = null, _ultimo = 0, _tablaFalta = false;
 
 function esTablaInexistente(e) {
   const m = String(e?.message || '') + String(e?.code || '');
-  return /PGRST205|42P01|relation .* does not exist|Could not find the table/i.test(m);
+  return /PGRST205|PGRST204|42P01|42703|relation .* does not exist|column .* does not exist|Could not find the (table|'[^']*' column)/i.test(m);   // falta la tabla o las columnas de la versión nueva
 }
 
 async function publicar(sb, uid) {
@@ -91,8 +141,9 @@ async function publicar(sb, uid) {
   const apodo = apodoValido(perfil.apodo);
   if (!apodo) return;
   const c = calcularNivel(leerHistorial());
+  if (!c.calibrado) return;   // hasta tener 3 ejercicios con 3+ sesiones no hay datos suficientes para comparar
   const { error } = await sb.from('ranking').upsert({
-    id: uid, apodo, puntos: c.puntos, nivel: c.nivel, sesiones: c.sesiones, volumen_kg: c.volumen, actualizado: new Date().toISOString()
+    id: uid, apodo, puntos: c.puntos, nivel: c.nivel, ejercicios: c.ejercicios, metrica: METRICA, actualizado: new Date().toISOString()
   }, { onConflict: 'id' });
   if (error) throw error;
 }
@@ -110,11 +161,12 @@ export async function actualizarRanking({ forzar = false } = {}) {
       if (!ses?.session) return { ok: false, motivo: 'sin-cuenta' };
       await publicar(sb, ses.session.user.id);
       const { data, error } = await sb.from('ranking')
-        .select('id,apodo,puntos,nivel,sesiones,volumen_kg,actualizado')
+        .select('id,apodo,puntos,nivel,ejercicios,actualizado')
+        .eq('metrica', METRICA).gte('ejercicios', MIN_EJERCICIOS)   // solo la métrica actual (las filas antiguas cuentan sesiones)
         .order('puntos', { ascending: false }).limit(100);
       if (error) throw error;
       _tablaFalta = false;
-      const filas = (data || []).map(f => ({ id: f.id, apodo: String(f.apodo || '').slice(0, 20), puntos: Number(f.puntos) || 0, nivel: Number(f.nivel) || 1, sesiones: Number(f.sesiones) || 0 }));
+      const filas = (data || []).map(f => ({ id: f.id, apodo: String(f.apodo || '').slice(0, 20), puntos: Number(f.puntos) || 0, nivel: Number(f.nivel) || 1, ejercicios: Number(f.ejercicios) || 0 }));
       guardarCache(filas);
       _ultimo = Date.now();
       return { ok: true };
@@ -144,12 +196,25 @@ export function pintarRanking() {
   const mio = calcularNivel(leerHistorial());
   const cache = leerCache();
   const uid = userState.uid;
-  const falta = mio.siguiente ? mio.siguiente.min - mio.puntos : 0;
+  const faltaPct = mio.siguiente ? (mio.siguiente.min - mio.puntos) / 10 : 0;
+
+  const filasEj = mio.detalle.map(d => d.cuenta
+    ? `<li><span>${escapeHtml(d.nombre)}</span><small>${fmtKg(d.base)} → ${fmtKg(d.mejor)} kg (1RM est.) · <strong>+${fmtPct(d.mejora)} %</strong></small></li>`
+    : `<li class="rk-calibrando"><span>${escapeHtml(d.nombre)}</span><small>calibrando: ${d.sesiones}/${MIN_SESIONES_EJ} sesiones</small></li>`).join('');
 
   let html = `<div class="nut-card rk-mio">
       <h3>Tu nivel</h3>
+      ${mio.calibrado ? `
       <p class="rk-nivel">Nivel ${mio.nivel} · <strong>${escapeHtml(mio.nombre)}</strong></p>
-      <p class="import-hint">${mio.puntos} puntos (${mio.sesiones} ${mio.sesiones === 1 ? 'sesión' : 'sesiones'} × 10 + ${Math.floor(mio.volumen / 1000)} por volumen de ${mio.volumen.toLocaleString('es-ES')} kg)${mio.siguiente ? ` · te faltan ${falta} para «${escapeHtml(mio.siguiente.nombre)}»` : ' · ¡nivel máximo!'}</p>
+      <p class="import-hint">Tu fuerza ha mejorado de media <strong>+${fmtPct(mio.mejoraPct)} %</strong> sobre tu punto de partida (${mio.ejercicios} ejercicios) = ${mio.puntos} puntos${mio.siguiente ? ` · te falta ≈${fmtPct(faltaPct)} % para «${escapeHtml(mio.siguiente.nombre)}»` : ' · ¡nivel máximo!'}</p>`
+      : `
+      <p class="rk-nivel">Calibrando…</p>
+      <p class="import-hint">Para medir tu progreso hacen falta <strong>${MIN_EJERCICIOS} ejercicios con peso hechos al menos ${MIN_SESIONES_EJ} veces</strong> (sin contar deload). Llevas ${mio.ejercicios}${mio.faltanEjercicios ? `: te ${mio.faltanEjercicios === 1 ? 'falta 1' : 'faltan ' + mio.faltanEjercicios}` : ''}.</p>`}
+      ${filasEj ? `<details class="nut-avanzado"><summary>Ver cómo sale (por ejercicio)</summary><ul class="rk-detalle">${filasEj}</ul></details>` : ''}
+      <details class="nut-avanzado"><summary>¿Cómo se calcula?</summary>
+        <p class="import-hint">Se compara tu <strong>1RM estimado</strong> (fórmula de Epley, con la mejor serie normal; las bajadas y la serie viuda no cuentan) de cada ejercicio con tu punto de partida (tu primera sesión con ese ejercicio). Los puntos son la mejora media × 10.</p>
+        <p class="import-hint"><strong>No cuenta cuántas veces entrenas ni cuánto tiempo pasas sin hacerlo:</strong> si paras unas semanas tu progreso ya conseguido se mantiene, y solo sube cuando mejoras tus marcas. Las sesiones de deload no cuentan. Cada ejercicio aporta como máximo +${TOPE_MEJORA} %. Al principio se progresa más rápido, por eso es normal que quien acaba de empezar suba deprisa; puedes filtrar por nivel.</p>
+      </details>
     </div>`;
 
   if (!uid) {
@@ -160,7 +225,7 @@ export function pintarRanking() {
       <label class="audio-toggle-label"><input type="checkbox" id="rk-activo" ${perfil.activo ? 'checked' : ''} onchange="rankingParticipar(this.checked)"><span class="audio-toggle-text">Aparecer en el ranking global</span></label>
       <label class="form-label" for="rk-apodo">Apodo público (2–20 letras, números, espacio . _ -)</label>
       <input id="rk-apodo" maxlength="20" value="${escapeHtml(perfil.apodo)}" placeholder="Ej: Leinier" onchange="rankingGuardarApodo()">
-      <p class="import-hint">Solo se publican: apodo, puntos, nivel, nº de sesiones. Nada de rutinas, historial, medidas ni correo. Puedes salir cuando quieras y tu fila se borra.</p>
+      <p class="import-hint">Solo se publican: apodo, puntos, nivel y nº de ejercicios evaluados. Nada de rutinas, historial, medidas ni correo. Entras en la lista cuando tienes datos suficientes (ver «¿Cómo se calcula?»). Puedes salir cuando quieras y tu fila se borra.</p>
     </div>`;
   }
 
@@ -176,12 +241,12 @@ export function pintarRanking() {
         </select></div>
       <p class="import-hint">${navigator.onLine ? '' : '📴 Sin conexión · '}Última actualización: ${escapeHtml(cuando)}</p>
       ${filas.length ? `<ol class="rk-lista">${filas.map(f => `
-        <li class="rk-fila${f.id === uid ? ' rk-yo' : ''}"><span class="rk-pos">${f.pos}</span><span class="rk-nombre">${escapeHtml(f.apodo)}</span><span class="rk-niv">Nv ${f.nivel} · ${escapeHtml((NIVELES.find(n => n.n === f.nivel) || {}).nombre || '')}</span><span class="rk-pts">${f.puntos} pts</span></li>`).join('')}</ol>`
+        <li class="rk-fila${f.id === uid ? ' rk-yo' : ''}"><span class="rk-pos">${f.pos}</span><span class="rk-nombre">${escapeHtml(f.apodo)}</span><span class="rk-niv">Nv ${f.nivel} · ${escapeHtml((NIVELES.find(n => n.n === f.nivel) || {}).nombre || '')}</span><span class="rk-pts">+${fmtPct(f.puntos / 10)} %</span></li>`).join('')}</ol>`
         : '<p class="texto-vacio">Nadie en este nivel todavía.</p>'}
       <p class="import-hint">Se muestran los 100 primeros.</p>
     </div>`;
   }
-  if (_tablaFalta) html += `<div class="nut-card"><p>⚠️ La tabla del ranking aún no existe en tu Supabase. Ejecuta <code>supabase_ranking.sql</code> una vez (instrucciones en CAMBIOS.md).</p></div>`;
+  if (_tablaFalta) html += `<div class="nut-card"><p>⚠️ La tabla del ranking no existe o está sin actualizar en tu Supabase. Ejecuta <code>supabase_ranking.sql</code> una vez (instrucciones en CAMBIOS.md).</p></div>`;
   cont.innerHTML = html;
 }
 
@@ -202,7 +267,7 @@ window.rankingParticipar = async function (activo) {
     if (!guardarPerfilRanking({ activo: true, apodo: a })) return;
     if (!navigator.onLine) { showToast('Participarás en cuanto haya conexión', 'info', 3500); pintarRanking(); return; }
     const r = await actualizarRanking({ forzar: true });
-    showToast(r.ok ? 'Ya apareces en el ranking' : r.motivo === 'sin-tabla' ? 'Falta crear la tabla del ranking en Supabase' : 'No se pudo publicar ahora; se reintentará', r.ok ? 'success' : 'warning', 4000);
+    showToast(r.ok ? 'Ya apareces en el ranking' : r.motivo === 'sin-tabla' ? 'Falta crear o actualizar la tabla del ranking en Supabase (supabase_ranking.sql)' : 'No se pudo publicar ahora; se reintentará', r.ok ? 'success' : 'warning', 4000);
     pintarRanking();
   } else {
     guardarPerfilRanking({ ...p, activo: false });
@@ -220,4 +285,4 @@ export async function abrirPantallaRanking() {
   if (r.ok === false && r.motivo === 'error') showToast('No se pudo actualizar; se muestra la última descarga', 'info', 3500);
   if (pantallaAbierta()) pintarRanking();
 }
-// gt-build:v106
+// gt-build:v107

@@ -114,6 +114,7 @@ export function normalizarCamposExtra(e, out) {
   if (typeof e.subzona === 'string' && e.subzona) out.subzona = e.subzona.slice(0, 30);
   if (typeof e.alt === 'string' && e.alt.trim()) out.alt = e.alt.trim().slice(0, 40);
   if (typeof e.msgMin === 'string' && e.msgMin.trim()) out.msgMin = e.msgMin.trim().slice(0, 400);
+  { const inc = Number(e.incremento); if (Number.isFinite(inc) && inc > 0 && inc <= 50) out.incremento = Math.round(inc * 100) / 100; }   // incremento de peso propio del ejercicio
   if (e.metodoProg && typeof e.metodoProg === 'object' && PROGRESION.some(p => p.id === e.metodoProg.id)) {
     const mp = { id: e.metodoProg.id };
     const em = numParam(e.metodoProg.params?.extraMax, 0, 5);
@@ -360,4 +361,4 @@ export function copiarDiasEntreRutinas(origenId, indices, destinoId) {
   saveRutinaUsuario(destino, destinoId);
   return hechos;
 }
-// gt-build:v106
+// gt-build:v107
